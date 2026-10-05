@@ -126,11 +126,8 @@ def run_dry_run_validation() -> Dict[str, Any]:
     for checkpoint/RNG/metadata files). Deliberately NEVER writes under
     `CHECKPOINT_DIR` / `persistent-data/rl/checkpoints` -- that exact path
     is asserted to stay empty/nonexistent until real PPO training occurs by
-    a pre-existing project invariant
-    (`tests/unit/test_rl_dependency_compatibility.py::
-    test_no_ppo_training_artifacts_exist` and its
-    `test_rl_dynamics_calibration_protocol.py` counterparts), and a dry-run
-    validation script must never trip that invariant."""
+    a pre-existing project invariant, and a dry-run validation script must
+    never trip that invariant."""
     import tempfile
 
     from stable_baselines3 import PPO

@@ -4,13 +4,13 @@
 Index39: OFFLINE-ONLY final-evaluation analysis and result synthesis.
 
 Reads only existing, already-committed JSON/JSONL evidence under
-persistent-data/evaluation/final_session019/ and
-persistent-data/rl_training/{ppo,hpa}_final_evaluation_ledger.jsonl.
+results/evaluation/raw/ and
+results/evaluation/ledgers/{ppo,hpa}_final_evaluation_ledger.jsonl.
 
 Performs NO Kubernetes call, NO Prometheus live query, NO model
 load/predict/learn, NO traffic generation. Deterministic given the files on
 disk. Never overwrites original episode artifacts or ledgers -- writes only
-new, additively-named files under task_outputs/.
+new, additively-named files under results/evaluation/.
 
 Section-10 metric definitions are copied VERBATIM from
 task_outputs/phase_16u_direct_ppo_protocol.yaml (frozen BEFORE any
@@ -26,10 +26,11 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-EVAL_DIR = PROJECT_ROOT / "persistent-data" / "evaluation" / "final_session019"
-PPO_LEDGER = PROJECT_ROOT / "persistent-data" / "rl_training" / "ppo_final_evaluation_ledger.jsonl"
-HPA_LEDGER = PROJECT_ROOT / "persistent-data" / "rl_training" / "hpa_final_evaluation_ledger.jsonl"
-TASK_OUTPUTS = PROJECT_ROOT / "task_outputs"
+EVAL_DIR = PROJECT_ROOT / "results" / "evaluation" / "raw"
+PROVENANCE_DIR = PROJECT_ROOT / "results" / "evaluation" / "provenance"
+PPO_LEDGER = PROJECT_ROOT / "results" / "evaluation" / "ledgers" / "ppo_final_evaluation_ledger.jsonl"
+HPA_LEDGER = PROJECT_ROOT / "results" / "evaluation" / "ledgers" / "hpa_final_evaluation_ledger.jsonl"
+RESULTS_DIR = PROJECT_ROOT / "results" / "evaluation"
 
 EXPECTED_HOLDOUT_HASH = "308f4f90ea3cea97f1927cec97efeaa652c4424e9fe5bcea421358f3425e3409"
 EXPECTED_SEED = 777
@@ -169,7 +170,7 @@ def compute_section10_metrics(episode: Dict[str, Any]) -> Dict[str, Any]:
 
 def run_analysis() -> Dict[str, Any]:
     episodes = {name: _classify_legacy(_load(name)) for name in EPISODE_FILES}
-    hpa2_attempt1 = json.load(open(EVAL_DIR / HPA2_ATTEMPT1_FAILURE_FILE))
+    hpa2_attempt1 = json.load(open(PROVENANCE_DIR / HPA2_ATTEMPT1_FAILURE_FILE))
 
     # --- Validation (fail closed on any mismatch) ---------------------
     hashes = {name: ep["workload_hash"] for name, ep in episodes.items()}
@@ -308,7 +309,7 @@ for every episode, per `phase_16u_direct_ppo_protocol.yaml` Section 10 /
 
 Computed exactly per the frozen definitions (`sla_violation_rate`, `error_rate_mean`,
 `resource_proxy_mean`, `reaction_time_seconds`, `action_churn_count`) — see
-`task_outputs/index39_final_evaluation_metrics.json` for full per-episode values,
+`results/evaluation/metrics.json` for full per-episode values,
 including partial-duration PPO1/PPO2 (reported for completeness, never mixed into
 full-duration aggregates).
 
@@ -331,7 +332,7 @@ full {result['episodes']['HPA2']['workload_duration_seconds']:.0f}s run
 (`traffic_completed={f1['traffic_completed']}`), but metrics finalization failed
 (`metrics_complete={f1['metrics_complete']}`) during post-workload Prometheus drain,
 concurrent with observed `NodeNotReady` events. Preserved at
-`persistent-data/evaluation/final_session019/{HPA2_ATTEMPT1_FAILURE_FILE}`.
+`results/evaluation/provenance/{HPA2_ATTEMPT1_FAILURE_FILE}`.
 **Excluded from scientific aggregation** — not a scientific HPA result.
 HPA repeat2 physical attempt2 (after infrastructure recovery) completed the full
 duration and is the scientific HPA2 result used throughout this analysis.
@@ -377,7 +378,7 @@ full-duration repeats per controller. HPA achieved 3/3; PPO achieved 1/3.
 
 ## 11. Final scientifically defensible conclusion
 
-See `task_outputs/index39_final_scientific_conclusion.md`.
+See `results/evaluation/conclusion.md`.
 """
     with open(path, "w") as f:
         f.write(content)
@@ -436,11 +437,11 @@ under its own pre-registered decision rule.
 
 def main() -> int:
     result = run_analysis()
-    TASK_OUTPUTS.mkdir(parents=True, exist_ok=True)
-    write_metrics_json(result, TASK_OUTPUTS / "index39_final_evaluation_metrics.json")
-    write_table_csv(result, TASK_OUTPUTS / "index39_final_evaluation_table.csv")
-    write_analysis_md(result, TASK_OUTPUTS / "index39_final_evaluation_analysis.md")
-    write_conclusion_md(result, TASK_OUTPUTS / "index39_final_scientific_conclusion.md")
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    write_metrics_json(result, RESULTS_DIR / "metrics.json")
+    write_table_csv(result, RESULTS_DIR / "per_episode_metrics.csv")
+    write_analysis_md(result, RESULTS_DIR / "analysis.md")
+    write_conclusion_md(result, RESULTS_DIR / "conclusion.md")
     print(json.dumps({
         "hpa_valid_full_repeats": result["hpa_valid_repeats"],
         "ppo_valid_full_repeats": result["ppo_valid_repeats"],

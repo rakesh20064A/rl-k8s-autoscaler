@@ -29,7 +29,7 @@ for every episode, per `phase_16u_direct_ppo_protocol.yaml` Section 10 /
 
 Computed exactly per the frozen definitions (`sla_violation_rate`, `error_rate_mean`,
 `resource_proxy_mean`, `reaction_time_seconds`, `action_churn_count`) — see
-`task_outputs/index39_final_evaluation_metrics.json` for full per-episode values,
+`results/evaluation/metrics.json` for full per-episode values,
 including partial-duration PPO1/PPO2 (reported for completeness, never mixed into
 full-duration aggregates).
 
@@ -56,7 +56,7 @@ full 1500s run
 (`traffic_completed=True`), but metrics finalization failed
 (`metrics_complete=False`) during post-workload Prometheus drain,
 concurrent with observed `NodeNotReady` events. Preserved at
-`persistent-data/evaluation/final_session019/episode_04_hpa_repeat2_physical_attempt1_FAILED.json`.
+`results/evaluation/provenance/episode_04_hpa_repeat2_physical_attempt1_FAILED.json`.
 **Excluded from scientific aggregation** — not a scientific HPA result.
 HPA repeat2 physical attempt2 (after infrastructure recovery) completed the full
 duration and is the scientific HPA2 result used throughout this analysis.
@@ -102,4 +102,4 @@ full-duration repeats per controller. HPA achieved 3/3; PPO achieved 1/3.
 
 ## 11. Final scientifically defensible conclusion
 
-See `task_outputs/index39_final_scientific_conclusion.md`.
+See `results/evaluation/conclusion.md`.

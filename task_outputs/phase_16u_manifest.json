@@ -1,0 +1,119 @@
+{
+  "phase": "16U",
+  "title": "Direct/Bounded Live-Kubernetes PPO Protocol Preregistration",
+  "classification": "OFFLINE_PROTOCOL_FORMALIZATION_ONLY",
+  "selected_methodology": "PATH_B_DIRECT_LIVE_KUBERNETES_RL",
+  "traffic_generated": false,
+  "kubernetes_mutation": false,
+  "hpa_mutation": false,
+  "ppo_trained_or_evaluated": false,
+  "surrogate_model_refit": false,
+  "iteration2b_or_iteration3_holdout_reopened": false,
+  "python_files_created_or_modified": 0,
+  "frozen_contract_adopted_unchanged": {
+    "document": "docs/rl_mdp_spec.md",
+    "sha256": "b5949c9d3cc5b07a26a41a28a9e2868901a75e5c32f0bc6caca4d9f1d989a1c1",
+    "rl_contract_version": 2,
+    "reward_contract_version": 2
+  },
+  "read_only_inputs_verified_unchanged": {
+    "configs/rl.yaml": "ceadd5cd504734b122f22d38197e93d7fe5a90e2ac1848bf51287a8d8ac9ffcb",
+    "configs/reward.yaml": "0fc3682a166d6cadb5ff129b85891803795ee64f7108c517971e137bd6fe28ba",
+    "configs/experiment.yaml": "646af6d930fc883fec4a4365ef55745bd90cfaa760a5aba7660acf11a5b8b6aa",
+    "k8s/hpa/hpa.yaml": "809550767890ef3dc50bd9d93f3ca2d1cad2b0dc26881dca0a75a31fa0c5d7a1",
+    "configs/hpa.yaml": "41a553d8f1ce7bcea5a7822a710464251c63873117363166dc5b823cbd27b252"
+  },
+  "correction_to_phase16t": {
+    "issue": "PPO mischaracterized as usable with an off-policy-style replay buffer of historical transitions",
+    "correction": "PPO is on-policy; historical Iteration-2B/Iteration-3 data restricted to observation/reward sanity-checks and final-holdout envelope design only, never PPO's own rollout/update mechanism",
+    "optional_undecided_item": "supervised behavior-cloning pretraining, left to the implementation phase to justify or skip"
+  },
+  "observation_and_action_space": {
+    "source": "docs/rl_mdp_spec.md sec.3-9; configs/rl.yaml",
+    "redesigned_by_phase16u": false,
+    "observation_dim": 11,
+    "action_space": "Discrete(3)",
+    "replica_bounds": [1, 8]
+  },
+  "timing": {
+    "decision_interval_seconds": 30,
+    "pre_episode_stabilization_seconds": 60,
+    "episode_definition_unchanged": true,
+    "new_ppo_episode_restoration_max_wait_seconds": 120,
+    "new_ppo_episode_restoration_justification": "direct Deployment patch, not HPA-throttled scale-down"
+  },
+  "ppo_hyperparameter_deviations_from_configs_rl_yaml": {
+    "n_steps": {"from": 2048, "to": 256},
+    "total_timesteps": {"from": 500000, "to": 12288},
+    "eval_freq": {"from": 10000, "to": 1024},
+    "n_eval_episodes": {"from": 5, "to": 1},
+    "seeds": {"from": [42, 7, 123], "to": [42]}
+  },
+  "training_budget": {
+    "total_environment_steps": 12288,
+    "approx_total_wall_clock_hours": 118.6,
+    "approx_days_continuous": 4.9,
+    "vs_original_simulated_backend_target": "~40x smaller",
+    "feasibility_disclosed_as_open_empirical_question": true
+  },
+  "workload_split": {
+    "training_development_profiles": ["constant", "step", "burst", "ramp", "periodic", "mixed"],
+    "total_decision_steps_per_cycle": 270,
+    "excluded_from_formal_comparison": "unseen_eval.yaml",
+    "final_holdout_workload": {
+      "status": "SPECIFIED_NOT_CREATED",
+      "reserved_filename": "configs/traffic_profiles/iteration_rl_final_holdout_v1.yaml",
+      "seed": 777,
+      "duration_seconds": 1500,
+      "peak_rps": 65,
+      "created_in_this_phase": false,
+      "executed_in_this_phase": false
+    },
+    "final_evaluation_repeats_per_controller": 3,
+    "sample_size_significance_disclosed": true
+  },
+  "baselines": {
+    "required": ["PPO", "HPA"],
+    "optional_diagnostic": "static_fixed_replica_4",
+    "co_control_forbidden": true,
+    "fail_closed_on_live_hpa_detected": true
+  },
+  "evaluation_metrics_and_decision_rule": {
+    "metrics": ["sla_violation_rate", "error_rate_mean", "resource_proxy_mean", "reaction_time_seconds", "action_churn_count"],
+    "decision_rule_frozen_before_evaluation": true,
+    "decision_rule_type": "conservative_non_inferential",
+    "post_hoc_metric_changes_forbidden": true
+  },
+  "safety_and_fallback": {
+    "pre_action_rejection_mechanisms": ["replica_bound_clamp", "pending_scale_gate", "scale_down_cooldown", "live_hpa_detected_at_controller_start"],
+    "post_action_fallback_mechanisms": ["stale_or_missing_metric", "prometheus_unavailable", "policy_inference_failure", "k8s_api_failure"],
+    "deterministic_fallback": "HOLD",
+    "termination_conditions": ["4_consecutive_invalid_decision_steps", "zero_ready_replicas_over_120s"],
+    "restore_last_known_safe_state_after_termination": true,
+    "safety_events_logged_never_discarded": true
+  },
+  "ledgers_specified": [
+    "ppo_training_episode_ledger",
+    "ppo_final_evaluation_episode_ledger",
+    "hpa_final_evaluation_episode_ledger"
+  ],
+  "ledgers_created_in_this_phase": false,
+  "iteration3_ledger_reused": false,
+  "verification": {
+    "python_files_modified": 0,
+    "test_suite_run": false,
+    "test_suite_run_reason": "no Python file created or modified in this phase; standing test/Ruff requirement applies to changed Python only",
+    "frozen_source_documents_confirmed_unchanged": true
+  },
+  "output_files": {
+    "phase_16u_direct_ppo_protocol.yaml": "e933d7be7b84bd32ec31293c269af9b976ce702a9725d8437f7392d400a1d9a6",
+    "phase_16u_reward_specification.yaml": "b6afffe09bf2eac73145cbadadef28ca48e692b6dfc9aefecf87116911587be7",
+    "phase_16u_training_and_evaluation_workload_split.json": "fe82944096d89ee81e2d840a393fef0c67098fee8bdb4b2e7c3d583b1f670487",
+    "phase_16u_ppo_hyperparameters.json": "10c8f8ec134e61d233ad61d927cd5ec2771389834dab2bd482d41153e1c9e092",
+    "phase_16u_safety_and_fallback_protocol.yaml": "20b8bf1a1ca1d46aa4f0cbf274c03dd2ccbcdffa5d881e82dc2b2befbd855c31",
+    "phase_16u_completion_report_and_verdict.md": "b65dc0d983c6877e59d998444a925c13d91dfc8fcd261dc935ba9d106dbb5808"
+  },
+  "verdict": "PHASE16U_DIRECT_PPO_PROTOCOL_PREREGISTRATION_COMPLETE",
+  "next_authorized_action": "A separately-authorized implementation phase must: build a live-cluster DynamicsBackend, create and hash-pin the new final-holdout traffic profile per its frozen generation spec (without inspecting it before use), implement the three ledgers, run the frozen 12,288-step PPO training budget, and run the frozen final PPO-vs-HPA evaluation campaign. Not begun in this phase.",
+  "stop": true
+}

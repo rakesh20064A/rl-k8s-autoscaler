@@ -38,11 +38,17 @@ Traffic Generator (loadgen/) --> demo-app (app/) --> Prometheus/Grafana (k8s/mon
 - **`collectors/`** — the Prometheus client and metrics-collection harness.
 - **`configs/`** — frozen experiment/reward/RL configuration and traffic
   profiles (including the final held-out evaluation workload).
-- **`docs/`** — the frozen MDP specification and design-correction record.
-- **`task_outputs/`** — the frozen evaluation protocol documents and the
-  final Index39/40 results (metrics, tables, figures, report drafts).
-- **`persistent-data/`** — the final trained checkpoint (`session_019`) and
-  the final evaluation evidence/ledgers only (see Limitations).
+- **`docs/`** — the frozen MDP specification, design-correction record, and
+  the viva results summary.
+- **`task_outputs/`** — the frozen pre-registered evaluation protocol
+  documents (reward spec, safety/fallback rules, workload split, PPO
+  hyperparameters, governing-hash manifest) — kept at this exact path
+  because the final checkpoint's own metadata hash-pins these files by
+  this relative path (see Limitations).
+- **`models/ppo/`** — the final trained PPO checkpoint
+  (`ppo_model.zip`, `rng_state.pkl`, `metadata.json`).
+- **`results/`** — the final evaluation evidence, ledgers, Section-10
+  metrics, tables, and figures (`evaluation/`, `figures/`, `provenance/`).
 
 ## PPO vs. HPA, in brief
 
@@ -97,7 +103,7 @@ and `scripts/generate_index40_report_package.py`.
 Training was frozen at checkpoint `session_019` (5120 cumulative live
 timesteps, 20 PPO updates) — short of the original 12288-step design
 budget, due to live-cluster wall-clock constraints within the capstone
-timeline (see `task_outputs/index40_viva_results_summary.md`).
+timeline (see `docs/viva_results_summary.md`).
 
 Final evaluation executed the pre-registered sequence
 PPO1 → HPA1 → PPO2 → HPA2 → PPO3 → HPA3 on the identical held-out
@@ -115,8 +121,8 @@ not applicable, and no formal winner is declared.**
 Descriptively: HPA completed all three repeats with lower P95 latency; the
 one full-duration PPO repeat used substantially fewer replicas but
 recorded higher latency and a higher SLA-violation rate. Full detail,
-figures, and the exact Section-10 metrics are in `task_outputs/index39_*`
-and `task_outputs/index40_*`.
+figures, and the exact Section-10 metrics are in `results/evaluation/`
+
 
 **This project does not claim PPO outperformed HPA, nor the reverse.**
 
@@ -131,7 +137,7 @@ and `task_outputs/index40_*`.
   calibration provenance (dozens of intermediate checkpoints, raw traffic
   logs, phase-by-phase audit reports) exists in the project's full working
   history but is intentionally excluded here to keep the public repository
-  concise. See `task_outputs/index40_results_chapter_draft.md` for the
+  concise. See `results/evaluation/analysis.md` for the
   full write-up.
 
 ## Running the important components

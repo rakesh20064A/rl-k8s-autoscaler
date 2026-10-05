@@ -1,0 +1,63 @@
+# experiments/manifests/hpa_tuning_official_9_trials.yaml
+#
+# Phase 11C.4P: frozen manifest of the 9 official, precommitted HPA tuning
+# trials (CORR-24/CORR-25 methodology). This is the sole authoritative list
+# of experiment IDs used by scripts/aggregate_hpa_tuning.py -- the aggregator
+# does NOT discover trial directories by loose filename matching against
+# persistent-data/; it reads exactly the 9 entries below.
+#
+# Design: 3 candidates (200/230/260) x 3 counterbalanced-order blocks
+# (CORR-18 sec.7 / CORR-24 sec.9), 1 valid repeat of each candidate per
+# block, 9 trials total. Block order:
+#   Block 1: 200 -> 230 -> 260
+#   Block 2: 260 -> 200 -> 230
+#   Block 3: 230 -> 260 -> 200
+#
+# Do not add, remove, or reorder entries without a new CORR entry documenting
+# why (e.g. a genuine invalid-trial replacement). This manifest intentionally
+# excludes the superseded hpa_tune_t220_b1r1_20260908T085324Z trial (CORR-21,
+# INVALID_FOR_OFFICIAL_HPA_TUNING) and the harness smoke run (CORR-18 sec.13,
+# never an official trial).
+
+schedule_sha256: "4f648411e039f9229cd35a06374e6870dc75eca67e385e67f4f52bb0b5ec55ad"
+expected_planned_requests: 4950
+profile: configs/traffic_profiles/hpa_tuning/hpa_tuning_v2.yaml
+scored_end_seconds: 1230.0
+
+trials:
+  - experiment_id: hpa_tune_t200_b1r1_20260908T115812Z
+    candidate: 200
+    block: 1
+    repeat: 1
+  - experiment_id: hpa_tune_t230_b1r1_20260908T124605Z
+    candidate: 230
+    block: 1
+    repeat: 1
+  - experiment_id: hpa_tune_t260_b1r1_20260908T131731Z
+    candidate: 260
+    block: 1
+    repeat: 1
+  - experiment_id: hpa_tune_t260_b2r2_20260908T145029Z
+    candidate: 260
+    block: 2
+    repeat: 2
+  - experiment_id: hpa_tune_t200_b2r2_20260908T164158Z
+    candidate: 200
+    block: 2
+    repeat: 2
+  - experiment_id: hpa_tune_t230_b2r2_20260909T013319Z
+    candidate: 230
+    block: 2
+    repeat: 2
+  - experiment_id: hpa_tune_t230_b3r3_20260909T030522Z
+    candidate: 230
+    block: 3
+    repeat: 3
+  - experiment_id: hpa_tune_t260_b3r3_20260909T061314Z
+    candidate: 260
+    block: 3
+    repeat: 3
+  - experiment_id: hpa_tune_t200_b3r3_20260909T065158Z
+    candidate: 200
+    block: 3
+    repeat: 3

@@ -57,13 +57,13 @@ from scripts import rl_live_common as common  # noqa: E402
 from scripts import traffic_orchestrator as to  # noqa: E402
 from scripts.materialize_rl_final_holdout_workload import _load_spec as _load_holdout_spec  # noqa: E402
 
-EVALUATION_ROOT = PROJECT_ROOT / "persistent-data" / "evaluation" / "final_session019"
+EVALUATION_ROOT = PROJECT_ROOT / "results" / "evaluation" / "raw"
 EVAL_APP_NS = "autoscaler-app"
 EVAL_DEPLOYMENT = "demo-app"
 EVAL_ROUTE = "/work"
 
-PPO_FINAL_EVAL_LEDGER = PROJECT_ROOT / "persistent-data" / "rl_training" / "ppo_final_evaluation_ledger.jsonl"
-HPA_FINAL_EVAL_LEDGER = PROJECT_ROOT / "persistent-data" / "rl_training" / "hpa_final_evaluation_ledger.jsonl"
+PPO_FINAL_EVAL_LEDGER = PROJECT_ROOT / "results" / "evaluation" / "ledgers" / "ppo_final_evaluation_ledger.jsonl"
+HPA_FINAL_EVAL_LEDGER = PROJECT_ROOT / "results" / "evaluation" / "ledgers" / "hpa_final_evaluation_ledger.jsonl"
 TRAINING_LEDGER = PROJECT_ROOT / "persistent-data" / "rl_training" / "ppo_training_episode_ledger.jsonl"
 
 N_REPEATS = 3
@@ -504,7 +504,7 @@ def run_live_evaluation() -> int:
     EVALUATION_ROOT. Raises on any failure -- never silently continues."""
     from stable_baselines3 import PPO
 
-    session_019 = PROJECT_ROOT / "persistent-data/rl/checkpoints/phase16w_sessions/session_019/ppo_model.zip"
+    session_019 = PROJECT_ROOT / "models" / "ppo" / "ppo_model.zip"
     model = PPO.load(session_019)
     if model.num_timesteps != 5120:
         raise RuntimeError(f"frozen checkpoint num_timesteps mismatch: {model.num_timesteps} != 5120")

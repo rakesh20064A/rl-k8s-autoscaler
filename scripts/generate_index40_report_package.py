@@ -2,12 +2,12 @@
 """scripts/generate_index40_report_package.py
 
 Index40: OFFLINE-ONLY report-ready results package. Reads ONLY:
-  - task_outputs/index39_final_evaluation_metrics.json (authoritative Section-10 values)
-  - persistent-data/evaluation/final_session019/*.json (original, preserved episode
+  - results/evaluation/metrics.json (authoritative Section-10 values)
+  - results/evaluation/raw/*.json (original, preserved episode
     evidence -- read-only, for the optional time-series figures)
 
 Performs NO Kubernetes/Prometheus/model call. Writes only new files under
-task_outputs/index40_figures/ and task_outputs/index40_*.{md,csv} -- never
+results/figures/ and results/evaluation/*.{md,csv} -- never
 modifies index39 outputs or original episode evidence.
 """
 
@@ -23,10 +23,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-TASK_OUTPUTS = PROJECT_ROOT / "task_outputs"
-FIG_DIR = TASK_OUTPUTS / "index40_figures"
-EVAL_DIR = PROJECT_ROOT / "persistent-data" / "evaluation" / "final_session019"
-METRICS_PATH = TASK_OUTPUTS / "index39_final_evaluation_metrics.json"
+RESULTS_DIR = PROJECT_ROOT / "results" / "evaluation"
+FIG_DIR = PROJECT_ROOT / "results" / "figures"
+EVAL_DIR = RESULTS_DIR / "raw"
+METRICS_PATH = RESULTS_DIR / "metrics.json"
 
 FULL_VALID = ["HPA1", "HPA2", "HPA3", "PPO3"]
 EXECUTION_ORDER = ["PPO1", "HPA1", "PPO2", "HPA2", "PPO3", "HPA3"]
@@ -206,7 +206,7 @@ def generate_tables(metrics: Dict[str, Any]) -> None:
             "Max replicas": ep["max_replicas"],
         })
 
-    csv_path = TASK_OUTPUTS / "index40_final_results_table.csv"
+    csv_path = RESULTS_DIR / "final_results.csv"
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         writer.writeheader()
@@ -215,7 +215,7 @@ def generate_tables(metrics: Dict[str, Any]) -> None:
     md_lines = ["| " + " | ".join(rows[0].keys()) + " |", "|" + "---|" * len(rows[0])]
     for r in rows:
         md_lines.append("| " + " | ".join(str(r[k]) for k in r) + " |")
-    md_path = TASK_OUTPUTS / "index40_final_results_table.md"
+    md_path = RESULTS_DIR / "final_results.md"
     with open(md_path, "w") as f:
         f.write("# Index40 Final Results Table\n\n" + "\n".join(md_lines) + "\n")
 
@@ -331,7 +331,7 @@ could not be completed and no formal winner was declared.
         ppo3_p95=metrics["per_episode"]["PPO3"]["mean_latency_p95_ms"],
         ppo3_sla=metrics["per_episode"]["PPO3"]["section10_metrics"]["sla_violation_rate"],
     )
-    with open(TASK_OUTPUTS / "index40_results_chapter_draft.md", "w") as f:
+    with open(PROJECT_ROOT / "docs" / "results_chapter_draft.md", "w") as f:
         f.write(content)
 
 
@@ -433,7 +433,7 @@ safety terminations specifically under this held-out workload; and
 evaluate robustness to infrastructure instability as its own explicit,
 measured research question.
 """
-    with open(TASK_OUTPUTS / "index40_viva_results_summary.md", "w") as f:
+    with open(PROJECT_ROOT / "docs" / "viva_results_summary.md", "w") as f:
         f.write(content)
 
 
@@ -451,7 +451,7 @@ def main() -> int:
 
     print(json.dumps({
         "figures_created": bar_figs + [outcomes_fig] + ts_figs,
-        "tables_created": ["index40_final_results_table.md", "index40_final_results_table.csv"],
+        "tables_created": ["final_results.md", "final_results.csv"],
     }, indent=2))
     return 0
 
