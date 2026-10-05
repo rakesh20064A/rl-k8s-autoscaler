@@ -1,0 +1,55 @@
+# k8s/app/service-loadtest.yaml
+#
+# Dedicated EXPERIMENT-ACCESS Service for host-side load generation (HPA/RL
+# benchmark traffic), separate from the primary `demo-app` Service.
+#
+# Background (Phase 11C.4B, see task_outputs/phase_11c4b_multi_replica_traffic_delivery_correction.md
+# and CORR-21): `kubectl port-forward service/demo-app` was previously used to
+# reach the app from the host load generator. Per official Kubernetes
+# documentation, `kubectl port-forward` against a Service selects ONE backing
+# pod and tunnels to that single pod for the life of the port-forward process
+# -- it does NOT traverse the normal Service data plane (kube-proxy) that
+# balances traffic across all Ready backend pods. This pinned all HPA-tuning
+# traffic to whichever single pod existed when the port-forward started,
+# starving any newly-scaled-up replica of traffic (proven in the first
+# official 220% trial's per-pod CPU data).
+#
+# This Service exists solely to give the host load generator a genuine,
+# Service-load-balanced path via `minikube service demo-app-loadtest --url`
+# (NodePort -> kube-proxy -> all Ready backend pods), WITHOUT touching the
+# primary `demo-app` Service (used by Prometheus/ServiceMonitor scraping and
+# any future in-cluster/RL access) or its behavior in any way.
+#
+# Selector is identical to demo-app's -- this Service fronts the exact same
+# pods, just via a different, genuinely load-balanced access path.
+#
+# Deliberately does NOT carry `purpose: primary-metrics-source` (Phase
+# 11C.4C, CORR-22): k8s/app/service-monitor.yaml's selector now requires
+# that label, which only k8s/app/service.yaml (the primary demo-app Service)
+# carries. This Service having only `app: demo-app` (shared, non-exclusive)
+# is exactly what previously caused it to ALSO be discovered as an
+# application-metrics scrape target -- duplicating every demo_app_* series
+# under a second `job=demo-app-loadtest` label. Do not add
+# `purpose: primary-metrics-source` here.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-app-loadtest
+  namespace: autoscaler-app
+  labels:
+    app: demo-app
+    project: rl-k8s-autoscaler
+    purpose: experiment-load-generator-access
+spec:
+  type: NodePort
+  selector:
+    # Must exactly match spec.template.metadata.labels in deployment.yaml --
+    # identical to demo-app's own selector, on purpose.
+    app: demo-app
+  sessionAffinity: None
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP

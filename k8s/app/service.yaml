@@ -1,0 +1,38 @@
+# k8s/app/service.yaml
+# ClusterIP Service for the demo application.
+# Exposes the app within the cluster for:
+#   - HPA (metrics-server scrapes kubelet, not this Service)
+#   - Prometheus scraping via ServiceMonitor or pod annotation
+#   - Traffic generators running inside the cluster
+#   - RL agent HTTP access to the app metrics and workload endpoints
+#
+# Selector must exactly match pod template labels in deployment.yaml.
+#
+# `purpose: primary-metrics-source` (Phase 11C.4C, CORR-22): the ONLY Service
+# label that k8s/app/service-monitor.yaml's selector matches on. Both this
+# Service and demo-app-loadtest (k8s/app/service-loadtest.yaml) carry the
+# generic `app: demo-app` label, which -- because a ServiceMonitor selects
+# Services by their own metadata.labels, not by pod selector -- previously
+# caused BOTH Services to be discovered as scrape targets for the same
+# underlying pods, duplicating every application metric under two `job`
+# labels. `demo-app-loadtest` must never carry this label.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-app
+  namespace: autoscaler-app
+  labels:
+    app: demo-app
+    project: rl-k8s-autoscaler
+    purpose: primary-metrics-source
+spec:
+  type: ClusterIP
+  selector:
+    # Must exactly match spec.template.metadata.labels in deployment.yaml
+    app: demo-app
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP

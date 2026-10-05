@@ -1,0 +1,68 @@
+{
+  "phase": "16U",
+  "classification": "OFFLINE_PROTOCOL_FORMALIZATION_ONLY",
+  "principle": "PPO training/development workloads and the final PPO-vs-HPA evaluation workload are disjoint. The final evaluation workload must remain unopened/unexecuted until PPO training and all methodology choices in this phase are frozen. No final-evaluation outcome may be used to tune PPO.",
+
+  "training_and_development_workloads": {
+    "status": "CANDIDATE profiles already on disk, previously described in docs/rl_mdp_spec.md sec.22 as 'candidate, NOT yet frozen' for training/validation use -- Phase16U now designates all six as the training/development set for PPO",
+    "source_directory": "configs/traffic_profiles/",
+    "profiles": [
+      {"name": "constant", "file": "configs/traffic_profiles/constant.yaml", "seed": 42, "duration_seconds": 600, "decision_steps": 20, "role": "training + periodic in-training dev-validation check"},
+      {"name": "step",     "file": "configs/traffic_profiles/step.yaml",     "seed": 42, "duration_seconds": 900, "decision_steps": 30, "role": "training"},
+      {"name": "burst",    "file": "configs/traffic_profiles/burst.yaml",    "seed": 42, "duration_seconds": 1200, "decision_steps": 40, "role": "training"},
+      {"name": "ramp",     "file": "configs/traffic_profiles/ramp.yaml",     "seed": 42, "duration_seconds": 1200, "decision_steps": 40, "role": "training"},
+      {"name": "periodic", "file": "configs/traffic_profiles/periodic.yaml", "seed": 42, "duration_seconds": 1800, "decision_steps": 60, "role": "training"},
+      {"name": "mixed",    "file": "configs/traffic_profiles/mixed.yaml",    "seed": 42, "duration_seconds": 2400, "decision_steps": 80, "role": "training (primary comparison scenario per its own file header)"}
+    ],
+    "total_decision_steps_per_full_cycle": 270,
+    "episode_scheduling_rule": "round-robin cycle through the 6 profiles in a fixed order, reshuffled once per full cycle using the frozen training seed (42); repeated cyclically until the training budget (phase_16u_ppo_hyperparameters.json) is exhausted",
+    "periodic_in_training_dev_validation": {
+      "profile_used": "constant",
+      "frequency_environment_steps": 1024,
+      "n_eval_episodes": 1,
+      "purpose": "save_best checkpointing signal only -- never used to select final reported metrics, never a substitute for the final held-out evaluation"
+    },
+    "used_during_earlier_MDP_design": "yes -- burst/ramp/step peak RPS values (70/60/50) already informed the frozen request_rate_norm clip ceiling (docs/rl_mdp_spec.md sec.7/22). This is acceptable because these are explicitly the TRAINING set, not the held-out evaluation set -- the leakage concern in sec.22 applies only to workloads claiming held-out status."
+  },
+
+  "excluded_from_the_formal_final_comparison": {
+    "profile": "unseen_eval.yaml",
+    "reason": "docs/rl_mdp_spec.md sec.22 revoked its eligibility as the sole formal final held-out evaluation profile after finding its 80 RPS burst magnitude had already informed the request_rate_norm normalization design (an information leak, even though the final clip value was re-justified without reference to it). Phase16U does not reuse it for the FORMAL PPO-vs-HPA comparison. The file itself remains untouched, unexecuted, and unmodified -- consistent with the frozen contract's own instruction ('not deleted, not rewritten, not run').",
+    "optional_non_formal_use": "MAY be run once, post-hoc, purely as an additional diagnostic data point after the formal comparison is complete and reported -- never as part of the primary decision rule, and never inspected/used before then."
+  },
+
+  "final_evaluation_workload": {
+    "status": "NOT YET CREATED. This section is a frozen GENERATION SPECIFICATION only -- Phase16U does not create, inspect, or run this workload. It performs the workload-freeze step required (but not yet completed) by docs/rl_mdp_spec.md sec.22: 'a dedicated workload-freeze phase ... must define a NEW formal held-out evaluation workload ... distinct from anything inspected during state/reward design.'",
+    "new_file_name_reserved": "configs/traffic_profiles/iteration_rl_final_holdout_v1.yaml",
+    "seed": 777,
+    "seed_justification": "distinct from all training-profile seeds (42) and from unseen_eval.yaml's seed (99) -- never previously used anywhere in this project",
+    "duration_seconds": 1500,
+    "decision_steps": 50,
+    "shape_specification": {
+      "structure": "multi-phase, deliberately combining elements not present together in any single training profile",
+      "phases": [
+        {"type": "ramp", "duration_seconds": 300, "start_rps": 4, "end_rps": 35, "note": "slow ramp, shallower slope than ramp.yaml's 3->60 over 400s"},
+        {"type": "constant", "duration_seconds": 180, "rps": 35},
+        {"type": "burst", "duration_seconds": 240, "baseline_rps": 35, "burst_rps": 65, "burst_duration_seconds": 45, "inter_burst_interval_seconds": 90, "note": "burst riding on top of an already-elevated baseline -- no training profile bursts from a non-trivial baseline"},
+        {"type": "constant", "duration_seconds": 180, "rps": 20, "note": "partial cooldown, not full quiet"},
+        {"type": "burst", "duration_seconds": 240, "baseline_rps": 20, "burst_rps": 65, "burst_duration_seconds": 30, "inter_burst_interval_seconds": 90},
+        {"type": "ramp", "duration_seconds": 360, "start_rps": 20, "end_rps": 4}
+      ],
+      "peak_rps": 65,
+      "peak_rps_justification": "below the 100 RPS observation clip ceiling with margin; deliberately NOT equal to unseen_eval.yaml's 80 RPS peak or to any training profile's peak (70/60/50/45/20/5), to avoid any perceived reuse of a previously-inspected magnitude"
+    },
+    "intensity": 3,
+    "endpoint": "/work",
+    "hash_pinning_requirement": "once this file is actually created (implementation phase), its SHA-256 must be computed and hash-pinned before the very first evaluation episode reads it -- mirroring the Iteration-3 protocol/schedule hash-pinning discipline",
+    "inspection_before_use_forbidden": "no phase, including the implementation phase, may inspect this workload's generated traffic trace or run it against any controller before both PPO training and this entire Phase16U protocol are frozen and unchanged"
+  },
+
+  "final_evaluation_design": {
+    "controllers": ["PPO", "HPA"],
+    "repeats_per_controller": 3,
+    "total_final_evaluation_episodes": 6,
+    "workload_identical_across_controllers": true,
+    "optional_diagnostic_controller": {"name": "static_fixed_replica_4", "repeats": 1},
+    "sample_size_disclosure": "n=3 per controller does not support a formal statistical significance test; the decision rule in phase_16u_direct_ppo_protocol.yaml Section 10 is deliberately conservative and non-inferential for this reason."
+  }
+}

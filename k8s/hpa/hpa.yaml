@@ -1,0 +1,50 @@
+# k8s/hpa/hpa.yaml
+# HorizontalPodAutoscaler for demo-app.
+#
+# FROZEN Phase 11C.4P baseline — generated from configs/hpa.yaml. The target
+# utilization (260%) is the empirically selected winner of the Phase 11C HPA
+# tuning study (candidate family 200%/230%/260%, CORR-24; 9-trial counterbalanced
+# comparison, CORR-26) and is now the fixed HPA baseline for later RL-vs-HPA
+# evaluation. Keep this manifest's values synchronized with configs/hpa.yaml —
+# see that file's comments and docs/experimental_design_corrections.md CORR-26
+# for the full rationale and evidence trail.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: demo-app-hpa
+  namespace: autoscaler-app
+  labels:
+    app: demo-app
+    project: rl-k8s-autoscaler
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: demo-app
+
+  minReplicas: 1
+  maxReplicas: 8
+
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          # Relative to the 100m CPU request (never the 500m limit).
+          # 260% -> nominal target ~260m CPU per pod. FROZEN Phase 11C.4P selection (CORR-26).
+          averageUtilization: 260
+
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60

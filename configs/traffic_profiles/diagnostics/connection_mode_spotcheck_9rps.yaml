@@ -1,0 +1,28 @@
+# configs/traffic_profiles/diagnostics/connection_mode_spotcheck_9rps.yaml
+#
+# ============================================================================
+# NON-TUNING CONNECTION-MODE REVALIDATION DIAGNOSTIC ONLY.
+# Excluded from HPA tuning analysis, RL training, and any performance ranking.
+# ============================================================================
+#
+# Purpose (Phase 11C.4B, Section 13): companion to
+# connection_mode_spotcheck_5rps.yaml, but at 9 RPS -- the highest rate the
+# original Phase-10 calibration found "fully sustainable" on a single replica
+# (100% success, 0 errors, ~85% steady CPU), i.e. the near-saturation end of
+# the curve. Chosen to check whether the new "fresh" connection mode changes
+# CPU behavior more severely near saturation than at low load.
+
+profile: connection_mode_spotcheck_9rps
+description: >
+  Non-tuning diagnostic traffic (60s, 9 RPS constant) for comparing keepalive
+  vs fresh connection-mode CPU behavior on a single replica, near the
+  Phase-10 single-replica sustainable-load ceiling.
+seed: 42
+endpoint: /work
+intensity: 3
+
+phases:
+  - type: constant
+    name: spotcheck_9rps
+    duration_seconds: 60
+    target_rps: 9

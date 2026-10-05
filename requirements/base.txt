@@ -1,0 +1,28 @@
+# Base runtime dependencies shared by the application, collector, and agent.
+# Pinned to versions known to work on Python 3.10 / Apple Silicon (arm64).
+
+# Kubernetes Python client
+kubernetes==31.0.0
+
+# Prometheus HTTP API client
+prometheus-api-client==0.5.5
+
+# HTTP requests (used by prometheus_client fallback and traffic runner)
+requests==2.32.3
+
+# YAML config parsing
+PyYAML==6.0.2
+
+# Data handling
+numpy==1.26.4
+pandas==2.2.3
+
+# FastAPI application and ASGI server (also needed by collector health endpoint)
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+
+# Prometheus metrics exposition (for the FastAPI app /metrics endpoint)
+prometheus-client==0.21.1
+
+# Configuration helpers
+python-dotenv==1.0.1

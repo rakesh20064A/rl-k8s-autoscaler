@@ -1,0 +1,20 @@
+# Development and testing dependencies.
+# Install with: pip install -r requirements/dev.txt
+
+-r base.txt
+
+# Load generation
+locust==2.33.1
+
+# Linting / formatting
+ruff==0.9.2
+
+# Testing
+pytest==8.3.4
+pytest-cov==6.0.0
+
+# Type checking (optional, for IDE support)
+mypy==1.14.1
+
+# HTTP client for integration tests
+httpx==0.28.1

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: autoscaler-app
+  labels:
+    project: rl-k8s-autoscaler
+    purpose: benchmark-application

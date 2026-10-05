@@ -1,0 +1,29 @@
+# demo_ui/.streamlit/config.toml
+#
+# Forces Streamlit's BASE theme to light regardless of the viewer's OS/browser
+# dark-mode preference. Without this, Streamlit auto-follows the client's
+# color scheme; a viewer in dark mode gets Streamlit's own dark-theme text
+# colors (near-white) for native widget chrome (labels, selectbox/radio
+# option text, etc.) while demo_ui's own CSS forces a light canvas
+# background -- the exact "white text on light background" contrast bug
+# this file fixes.
+#
+# Picked up automatically when Streamlit is launched with this directory
+# (demo_ui/) as the current working directory, e.g.:
+#   cd demo_ui && streamlit run app.py
+# If launching from elsewhere (e.g. the repo root), set the equivalent
+# environment variable instead, which works regardless of CWD:
+#   STREAMLIT_THEME_BASE=light streamlit run demo_ui/app.py
+# See demo_ui/README.md for the exact documented launch commands.
+
+[theme]
+base = "light"
+primaryColor = "#234A46"
+backgroundColor = "#F4F2EC"
+secondaryBackgroundColor = "#FBFAF6"
+textColor = "#171A18"
+font = "sans serif"
+
+[client]
+toolbarMode = "minimal"
+showSidebarNavigation = false

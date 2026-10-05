@@ -1,0 +1,35 @@
+[
+  {
+    "sequence_index": 4,
+    "controller": "HPA",
+    "repeat_index": 2,
+    "workload_profile": "configs/traffic_profiles/iteration_rl_final_holdout_v1.yaml",
+    "workload_seed": 777,
+    "workload_hash": "308f4f90ea3cea97f1927cec97efeaa652c4424e9fe5bcea421358f3425e3409",
+    "episode_id": "final_eval_hpa_repeat2",
+    "executed": true,
+    "result_path": "/Users/rakeshdandamudi/Capstone/rl-k8s-autoscaler/persistent-data/evaluation/final_session019/episode_04_hpa_repeat2.json"
+  },
+  {
+    "sequence_index": 5,
+    "controller": "PPO",
+    "repeat_index": 3,
+    "workload_profile": "configs/traffic_profiles/iteration_rl_final_holdout_v1.yaml",
+    "workload_seed": 777,
+    "workload_hash": "308f4f90ea3cea97f1927cec97efeaa652c4424e9fe5bcea421358f3425e3409",
+    "episode_id": "final_eval_ppo_repeat3",
+    "executed": true,
+    "result_path": "/Users/rakeshdandamudi/Capstone/rl-k8s-autoscaler/persistent-data/evaluation/final_session019/episode_05_ppo_repeat3.json"
+  },
+  {
+    "sequence_index": 6,
+    "controller": "HPA",
+    "repeat_index": 3,
+    "workload_profile": "configs/traffic_profiles/iteration_rl_final_holdout_v1.yaml",
+    "workload_seed": 777,
+    "workload_hash": "308f4f90ea3cea97f1927cec97efeaa652c4424e9fe5bcea421358f3425e3409",
+    "episode_id": "final_eval_hpa_repeat3",
+    "executed": true,
+    "result_path": "/Users/rakeshdandamudi/Capstone/rl-k8s-autoscaler/persistent-data/evaluation/final_session019/episode_06_hpa_repeat3.json"
+  }
+]

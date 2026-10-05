@@ -1,0 +1,70 @@
+# configs/experiment.yaml
+# Central experiment configuration — single source of truth for all components.
+# All scripts, Python modules, and Kubernetes manifests must derive values from here
+# rather than duplicating them.
+
+# Kubernetes settings
+kubernetes:
+  app_namespace: autoscaler-app
+  monitoring_namespace: monitoring
+  deployment_name: demo-app
+  service_name: demo-app
+  configmap_name: demo-app-config
+
+# Autoscaler bounds — applied identically for HPA and RL
+scaling:
+  min_replicas: 1
+  max_replicas: 8
+  initial_replicas: 1
+  # Cooldown in seconds: no scaling action is taken within this window after a previous action.
+  cooldown_seconds: 60
+
+# Prometheus settings
+prometheus:
+  url: "http://localhost:9090"
+  # Scrape interval that Prometheus uses for the app (must match service-monitor)
+  scrape_interval_seconds: 10
+  # How stale a metric reading can be before the agent treats it as unavailable
+  staleness_threshold_seconds: 30
+
+# Experiment data collection
+collection:
+  # Interval at which the metrics collector polls Prometheus and Kubernetes
+  sampling_interval_seconds: 10
+  # Base directory for all persistent experiment outputs (never deleted by cleanup)
+  output_dir: persistent-data
+
+# SLA target
+sla:
+  # p95 latency threshold in milliseconds; violations trigger reward penalties
+  p95_latency_ms: 300
+  # Error rate threshold (fraction 0..1)
+  error_rate: 0.01
+
+# RL agent control loop
+rl:
+  # Seconds between consecutive state observations and potential scaling decisions
+  control_interval_seconds: 30
+  # Operating mode: shadow (observe only) or active (apply scaling)
+  mode: shadow
+  # Path to the trained model (relative to project root)
+  model_path: persistent-data/models/ppo_current/model.zip
+  # Number of seconds since last scale event to include in the observation vector
+  time_since_scale_cap_seconds: 300
+
+# Traffic generator defaults
+traffic:
+  # Default random seed for reproducibility
+  default_seed: 42
+  # Target application endpoint for workload requests
+  workload_endpoint: /work
+  # Default CPU work intensity (1=light, 5=heavy) sent as query param ?intensity=N
+  default_intensity: 3
+
+# Paths (relative to project root — do not hardcode absolute paths here)
+paths:
+  persistent_data: persistent-data
+  datasets: datasets
+  experiments: experiments
+  dashboards: dashboards/grafana
+  scripts: scripts

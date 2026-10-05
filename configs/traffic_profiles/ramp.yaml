@@ -1,0 +1,20 @@
+# configs/traffic_profiles/ramp.yaml
+# Gradual ramp-up then ramp-down (daily-pattern simulation).
+# Tests proactive versus reactive behavior over a smooth demand curve.
+
+profile: ramp
+description: "Gradual ramp-up from low to high then back down"
+seed: 42
+
+duration_seconds: 1200
+intensity: 3
+endpoint: /work
+
+# Linear ramp from start_rps to peak_rps over ramp_up_seconds,
+# holds at peak for hold_seconds, then ramps back down.
+ramp_up_start_rps: 3
+ramp_up_peak_rps: 60
+ramp_up_seconds: 400
+hold_seconds: 200
+ramp_down_seconds: 400
+ramp_down_end_rps: 3

@@ -1,0 +1,87 @@
+# Phase 16U — Reward Specification (RESTATED, NOT TUNED)
+#
+# classification: OFFLINE_PROTOCOL_FORMALIZATION_ONLY
+#
+# Every value below is copied verbatim from the already-FROZEN
+# reward_contract_version: 2 (configs/reward.yaml, docs/rl_mdp_spec.md
+# sec.15-19). Phase16U changes NOTHING here. This file exists only so the
+# live-training protocol has a single self-contained, hash-pinned snapshot
+# of the exact reward it must compute, without requiring the implementation
+# phase to cross-reference multiple files to get the formula right.
+
+reward_contract_version: 2
+source_of_truth:
+  - "configs/reward.yaml"
+  - "docs/rl_mdp_spec.md sec.15-19, sec.24"
+tuning_performed_in_this_phase: false
+
+formula: >
+  reward_t = - R_sla - R_reliability - R_resource - R_action - R_reversal
+             - R_boundary + R_efficiency
+
+components:
+  R_sla:
+    formula: "w_sla * clip(excess^2, 0, excess_clip)"
+    excess: "max(0, p95_ms - p95_target_ms) / p95_target_ms"
+    p95_target_ms: 300
+    excess_clip: 4.0
+    w_sla: 1.0
+    max_magnitude: 4.0
+  R_reliability:
+    formula: "w_reliability * error_rate"
+    note: "error_rate is 5xx-only, live-observable (sec.3); 0.0 if request_rate_rps==0"
+    w_reliability: 5.0
+    max_magnitude: 5.0
+  R_resource:
+    formula: "w_resource * (deployment_current_replicas - 1) / 7"
+    note: "CURRENT replicas, NOT Ready replicas (sec.11) -- resource consumption vs. serving capacity are never conflated"
+    w_resource: 1.0
+    max_magnitude: 1.0
+  R_action:
+    formula: "w_action * 1{requested_replica_delta != 0 AND action_override_reason in {none, replica_bound_clamp, pending_scale_gate, scale_down_cooldown}}"
+    note: "based on REQUESTED action on a valid (sample_valid==True) step; never fires on a telemetry-failure override; never double-counted with R_boundary for the same replica_bound_clamp event (sec.17)"
+    w_action: 0.1
+    max_magnitude: 0.1
+  R_reversal:
+    formula: "w_reversal * 1{direction reversal among EFFECTIVE actions within reversal_window_seconds}"
+    reversal_window_seconds: 120
+    w_reversal: 0.5
+    max_magnitude: 0.5
+  R_boundary:
+    formula: "w_boundary * 1{action_override_reason == \"replica_bound_clamp\"}"
+    w_boundary: 0.2
+    max_magnitude: 0.2
+  R_efficiency:
+    formula: "w_efficiency * 1{cpu_per_replica in [target_cpu_low, target_cpu_high] AND p95_ms < p95_target_ms AND error_rate == 0}"
+    target_cpu_low: 1.0
+    target_cpu_high: 3.0
+    w_efficiency: 0.3
+    max_magnitude: 0.3
+    note: "band re-derived independent of the HPA 260% baseline (sec.19); bonus sign is POSITIVE, added not subtracted"
+
+validity_matrix_on_invalid_steps:
+  source: "docs/rl_mdp_spec.md sec.18, sec.24 (four-case matrix)"
+  rule: >
+    Case A (decision valid, outcome valid): all components computed
+    normally, reward_validity="full".
+    Case B (decision invalid): R_sla=R_efficiency=0; R_reliability=0 unless
+    independently valid; R_action=R_reversal=R_boundary=0; R_resource may
+    still be computed if deployment_current_replicas was independently
+    obtained; reward_validity="partial".
+    Case C (decision valid, outcome invalid): R_sla/R_reliability/
+    R_efficiency zeroed per the same rule as Case B, but R_action/
+    R_reversal/R_boundary are PRESERVED (computed exactly as in Case A,
+    since they depend only on decision-time quantities) -- an invalid
+    outcome must never retroactively erase a valid decision's already-
+    determined action/reversal/boundary consequences.
+    Case D (both invalid): same treatment as Case B.
+  reward_is_never_a_policy_input: "true -- offline-only, per sec.21; a deployed inference controller maps observation -> action directly and never consults reward at inference time"
+
+expected_per_step_magnitude_reference:
+  source: "docs/rl_mdp_spec.md sec.15 (documented, not trained)"
+  healthy_efficient_hold: "≈ +0.30"
+  mild_sla_violation_p95_350ms_2_replicas: "≈ -0.17"
+  severe_sla_violation_p95_1500ms_some_errors: "≈ -4.6 to -5.6 (bounded)"
+  unnecessary_action_while_healthy: "≈ -0.1 to -0.6 depending on reversal"
+
+phase16u_disposition: "ADOPTED UNCHANGED. No coefficient, threshold, or formula is modified by this phase. Any future change requires its own CORR-N-style correction to docs/rl_mdp_spec.md / configs/reward.yaml, applied before this file is re-derived -- never edited independently of the authoritative source."

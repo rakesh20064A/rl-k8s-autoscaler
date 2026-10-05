@@ -1,0 +1,12 @@
+# UI-only dependencies for demo_ui. Install into a SEPARATE virtualenv
+# (e.g. /tmp/rl-k8s-demo-ui-venv), NEVER into the project's scientific
+# .venv. Exact versions recorded from the environment this phase (Index32A)
+# was developed and tested against.
+streamlit==1.65.0
+plotly==7.1.0
+requests==2.34.2
+# PyYAML is required transitively: demo_ui.live_providers imports
+# collectors.metrics_collector (to reuse the project's real PrometheusClient
+# and exact PromQL query strings verbatim), which imports yaml at module
+# load time for its unrelated config-loading code path.
+PyYAML==6.0.3

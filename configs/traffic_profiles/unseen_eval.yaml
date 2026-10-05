@@ -1,0 +1,63 @@
+# configs/traffic_profiles/unseen_eval.yaml
+# Held-out evaluation profile — NOT used during training or reward tuning.
+# Contains unusual spike widths, shifted periodicity, and combination patterns
+# that do not appear in the training profiles.
+# Purpose: test generalization of the RL policy to out-of-distribution workloads.
+
+profile: unseen_eval
+description: "Held-out evaluation: shifted periodicity, long spikes, abrupt recovery"
+seed: 99   # different seed from all training profiles
+
+duration_seconds: 2100
+intensity: 4   # slightly heavier than training profiles
+endpoint: /work
+
+phases:
+  # Long quiet warm-up (different from training which starts low-ramp)
+  - type: constant
+    duration_seconds: 180
+    rps: 8
+
+  # Extended spike (training bursts are 25-30s; this is 90s)
+  - type: burst
+    duration_seconds: 420
+    baseline_rps: 8
+    burst_rps: 80
+    burst_duration_seconds: 90
+    inter_burst_interval_seconds: 150
+
+  # Shifted period (training periodic used 200-300s periods; this uses 90s)
+  - type: periodic
+    duration_seconds: 600
+    mean_rps: 25
+    amplitude_rps: 20
+    period_seconds: 90
+
+  # Abrupt drop followed by rapid recovery (not in training)
+  - type: constant
+    duration_seconds: 90
+    rps: 3
+
+  - type: step
+    duration_seconds: 30
+    rps: 65
+
+  - type: constant
+    duration_seconds: 180
+    rps: 65
+
+  # Gradual cool-down at higher magnitude than training ramp-downs
+  - type: ramp
+    duration_seconds: 300
+    start_rps: 65
+    end_rps: 10
+
+  - type: constant
+    duration_seconds: 300
+    rps: 10
+
+# This file must not be loaded or referenced during:
+# - PPO training episodes
+# - reward weight tuning
+# - model checkpoint selection
+# It is used only in the final evaluation phase.

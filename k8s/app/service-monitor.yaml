@@ -1,0 +1,36 @@
+# k8s/app/service-monitor.yaml
+# ServiceMonitor for the demo application.
+# Scrapes /metrics from the demo-app Service every 10 seconds.
+# Requires Prometheus Operator / kube-prometheus-stack CRD (monitoring.coreos.com/v1).
+#
+# Phase 11C.4C / CORR-22: selector requires BOTH `app: demo-app` AND
+# `purpose: primary-metrics-source` (matchLabels is AND-of-all-keys). This
+# was previously `{app: demo-app}` alone, which also matched
+# demo-app-loadtest (k8s/app/service-loadtest.yaml) -- a second Service
+# selecting the identical pods but carrying only `app: demo-app`, no
+# `purpose: primary-metrics-source` -- causing Prometheus to discover both
+# Services as separate scrape targets for the same pod and duplicate every
+# application metric under two `job` labels (`demo-app` and
+# `demo-app-loadtest`), corrupting any unfiltered `sum(...)` aggregate.
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: demo-app
+  namespace: autoscaler-app
+  labels:
+    app: demo-app
+    project: rl-k8s-autoscaler
+    release: kube-prom-stack
+spec:
+  selector:
+    matchLabels:
+      app: demo-app
+      purpose: primary-metrics-source
+  namespaceSelector:
+    matchNames:
+      - autoscaler-app
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 10s

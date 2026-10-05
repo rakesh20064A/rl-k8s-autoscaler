@@ -1,0 +1,66 @@
+# configs/hpa.yaml
+# HPA baseline configuration.
+# These parameters are applied when running HPA-controlled experiments.
+# The goal is a fair, well-tuned HPA — not a deliberately weak one.
+#
+# Phase 11A / 11A.1 finding: Kubernetes HPA CPU utilization is computed relative to
+# the pod's CPU REQUEST (100m here), never the CPU limit (500m). Phase-10 calibration
+# showed every tested single-replica load (1-10 RPS) already exceeds a 60% (60m)
+# target, so 60% is not a credible baseline once the correct denominator is used.
+
+# Target CPU utilization percentage, relative to the 100m CPU request (NOT the 500m
+# limit). 260% is intentionally above 100% — Kubernetes permits averageUtilization
+# values greater than 100 (verified against the autoscaling/v2 API), which is the
+# correct way to express a meaningful trigger point when the CPU request is kept
+# deliberately small relative to the limit. 260% corresponds to a nominal target of
+# approximately 260m CPU per pod (100m x 2.60).
+#
+# FROZEN Phase 11C.4P selection (CORR-26). The candidate family 200%/230%/260%
+# (CORR-24) was empirically compared over 9 official, precommitted, counterbalanced
+# tuning trials (3 valid repeats each, hpa_tuning_v2.yaml canonical schedule).
+# All three candidates passed the frozen reliability/SLA tier (client p95<300ms,
+# success>=99%) in all 3 repeats. Among SLA-passing candidates, 260% used the
+# fewest replica-seconds (median ~1680.0 vs 230%'s ~1815.0 and 200%'s ~1920.0 over
+# the exact [0,1230) scored window) — approximately 7.4% fewer replica-seconds than
+# the 230% runner-up — while trigger-to-Ready and recovery timing were comparable
+# across all three. See docs/experimental_design_corrections.md CORR-26 and
+# task_outputs/phase_11c4p_final_hpa_aggregation_and_selection.md for the full
+# analysis, selection rationale, and caveats. This tuning result must not be
+# reused as final RL-vs-HPA held-out evaluation evidence (separate, frozen
+# unseen_eval.yaml workload governs that comparison).
+target_cpu_utilization_percent: 260
+
+# Replica bounds — must match scaling.min_replicas and scaling.max_replicas in experiment.yaml
+min_replicas: 1
+max_replicas: 8
+
+# HPA stabilization windows (Kubernetes default is 300s scale-down, 0s scale-up).
+# scale-up: Phase 11A.1 found the previous 30s custom stabilization, stacked on top
+# of Metrics Server's coarse resolution, risked an avoidable compounding of HPA's
+# burst-response latency. Initial Phase-11B value removes that extra delay (0s,
+# matching the Kubernetes default's own philosophy that scale-up should not be
+# artificially delayed on top of an already-imperfect information source).
+# scale-down: kept conservative to reduce oscillation in local experiments.
+scale_up_stabilization_seconds: 0
+scale_down_stabilization_seconds: 120
+
+# Scale-up policy: allow at most 2 pods per 15 s (rate-cap window matched to the
+# Kubernetes HPA controller's own 15s sync period, per Phase 11A.1's Scale-Up-C
+# recommendation) — still bounded/safety-conscious relative to the Kubernetes
+# default (up to +4 pods or 100%, whichever is larger, per 15s), which risked
+# destabilizing this project's constrained 2-CPU local cluster if adopted as-is.
+scale_up_max_pods: 2
+scale_up_window_seconds: 15
+
+# Scale-down policy: at most 1 pod per 60 s to avoid aggressive under-provisioning
+scale_down_max_pods: 1
+scale_down_window_seconds: 60
+
+# Rationale:
+# These stabilization and policy settings give HPA a reasonable chance to perform well
+# on burst and periodic traffic. They are documented here so they can be cited in the
+# comparison write-up.
+#
+# Do not place Phase-11C results here — they do not exist yet as of this file's
+# last edit (Phase 11B, initial HPA implementation). See task_outputs/phase_11a_*
+# and task_outputs/phase_11a1_* for the full evidence and reasoning trail.

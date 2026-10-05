@@ -1,0 +1,66 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+env/
+ml-env/
+*.egg-info/
+
+# --- Node / JS tooling (if ever reintroduced) ---
+node_modules/
+package-lock.json
+
+# --- IDE / editor ---
+.idea/
+.vscode/
+.DS_Store
+
+# --- Credentials / secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+credentials*
+secrets*
+BEGIN_PRIVATE_KEY*
+
+# --- Logs / runtime / temp ---
+*.log
+*.pid
+*.tmp
+*.bak
+*.old
+*.sqlite3
+
+# --- Browser / automation state ---
+.gemini/
+agent_control/
+*.cookies
+*-profile/
+
+# --- Generated bulk experiment data (not source) ---
+persistent-data/logs/
+persistent-data/backups/
+persistent-data/traffic/
+persistent-data/traffic_archive/
+persistent-data/metrics/
+persistent-data/dynamics_calibration/
+persistent-data/dynamics_calibration_iteration2/
+persistent-data/dynamics_calibration_iteration2b/
+persistent-data/dynamics_validation_iteration2b/
+persistent-data/dynamics_validation_iteration3/
+persistent-data/transport_validation/
+persistent-data/hpa/
+persistent-data/hpa_mapping/
+persistent-data/models/
+
+# --- Coverage ---
+.coverage
+htmlcov/

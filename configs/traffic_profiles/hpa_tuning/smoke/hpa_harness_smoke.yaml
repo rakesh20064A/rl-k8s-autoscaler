@@ -1,0 +1,34 @@
+# configs/traffic_profiles/hpa_tuning/smoke/hpa_harness_smoke.yaml
+#
+# ============================================================================
+# HPA HARNESS INTEGRATION SMOKE ONLY -- EXCLUDED FROM TUNING ANALYSIS.
+# ============================================================================
+#
+# This is NOT an official HPA-tuning candidate trial. It exists solely to
+# verify the Phase 11C harness (traffic generator replay + persistent metrics
+# collector + HPA status collector + scripts/run_hpa_tuning_trial.sh) works
+# end to end, using the currently-live HPA target (230%, Phase 11B) without
+# testing or implying anything about 220%/230%/250% candidate performance.
+#
+# Deliberately tiny (~1 RPS, ~30s) and far below every candidate's scale-up
+# boundary (the lowest, 220%, requires >242m; this workload's single-replica
+# CPU footprint at 1 RPS is ~76m per Phase-10 calibration -- no scale-up is
+# expected or desired here). Never reuse this profile/schedule for an official
+# candidate comparison; a separate canonical schedule
+# (configs/traffic_profiles/hpa_tuning/canonical_schedule.csv) exists for that.
+
+profile: hpa_harness_smoke
+description: >
+  HPA harness integration smoke test ONLY. Excluded from Phase 11C tuning
+  analysis. Verifies the traffic generator (replay mode), metrics collector,
+  and HPA status collector work together end to end against the live
+  cluster, without exercising any HPA scaling behavior.
+seed: 42
+endpoint: /work
+intensity: 3
+
+phases:
+  - type: constant
+    name: smoke_1rps
+    duration_seconds: 30
+    target_rps: 1

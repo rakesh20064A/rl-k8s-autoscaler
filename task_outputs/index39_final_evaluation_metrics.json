@@ -1,0 +1,137 @@
+{
+  "classification": "OFFLINE_FINAL_EVALUATION_ANALYSIS",
+  "holdout_hash": "308f4f90ea3cea97f1927cec97efeaa652c4424e9fe5bcea421358f3425e3409",
+  "workload_seed": 777,
+  "formal_n3_rule_applicable": false,
+  "hpa_valid_full_repeats": [
+    1,
+    2,
+    3
+  ],
+  "ppo_valid_full_repeats": [
+    3
+  ],
+  "per_episode": {
+    "PPO1": {
+      "episode_status": "terminated_safety",
+      "termination_reason": null,
+      "full_holdout_completed": false,
+      "valid_for_primary_comparison": false,
+      "observed_decision_steps": 23,
+      "nominal_decision_steps": 50,
+      "mean_replicas": 0.75,
+      "max_replicas": 1,
+      "mean_latency_p95_ms": 1925.0388921302472,
+      "section10_metrics": {
+        "sla_violation_rate": 0.8260869565217391,
+        "error_rate_mean": 0.0,
+        "resource_proxy_mean": 0.0,
+        "reaction_time_seconds": null,
+        "n_sla_breach_onsets_with_reaction_captured": 0,
+        "action_churn_count": 0
+      }
+    },
+    "HPA1": {
+      "episode_status": "completed_full_duration",
+      "termination_reason": "none",
+      "full_holdout_completed": true,
+      "valid_for_primary_comparison": true,
+      "observed_decision_steps": 50,
+      "nominal_decision_steps": 50,
+      "mean_replicas": 5.0588235294117645,
+      "max_replicas": 7,
+      "mean_latency_p95_ms": 1591.9543710431828,
+      "section10_metrics": {
+        "sla_violation_rate": 0.72,
+        "error_rate_mean": 0.0,
+        "resource_proxy_mean": 0.6085714285714289,
+        "reaction_time_seconds": 75.0,
+        "n_sla_breach_onsets_with_reaction_captured": 2,
+        "action_churn_count": 10
+      }
+    },
+    "PPO2": {
+      "episode_status": "terminated_safety",
+      "termination_reason": "consecutive_invalid_steps_limit_reached",
+      "full_holdout_completed": false,
+      "valid_for_primary_comparison": false,
+      "observed_decision_steps": 20,
+      "nominal_decision_steps": 50,
+      "mean_replicas": 0.6666666666666666,
+      "max_replicas": 1,
+      "mean_latency_p95_ms": 2024.280275762718,
+      "section10_metrics": {
+        "sla_violation_rate": 0.7,
+        "error_rate_mean": 0.0,
+        "resource_proxy_mean": 0.0,
+        "reaction_time_seconds": null,
+        "n_sla_breach_onsets_with_reaction_captured": 0,
+        "action_churn_count": 0
+      }
+    },
+    "HPA2": {
+      "episode_status": "completed_full_duration",
+      "termination_reason": "none",
+      "full_holdout_completed": true,
+      "valid_for_primary_comparison": true,
+      "observed_decision_steps": 50,
+      "nominal_decision_steps": 50,
+      "mean_replicas": 5.352941176470588,
+      "max_replicas": 8,
+      "mean_latency_p95_ms": 986.7128173402114,
+      "section10_metrics": {
+        "sla_violation_rate": 0.54,
+        "error_rate_mean": 0.0,
+        "resource_proxy_mean": 0.648571428571429,
+        "reaction_time_seconds": 10.0,
+        "n_sla_breach_onsets_with_reaction_captured": 3,
+        "action_churn_count": 14
+      }
+    },
+    "PPO3": {
+      "episode_status": "completed_full_duration",
+      "termination_reason": "none",
+      "full_holdout_completed": true,
+      "valid_for_primary_comparison": true,
+      "observed_decision_steps": 50,
+      "nominal_decision_steps": 50,
+      "mean_replicas": 1.196078431372549,
+      "max_replicas": 4,
+      "mean_latency_p95_ms": 2298.4703264780524,
+      "section10_metrics": {
+        "sla_violation_rate": 0.92,
+        "error_rate_mean": 0.0,
+        "resource_proxy_mean": 0.03428571428571428,
+        "reaction_time_seconds": 1350.0,
+        "n_sla_breach_onsets_with_reaction_captured": 1,
+        "action_churn_count": 3
+      }
+    },
+    "HPA3": {
+      "episode_status": "completed_full_duration",
+      "termination_reason": "none",
+      "full_holdout_completed": true,
+      "valid_for_primary_comparison": true,
+      "observed_decision_steps": 50,
+      "nominal_decision_steps": 50,
+      "mean_replicas": 5.294117647058823,
+      "max_replicas": 8,
+      "mean_latency_p95_ms": 689.4460420854738,
+      "section10_metrics": {
+        "sla_violation_rate": 0.52,
+        "error_rate_mean": 0.0,
+        "resource_proxy_mean": 0.6257142857142859,
+        "reaction_time_seconds": 77.14285714285714,
+        "n_sla_breach_onsets_with_reaction_captured": 7,
+        "action_churn_count": 15
+      }
+    }
+  },
+  "hpa2_physical_attempt1_tooling_failure": {
+    "status": "tooling_failed",
+    "traffic_completed": true,
+    "metrics_complete": false,
+    "valid_for_primary_comparison": false,
+    "excluded_from_scientific_aggregation": true
+  }
+}

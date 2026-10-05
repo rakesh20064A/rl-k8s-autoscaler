@@ -1,0 +1,94 @@
+{
+  "baseline": "index33",
+  "purpose": "The frozen source/governing-hash baseline for rollout8 retry3 and any further live PPO execution, superseding task_outputs/index30_governing_hash_baseline.json. No implementation source listed here may change after this baseline without another explicit correction phase.",
+  "source_baseline": "task_outputs/index30_governing_hash_baseline.json",
+  "hashes": {
+    "task_outputs/phase_16u_direct_ppo_protocol.yaml": "e933d7be7b84bd32ec31293c269af9b976ce702a9725d8437f7392d400a1d9a6",
+    "task_outputs/phase_16u_reward_specification.yaml": "b6afffe09bf2eac73145cbadadef28ca48e692b6dfc9aefecf87116911587be7",
+    "task_outputs/phase_16u_training_and_evaluation_workload_split.json": "fe82944096d89ee81e2d840a393fef0c67098fee8bdb4b2e7c3d583b1f670487",
+    "task_outputs/phase_16u_ppo_hyperparameters.json": "10c8f8ec134e61d233ad61d927cd5ec2771389834dab2bd482d41153e1c9e092",
+    "task_outputs/phase_16u_safety_and_fallback_protocol.yaml": "20b8bf1a1ca1d46aa4f0cbf274c03dd2ccbcdffa5d881e82dc2b2befbd855c31",
+    "task_outputs/phase_16w_training_budget_amendment.yaml": "a3399841477faceea5aebb850a08df51a73dac937b6877611f6f2e035fc8ecd8",
+    "task_outputs/phase_16w_checkpoint_resume_protocol.yaml": "0ac304afbba59f7dec644fc5ade0dd4105d4608ffeb7f1c8c49162bd23ba444e",
+    "task_outputs/phase_16z_generator_execution_parameter_amendment.md": "f6bf4edb23f6c9b930f8a9c199d35c86c8eed75cd08cdd3a302ee9763186a91a",
+    "task_outputs/phase_16z_completion_tolerance_specification.md": "01d2f49bd0dabf5d816ce0751b1612e7cc7341e620dab252e8c7cc4534698a80",
+    "docs/rl_mdp_spec.md": "b5949c9d3cc5b07a26a41a28a9e2868901a75e5c32f0bc6caca4d9f1d989a1c1",
+    "configs/rl.yaml": "ceadd5cd504734b122f22d38197e93d7fe5a90e2ac1848bf51287a8d8ac9ffcb",
+    "configs/reward.yaml": "0fc3682a166d6cadb5ff129b85891803795ee64f7108c517971e137bd6fe28ba",
+    "configs/experiment.yaml": "646af6d930fc883fec4a4365ef55745bd90cfaa760a5aba7660acf11a5b8b6aa",
+    "k8s/hpa/hpa.yaml": "809550767890ef3dc50bd9d93f3ca2d1cad2b0dc26881dca0a75a31fa0c5d7a1",
+    "configs/hpa.yaml": "41a553d8f1ce7bcea5a7822a710464251c63873117363166dc5b823cbd27b252",
+    "configs/traffic_profiles/constant.yaml": "9651bea269eea840e479f13d99959aa956aa2c2c91e46fdbea375feb52472e29",
+    "configs/traffic_profiles/step.yaml": "7876a10ebfd3bcf8048936846bebaaa351725696a52a867cd287affef499721e",
+    "configs/traffic_profiles/burst.yaml": "75289ab57c5df393ad248d862cc685de972ccce9b376e3d38afe6b1b2bb35138",
+    "configs/traffic_profiles/ramp.yaml": "57c953d221d08389541520ae64aac4e35db189a0e858774392c54ef0b92a6cde",
+    "configs/traffic_profiles/periodic.yaml": "0bbc8c6d4a356f6230cdf44dcd5d5f3279d7d9b5ff4cd5b1291b989967c5ef31",
+    "configs/traffic_profiles/mixed.yaml": "a351453eaef05a6de60409621ee4e19996de235bf0fa8e3d6ae876be88c350e2",
+    "configs/traffic_profiles/iteration_rl_final_holdout_v1.yaml": "308f4f90ea3cea97f1927cec97efeaa652c4424e9fe5bcea421358f3425e3409",
+    "autoscaler/src/rl_env/live_backend.py": "538b24c19754001a11a15c6b3ce53b3951c3d7f966323249c016ef3043c56c6e",
+    "autoscaler/src/rl_env/environment.py": "1158d2a58d629d83561f1f203fc3758848c697b55fd814411a94554be2893db5",
+    "autoscaler/src/rl_env/episode_ledger.py": "d483a88d64b9f7963be2226ff5385e197048fd71bb965f11f1b24996171ff27a",
+    "autoscaler/src/rl_env/training_wrapper.py": "3ff580b8cb664f339de64bf46cc4e10431498e23037ca8777b812d562ae3f7fb",
+    "autoscaler/src/rl_env/checkpoint_state.py": "08d246802f5d23cb36de4092b938ed4a53b95cee292357cf538138fccd2ab7ef",
+    "scripts/rl_live_common.py": "6b999e98874f4825eead575ccf251dd101255bb914d97a192305173bf041acd2",
+    "scripts/train_ppo_live.py": "b69a5d50dded25b20caf33725891d6793f20dc3cecf4634138c468f16b4c72b2",
+    "scripts/train_ppo_live_session.py": "f806f9d89195fae2ca7c8e6d3c7c53cdf8bd636f5cbe14934226645f1018683f",
+    "scripts/traffic_orchestrator.py": "e26507e6139d5d5355f9a4487dece84cea3f20272a8cbb80db66ec5dbd29e4a7",
+    "loadgen/traffic_generator.py": "8c90012a5a9676409f9f9a9ffe67c0e6c00af8decc2fb151fe6481091455f80c"
+  },
+  "changed_since_index30_baseline": {
+    "scripts/traffic_orchestrator.py": {
+      "from": "7cfaaf4d9dec19243593157b7b44abd9a28ca9b24caef15562fcb6731fcc0057",
+      "to": "e26507e6139d5d5355f9a4487dece84cea3f20272a8cbb80db66ec5dbd29e4a7",
+      "reason": "Index33 correction 2: added a bounded server-side drain step (drain_in_flight_requests()/TrafficOrchestrator.drain_server_side_requests()), called from TrafficSyncedWrapper.step() immediately after stop_episode_traffic() at every episode boundary. Index32 diagnosis: stop_generator() only terminates the CLIENT-side generator process; server-side in-flight /work requests were never drained or awaited before the next episode's reset() began consuming its own separate 120s restoration_max_wait_s budget, letting stale CPU-starvation/probe-failure effects from the ending episode bleed into and consume the next episode's reset window. The new step polls the EXISTING demo_app_requests_in_progress Prometheus gauge (no new metric), bounded by a new, much-smaller DEFAULT_DRAIN_TIMEOUT_SECONDS=30s/DEFAULT_DRAIN_POLL_INTERVAL_SECONDS=2s, raising a new DrainTimeoutError/DrainQueryError (never silently continuing) on failure. No traffic profile, intensity, DEFAULT_MAX_IN_FLIGHT, seed, schedule identity, probe threshold/timing, CPU/memory resource, or restoration_max_wait_s change."
+    },
+    "scripts/train_ppo_live_session.py": {
+      "from": "f0498c0dd105d468da43b3691f36da5caea2171ff4dc93dd71b897c74fca8cce",
+      "to": "f806f9d89195fae2ca7c8e6d3c7c53cdf8bd636f5cbe14934226645f1018683f",
+      "reason": "Index33 correction 2 follow-on: the module's own offline dry-run validation helper (_run_traffic_orchestration_dry_run) constructs a fully-fake TrafficOrchestrator to exercise TrafficSyncedWrapper.step()/reset() with no real subprocess/network/Kubernetes access. Since step() now calls drain_server_side_requests() (which defaults to a real Prometheus query), this helper's TrafficOrchestrator construction gained one additional injected fake field (drain_query_fn=lambda: (0.0, None)) so the dry-run validation remains fully offline. No change to any training logic, PPO hyperparameter, reward/observation/action, or scientific control flow -- only this dry-run fixture's dependency injection."
+    }
+  },
+  "correction_metadata": {
+    "app/src/main.py": {
+      "governed": false,
+      "sha256": "02c4fb318003593efafb48de238784202f9aeba089e220f4e2c4dc2ad1ccf031",
+      "reason": "Index33 correction 1: changed `def health()` to `async def health()` only. Not part of the governed scientific-source set (not in index30_governing_hash_baseline.json), recorded here for provenance only, per explicit instruction not to add it to the governed set without established policy requiring it. Route, response body, status semantics, and metrics behavior unchanged; /work unchanged."
+    }
+  },
+  "unchanged_from_index30_baseline": [
+    "task_outputs/phase_16u_direct_ppo_protocol.yaml", "task_outputs/phase_16u_reward_specification.yaml",
+    "task_outputs/phase_16u_training_and_evaluation_workload_split.json", "task_outputs/phase_16u_ppo_hyperparameters.json",
+    "task_outputs/phase_16u_safety_and_fallback_protocol.yaml", "task_outputs/phase_16w_training_budget_amendment.yaml",
+    "task_outputs/phase_16w_checkpoint_resume_protocol.yaml", "task_outputs/phase_16z_generator_execution_parameter_amendment.md",
+    "task_outputs/phase_16z_completion_tolerance_specification.md", "docs/rl_mdp_spec.md", "configs/rl.yaml", "configs/reward.yaml",
+    "configs/experiment.yaml", "k8s/hpa/hpa.yaml", "configs/hpa.yaml",
+    "configs/traffic_profiles/constant.yaml", "configs/traffic_profiles/step.yaml", "configs/traffic_profiles/burst.yaml",
+    "configs/traffic_profiles/ramp.yaml", "configs/traffic_profiles/periodic.yaml", "configs/traffic_profiles/mixed.yaml",
+    "configs/traffic_profiles/iteration_rl_final_holdout_v1.yaml",
+    "autoscaler/src/rl_env/live_backend.py", "autoscaler/src/rl_env/environment.py",
+    "autoscaler/src/rl_env/episode_ledger.py", "autoscaler/src/rl_env/training_wrapper.py",
+    "autoscaler/src/rl_env/checkpoint_state.py", "scripts/rl_live_common.py", "scripts/train_ppo_live.py",
+    "loadgen/traffic_generator.py"
+  ],
+  "ppo_hyperparameters_unchanged": true,
+  "reward_formula_unchanged": true,
+  "observation_action_space_unchanged": true,
+  "workload_profiles_unchanged": true,
+  "traffic_generator_parameters_unchanged": true,
+  "traffic_intensity_unchanged": true,
+  "default_max_in_flight_unchanged": true,
+  "checkpoint_budget_unchanged": true,
+  "hpa_configuration_unchanged": true,
+  "probe_thresholds_and_timing_unchanged": true,
+  "restoration_max_wait_s_unchanged": true,
+  "final_holdout_workload_unchanged": true,
+  "sessions_000_through_007_unchanged": true,
+  "real_scientific_state_at_this_baseline": {
+    "cumulative_live_training_timesteps": 2048,
+    "latest_valid_checkpoint": "session_007",
+    "session_008_exists": false,
+    "logical_next_schedule_index": 58,
+    "ledger_max_schedule_index": 74,
+    "note": "Unchanged from Index30 -- this baseline corrects orchestration/recovery source only, not scientific progress state."
+  }
+}

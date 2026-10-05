@@ -1,0 +1,36 @@
+# configs/traffic_profiles/diagnostics/service_distribution_smoke.yaml
+#
+# ============================================================================
+# NON-TUNING SERVICE-ROUTING DIAGNOSTIC ONLY.
+# Excluded from HPA tuning analysis, RL training, and any performance ranking.
+# ============================================================================
+#
+# Purpose (Phase 11C.4B): determine whether a genuine Kubernetes Service
+# data-plane path (NodePort via `minikube service --url`, replacing the
+# previous `kubectl port-forward service/demo-app` single-pod-pinned path)
+# actually distributes requests across multiple Ready backend pods, using the
+# traffic generator's CURRENT (unmodified) httpx connection behavior.
+#
+# Run manually against a temporarily, manually-scaled 2-replica deployment
+# with the HPA temporarily removed -- never against a live HPA-managed
+# deployment, and never counted as HPA or RL performance data.
+
+profile: service_distribution_smoke
+description: >
+  Non-tuning diagnostic traffic to measure per-pod request distribution
+  through the new demo-app-loadtest NodePort Service. Deterministic, fixed
+  intensity=3, moderate rate, single phase.
+seed: 42
+endpoint: /work
+intensity: 3
+
+phases:
+  - type: constant
+    name: distribution_check_4rps
+    duration_seconds: 90
+    target_rps: 4
+
+# Total duration: 90 seconds. Arrival process: deterministic (generate with
+# --arrival-process deterministic), matching this project's standard choice
+# for any controlled measurement where stochastic variance would be an
+# unwanted confound.

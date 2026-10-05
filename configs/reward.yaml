@@ -1,0 +1,139 @@
+# configs/reward.yaml
+# Reward function weights and penalty parameters.
+# Keeping this separate from rl.yaml makes reward sensitivity testing easier:
+# change weights here without touching training hyperparameters.
+#
+# Phase 15A.1 / docs/rl_mdp_spec.md sec.15-19 (CORR-27): this is the FROZEN
+# v2 reward contract, superseding v1 (Phase 15A). Do not edit without
+# bumping reward_contract_version and updating docs/rl_mdp_spec.md first.
+# Every weight below is an "effective coefficient" multiplying a quantity
+# already normalized to a known max (usually 1.0), so weights are directly
+# comparable in magnitude.
+#
+# Phase 15A.1 (CORR-27) changes from v1:
+#   - resource term now uses DEPLOYMENT CURRENT replicas, not Ready replicas
+#     (sec.11) -- matches the CORR-26 HPA-selection methodology's own
+#     primary efficiency metric (current/desired replica-seconds, Ready was
+#     only secondary corroboration there).
+#   - efficiency-band upper bound changed 2.6 -> 3.0, RE-DERIVED from Phase
+#     11C.4D's no-HPA single-replica final-path CPU mapping (CORR-23 6 RPS
+#     data point, ~3.0x request, client p95 <=~135ms) -- explicitly
+#     INDEPENDENT of the HPA-selected 260% baseline (sec.19). 3.0 != 2.6 is
+#     deliberate, to make the decoupling auditable.
+#   - boundary penalty NARROWED: fires only when action_override_reason ==
+#     "replica_bound_clamp" (sec.16) -- no longer fires for pending-scale
+#     gating, scale-down cooldown, or any telemetry-failure override.
+#   - action penalty is based on the REQUESTED action (on a valid,
+#     non-telemetry-failure step), not the effective one (sec.17) -- but
+#     never double-counted alongside the boundary penalty for the same event.
+#   - reversal penalty computed only from EFFECTIVE scaling actions (sec.17).
+#   - all reward components are zeroed (reward_validity="partial") on a
+#     step overridden solely for a telemetry-failure reason, EXCEPT resource
+#     cost, which may still use an independently-obtained current-replica
+#     count (sec.18).
+
+reward_contract_version: 2
+
+# Total reward formula (docs/rl_mdp_spec.md sec.15):
+#   reward = - w_sla * clip(excess^2, 0, sla.excess_clip)      # excess = max(0, p95_ms - sla.p95_target_ms) / sla.p95_target_ms
+#            - w_reliability * error_rate                       # 5xx-only, live-observable (sec.3)
+#            - w_resource * (deployment_current_replicas - 1) / 7     # CURRENT, not Ready (sec.11)
+#            - w_action * 1{requested_replica_delta != 0 AND action_override_reason in
+#                            {none, replica_bound_clamp, pending_scale_gate, scale_down_cooldown}}   # sec.17
+#            - w_reversal * 1{direction reversal among EFFECTIVE actions within reversal.reversal_window_seconds}
+#            - w_boundary * 1{action_override_reason == "replica_bound_clamp"}                        # sec.16
+#            + w_efficiency * 1{cpu_per_replica in [efficiency.target_cpu_low, efficiency.target_cpu_high] AND p95_ms < sla.p95_target_ms AND error_rate == 0}
+#
+# On a step whose action_override_reason is one of
+# {stale_or_missing_metric, prometheus_unavailable, policy_inference_failure,
+# k8s_api_failure}: R_sla=R_reliability(unless independently valid)=R_action=
+# R_reversal=R_boundary=R_efficiency=0; R_resource may still be computed if
+# deployment_current_replicas was independently obtained (sec.18).
+# reward_validity is logged as "partial" for such a step, "full" otherwise.
+
+weights:
+  w_sla: 1.0
+  w_reliability: 5.0
+  w_resource: 1.0
+  w_action: 0.1
+  w_reversal: 0.5
+  w_boundary: 0.2
+  w_efficiency: 0.3
+
+# SLA penalty: 0 when p95 <= p95_target_ms, grows QUADRATICALLY with excess
+# (fraction of target exceeded) so e.g. 301ms and 3000ms are not treated as
+# equally bad (docs/rl_mdp_spec.md sec.15), clipped at excess_clip to bound
+# the maximum single-step penalty (w_sla * excess_clip = 1.0 * 4.0 = 4.0).
+# SYNC: p95_target_ms must equal configs/experiment.yaml sla.p95_latency_ms (currently 300).
+# Unchanged from v1.
+sla:
+  p95_target_ms: 300
+  excess_clip: 4.0
+
+# Resource cost: normalized CURRENT-replica count above minimum (uses
+# configs/experiment.yaml scaling.min_replicas/max_replicas, currently 1/8).
+# CORR-27 (v2): uses deployment_current_replicas, NOT ready_replicas -- a
+# newly-created-but-not-yet-Ready pod already consumes real compute
+# resources, so resource CONSUMPTION must be measured by current replicas,
+# while Ready replicas remain reserved for SERVING-CAPACITY observations
+# (docs/rl_mdp_spec.md sec.11). Deliberately capped at w_resource=1.0 max
+# (<< w_sla's 4.0 and w_reliability's 5.0 max) so the policy cannot trivially
+# learn "always keep 1 replica" by letting resource cost outweigh
+# SLA/reliability.
+resource:
+  metric: deployment_current_replicas   # NOT ready_replicas -- CORR-27
+  per_replica_fraction_cost: 1.0
+
+# Action cost: small cost for a policy-REQUESTED non-HOLD action on a step
+# the policy could meaningfully evaluate (sample_valid==True) -- fires
+# regardless of whether pending-scale gating or scale-down cooldown then
+# converted it to an effective HOLD, but NEVER fires on a telemetry-failure
+# override (docs/rl_mdp_spec.md sec.17-18), and NEVER fires alongside the
+# boundary penalty for the same replica_bound_clamp event (no double-count).
+action:
+  per_action_cost: 1.0   # multiplied by w_action=0.1 -> max 0.1 per step
+
+# Reversal penalty: triggered when an EFFECTIVE action's direction is
+# opposite the most recent EFFECTIVE action within reversal_window_seconds.
+# A single UP or a single DOWN in isolation is NOT a reversal; UP->DOWN or
+# DOWN->UP within the window is. CORR-27 (v2): explicitly computed from
+# effective actions only -- a requested-but-gated/clamped action never
+# establishes or reverses a "direction" (docs/rl_mdp_spec.md sec.17).
+reversal:
+  reversal_window_seconds: 120   # 4 decision intervals (30s each)
+  per_reversal_cost: 1.0         # multiplied by w_reversal=0.5 -> max 0.5 per step
+
+# Boundary-action penalty. CORR-27 (v2) NARROWED: fires ONLY when
+# action_override_reason == "replica_bound_clamp" (the requested action
+# would have taken replicas outside min/max). Does NOT fire for
+# pending_scale_gate, scale_down_cooldown, or any telemetry-failure reason
+# -- those are legitimate deterministic timing/safety decisions, not the
+# policy requesting an impossible replica count (docs/rl_mdp_spec.md sec.16).
+boundary:
+  triggers_on: replica_bound_clamp   # CORR-27 -- was "requested != effective" in v1 (too broad)
+  per_boundary_violation_cost: 1.0   # multiplied by w_boundary=0.2 -> max 0.2 per step
+
+# Reliability penalty: proportional to the live-observable 5xx error rate
+# (docs/rl_mdp_spec.md sec.3 -- a live controller cannot see client-side
+# timeouts/connection-errors, unlike the offline HPA-tuning analysis).
+# Unchanged from v1.
+reliability:
+  # Applied as w_reliability * error_rate (0..1) -> max 5.0 per step
+  scale_factor: 1.0
+
+# Efficiency bonus: small positive reward for operating in a healthy
+# per-replica CPU band, expressed as a fraction of the 100m CPU REQUEST
+# (same units as observation index 0, cpu_per_replica).
+# CORR-27 (v2): RE-DERIVED independent of the HPA-selected baseline. Upper
+# bound comes from Phase 11C.4D's no-HPA, fixed-1-replica, final-path
+# Metrics-API CPU map (CORR-23 sec.4): at 6 RPS, steady CPU ~= 297.4m
+# (~3.0x the 100m request) while client p95 stayed <=~135ms across every
+# tested level 3-7 RPS -- i.e. 3.0x request is application-verified safe
+# and SLA-compliant, with NO reference to HPA's own 260% selection (CORR-26).
+# 3.0 != 2.6 is deliberate, to make this independence auditable rather than
+# merely asserted. Capped well below any single penalty's maximum so it can
+# never justify tolerating an SLA violation or error rate.
+efficiency:
+  target_cpu_low: 1.0    # 100% of the 100m CPU request
+  target_cpu_high: 3.0   # 300% of the 100m CPU request -- derived from CORR-23 6 RPS data, NOT from the HPA baseline
+  bonus_value: 1.0        # multiplied by w_efficiency=0.3 -> max +0.3 per step

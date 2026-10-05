@@ -1,0 +1,7 @@
+episode,controller,repeat,episode_status,valid_for_primary_comparison,observed_decision_steps,nominal_decision_steps,mean_replicas,max_replicas,mean_latency_p95_ms,sla_violation_rate,error_rate_mean,resource_proxy_mean,reaction_time_seconds,action_churn_count
+PPO1,PPO,1,terminated_safety,False,23,50,0.75,1,1925.0388921302472,0.8260869565217391,0.0,0.0,,0
+HPA1,HPA,1,completed_full_duration,True,50,50,5.0588235294117645,7,1591.9543710431828,0.72,0.0,0.6085714285714289,75.0,10
+PPO2,PPO,2,terminated_safety,False,20,50,0.6666666666666666,1,2024.280275762718,0.7,0.0,0.0,,0
+HPA2,HPA,2,completed_full_duration,True,50,50,5.352941176470588,8,986.7128173402114,0.54,0.0,0.648571428571429,10.0,14
+PPO3,PPO,3,completed_full_duration,True,50,50,1.196078431372549,4,2298.4703264780524,0.92,0.0,0.03428571428571428,1350.0,3
+HPA3,HPA,3,completed_full_duration,True,50,50,5.294117647058823,8,689.4460420854738,0.52,0.0,0.6257142857142859,77.14285714285714,15

@@ -1,0 +1,19 @@
+# configs/traffic_profiles/hpa_mapping/map_6rps_90s.yaml
+# Phase 11C.4D: fine-grained HPA-relevant CPU mapping profile.
+# NON-TUNING diagnostic -- excluded from HPA tuning analysis, RL training,
+# and any performance ranking. Same schedule shape as Phase 10's
+# configs/traffic_profiles/calibration/cal_6rps_90s.yaml, duplicated
+# under a distinct name/directory so mapping-run artifacts (experiment IDs,
+# analysis) are never conflated with Phase 10's own calibration record.
+
+profile: map_6rps_90s
+description: "HPA CPU-mapping profile (6.0 RPS deterministic, 90.0s, intensity 3)"
+seed: 42
+endpoint: /work
+intensity: 3
+
+phases:
+  - name: map_const_6rps
+    type: constant
+    duration_seconds: 90.0
+    target_rps: 6.0

@@ -1,0 +1,113 @@
+# k8s/monitoring/values.yaml
+# Minimal, resource-conscious values for kube-prometheus-stack (pinned version 82.9.0)
+# Tailored for local Minikube environment (2 CPU / 3072 MB cgroup budget).
+
+# Custom Resource Definitions
+crds:
+  enabled: true
+
+# Default alerting and recording rules disabled to save CPU and memory
+defaultRules:
+  create: false
+
+# Prometheus Operator
+prometheusOperator:
+  enabled: true
+  admissionWebhooks:
+    enabled: false
+  tls:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# Prometheus Server
+prometheus:
+  enabled: true
+  prometheusSpec:
+    scrapeInterval: 10s
+    evaluationInterval: 10s
+    retention: 6h
+    retentionSize: 2GB
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    # Explicit ServiceMonitor selector and cross-namespace discovery
+    serviceMonitorSelector:
+      matchLabels:
+        release: kube-prom-stack
+    serviceMonitorNamespaceSelector: {}
+
+# Alertmanager disabled (not required for autoscaling research)
+alertmanager:
+  enabled: false
+
+# Node Exporter disabled (unnecessary for the metrics required by this autoscaling project)
+nodeExporter:
+  enabled: false
+
+prometheus-node-exporter:
+  enabled: false
+
+# kube-state-metrics enabled (provides Kubernetes object and replica metrics)
+kubeStateMetrics:
+  enabled: true
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# Grafana enabled with resource-conscious settings for Minikube 2 CPU / 3072 MB cgroup
+grafana:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  livenessProbe:
+    httpGet:
+      path: /api/health
+      port: grafana
+    initialDelaySeconds: 120
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30
+  readinessProbe:
+    httpGet:
+      path: /api/health
+      port: grafana
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 15
+  persistence:
+    enabled: false
+  defaultDashboardsEnabled: false
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+    datasources:
+      enabled: true
+      defaultDatasourceEnabled: true
+      isDefaultDatasource: true
+      alertmanager:
+        enabled: false
+

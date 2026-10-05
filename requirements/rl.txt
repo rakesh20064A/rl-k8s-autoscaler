@@ -1,0 +1,33 @@
+# Reinforcement learning dependencies.
+# Install after base.txt: pip install -r requirements/rl.txt
+
+-r base.txt
+
+# Stable-Baselines3 with PyTorch (arm64 CPU build is standard via pip on M1)
+#
+# Phase 15A.2 / CORR-28: stable-baselines3==2.4.1 declares
+# `gymnasium>=0.29.1,<1.1.0` (verified from its published wheel METADATA) --
+# incompatible with gymnasium==1.1.1 below (1.1.1 is NOT < 1.1.0), so the two
+# pins could never resolve together under normal dependency resolution.
+# stable-baselines3==2.6.0 declares `gymnasium>=0.29.1,<1.2.0` (also
+# verified from its wheel METADATA) and `torch>=2.3,<3.0`, both satisfied by
+# gymnasium==1.1.1 and torch==2.5.1 below. This is the smallest version bump
+# that restores internal compatibility -- not an upgrade to the newest
+# available SB3/PyTorch releases.
+stable-baselines3==2.6.0
+
+# Gymnasium (the maintained Gym fork, required by SB3 >= 2.0)
+gymnasium==1.1.1
+
+# Torch: installed via pip; arm64 native build ships in modern pytorch
+# Do not add --extra-index-url unless pip cannot find a compatible wheel.
+torch==2.5.1
+
+# Tensorboard for training logs
+tensorboard==2.18.0
+
+# scikit-learn: used only for normalization/scaler utilities
+scikit-learn==1.6.1
+
+# Matplotlib for offline experiment plots
+matplotlib==3.10.9

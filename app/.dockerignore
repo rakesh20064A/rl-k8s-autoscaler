@@ -1,0 +1,14 @@
+# Exclude files that are sent to the build context but never needed inside the image.
+# The Dockerfile only uses: requirements.txt (builder stage) and src/ (runtime stage).
+
+# Python bytecode — never needed; image compiles fresh on first import
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Test files — not copied into the image (Dockerfile uses COPY src/ only),
+# but excluding them reduces build-context transfer size.
+tests/
+
+# Package init that belongs to the host repo layout, not the container
+__init__.py

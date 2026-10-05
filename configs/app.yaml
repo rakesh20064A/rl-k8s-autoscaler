@@ -1,0 +1,39 @@
+# configs/app.yaml
+# Application deployment parameters.
+# Kubernetes manifests in k8s/app/ are generated from or must be kept in sync with these values.
+
+image:
+  name: rl-autoscaler-demo-app
+  tag: local
+  pull_policy: Never  # Always use locally built image inside Minikube
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "64Mi"
+  limits:
+    cpu: "500m"
+    memory: "256Mi"
+
+# Probe settings
+probes:
+  readiness:
+    path: /health
+    initial_delay_seconds: 5
+    period_seconds: 5
+    failure_threshold: 3
+  liveness:
+    path: /health
+    initial_delay_seconds: 10
+    period_seconds: 10
+    failure_threshold: 5
+
+termination_grace_period_seconds: 30
+
+# Application environment variables passed via ConfigMap
+env:
+  LOG_LEVEL: "INFO"
+  # Avoid logging every health probe at high frequency
+  LOG_HEALTH_REQUESTS: "false"
+  # Maximum seconds for a single /work request (safety cap)
+  MAX_WORK_DURATION_SECONDS: "10"

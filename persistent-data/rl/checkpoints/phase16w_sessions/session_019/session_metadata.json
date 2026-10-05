@@ -1,0 +1,25 @@
+{
+  "created_utc": "2026-10-05T04:38:36.624962+00:00",
+  "cumulative_episodes_completed": 142,
+  "cumulative_ppo_updates": 20,
+  "cumulative_timesteps": 5120,
+  "governing_hashes_snapshot": {
+    "configs/experiment.yaml": "646af6d930fc883fec4a4365ef55745bd90cfaa760a5aba7660acf11a5b8b6aa",
+    "configs/hpa.yaml": "41a553d8f1ce7bcea5a7822a710464251c63873117363166dc5b823cbd27b252",
+    "configs/reward.yaml": "0fc3682a166d6cadb5ff129b85891803795ee64f7108c517971e137bd6fe28ba",
+    "configs/rl.yaml": "ceadd5cd504734b122f22d38197e93d7fe5a90e2ac1848bf51287a8d8ac9ffcb",
+    "docs/rl_mdp_spec.md": "b5949c9d3cc5b07a26a41a28a9e2868901a75e5c32f0bc6caca4d9f1d989a1c1",
+    "k8s/hpa/hpa.yaml": "809550767890ef3dc50bd9d93f3ca2d1cad2b0dc26881dca0a75a31fa0c5d7a1",
+    "task_outputs/phase_16u_completion_report_and_verdict.md": "b65dc0d983c6877e59d998444a925c13d91dfc8fcd261dc935ba9d106dbb5808",
+    "task_outputs/phase_16u_direct_ppo_protocol.yaml": "e933d7be7b84bd32ec31293c269af9b976ce702a9725d8437f7392d400a1d9a6",
+    "task_outputs/phase_16u_ppo_hyperparameters.json": "10c8f8ec134e61d233ad61d927cd5ec2771389834dab2bd482d41153e1c9e092",
+    "task_outputs/phase_16u_reward_specification.yaml": "b6afffe09bf2eac73145cbadadef28ca48e692b6dfc9aefecf87116911587be7",
+    "task_outputs/phase_16u_safety_and_fallback_protocol.yaml": "20b8bf1a1ca1d46aa4f0cbf274c03dd2ccbcdffa5d881e82dc2b2befbd855c31",
+    "task_outputs/phase_16u_training_and_evaluation_workload_split.json": "fe82944096d89ee81e2d840a393fef0c67098fee8bdb4b2e7c3d583b1f670487"
+  },
+  "n_steps": 256,
+  "rng_state_sha256": "0da158dc55e4e20bb9a46ee65197435a697739e15018e4ad3b8dc4eedcdaf0f1",
+  "sb3_checkpoint_sha256": "594a3dc3fa9686e4805e294c0562f9828d2d17319d635d71fa1cb394cad4ed2d",
+  "session_index": 19,
+  "training_seed": 42
+}

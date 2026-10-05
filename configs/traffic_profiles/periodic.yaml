@@ -1,0 +1,19 @@
+# configs/traffic_profiles/periodic.yaml
+# Sinusoidal/periodic load simulating a daily usage cycle.
+# Tests sustained adaptability over repeated peaks and troughs.
+
+profile: periodic
+description: "Sinusoidal traffic simulating a compressed daily load cycle"
+seed: 42
+
+duration_seconds: 1800
+intensity: 3
+endpoint: /work
+
+# Sinusoidal parameters: RPS = mean + amplitude * sin(2*pi*t/period_seconds)
+mean_rps: 20
+amplitude_rps: 15
+period_seconds: 300
+
+# Add small Gaussian noise to prevent exact periodicity from being trivially learnable
+noise_std_rps: 2.0

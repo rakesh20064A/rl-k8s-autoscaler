@@ -1,0 +1,17 @@
+# configs/traffic_profiles/constant.yaml
+# Steady constant load at medium level.
+# Use case: verify basic autoscaler behavior without temporal complexity.
+
+profile: constant
+description: "Constant medium load for baseline behavior verification"
+seed: 42
+
+duration_seconds: 600
+
+# Target requests per second sustained throughout the run
+target_rps: 20
+
+# CPU work intensity per request (1=minimal, 5=heavy)
+intensity: 3
+
+endpoint: /work

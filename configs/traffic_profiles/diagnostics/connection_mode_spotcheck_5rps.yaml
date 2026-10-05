@@ -1,0 +1,33 @@
+# configs/traffic_profiles/diagnostics/connection_mode_spotcheck_5rps.yaml
+#
+# ============================================================================
+# NON-TUNING CONNECTION-MODE REVALIDATION DIAGNOSTIC ONLY.
+# Excluded from HPA tuning analysis, RL training, and any performance ranking.
+# ============================================================================
+#
+# Purpose (Phase 11C.4B, Section 13): a small spot-check comparing per-pod
+# steady-state CPU utilization under the historical "keepalive" connection
+# mode (Phase 10 default, unchanged) vs the new "fresh" connection mode
+# (max_keepalive_connections=0) at a fixed RPS, on a single replica, to
+# determine whether the new connection-mode option materially changes the
+# CPU-per-RPS relationship that Phase-10 calibration and current HPA target
+# tuning depend on. Run twice: once per --connection-mode value, same RPS,
+# same single pod, back to back.
+#
+# 5 RPS corresponds to a clearly "underloaded" point on the original Phase-10
+# calibration curve (~40% steady CPU at 5 RPS, well below any HPA target
+# candidate), chosen to check the low-load end of the curve.
+
+profile: connection_mode_spotcheck_5rps
+description: >
+  Non-tuning diagnostic traffic (60s, 5 RPS constant) for comparing keepalive
+  vs fresh connection-mode CPU behavior on a single replica.
+seed: 42
+endpoint: /work
+intensity: 3
+
+phases:
+  - type: constant
+    name: spotcheck_5rps
+    duration_seconds: 60
+    target_rps: 5

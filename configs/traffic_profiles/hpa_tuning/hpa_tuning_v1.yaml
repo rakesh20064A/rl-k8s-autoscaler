@@ -1,0 +1,104 @@
+# configs/traffic_profiles/hpa_tuning/hpa_tuning_v1.yaml
+#
+# ============================================================================
+# HPA TUNING TRAFFIC ONLY -- NOT final benchmark traffic, NOT the held-out
+# unseen evaluation workload (configs/traffic_profiles/unseen_eval.yaml),
+# NOT an RL training profile.
+# ============================================================================
+#
+# Purpose (Phase 11C): discriminate between the three candidate HPA CPU
+# utilization targets (220% / 230% / 250%) using a single canonical, exactly
+# replayed request schedule -- see task_outputs/phase_11c1_hpa_tuning_preparation.md
+# and task_outputs/phase_11c2_hpa_tuning_hardening_and_smoke.md for the full
+# design rationale, phase-duration justification, and the corrections applied
+# in Phase 11C.2 (superseding some of 11C.1's original framing below).
+#
+# Intensity is fixed at 3 for every phase (do not vary intensity while tuning
+# HPA -- that would introduce a second independent variable).
+#
+# This profile is DESIGN/TUNING traffic. It is explicitly allowed to be built
+# using Phase-10 calibration knowledge (unlike unseen_eval.yaml). It must never
+# later be described as unseen evaluation traffic, and unseen_eval.yaml must
+# never be modified based on anything observed from this profile.
+#
+# PHASE 11C.2 CORRECTION -- scale_demand_8rps is NOT guaranteed to force a
+# scale-up for every candidate. Because 220% and 230% may already have scaled
+# 1->2 replicas during discriminator_6rps, they can enter this phase with more
+# capacity than the 250% candidate (which may still be at 1 replica). Whether
+# a candidate scales again at 8 RPS therefore depends on its OWN state entering
+# the phase, not on single-replica Phase-10 CPU values alone. This phase is
+# correctly described as a "higher-load continuation / adequacy test": does
+# whatever capacity a candidate already selected remain adequate under higher
+# total load? A candidate that does NOT scale here but keeps SLA/reliability
+# intact is not penalized for that -- it may indicate efficient provisioning,
+# not a failure to respond. See CORR-18.
+#
+# PHASE 11C.2 CORRECTION -- recovery_2rps was extended from 300s to 540s.
+# Configured worst case from maxReplicas=8: 120s scale-down stabilization
+# + 7 sequential -1-pod/60s reductions (8->1) = 120 + 7*60 = 540s for the
+# *last* reduction to fire, with the theoretical full descent visible by
+# ~480s and a further ~60s of stable single-replica observation afterward
+# if the full unwind occurs on schedule. 300s could not guarantee observing
+# a complete return to minReplicas=1 from the configured worst case.
+#
+# PHASE 11C.3 CORRECTION -- discriminator_6rps is the PRIMARY designed
+# threshold-discrimination phase ONLY when a candidate enters it at one
+# replica (the intended, theoretically-expected state after baseline_2rps
+# and moderate_5rps). Live CPU is not perfectly deterministic, so it is NOT
+# guaranteed every official run actually enters this phase at exactly one
+# replica. Analysis MUST use the actual replica state observed entering this
+# phase (see scripts/hpa_phase_entry_snapshot.py), never assume it. If
+# phase-entry desired replicas > 1, the single-replica Phase-10 threshold
+# prediction does not apply directly -- analyze that trial as sequential
+# system behavior resulting from the candidate's own earlier decisions, not
+# as a violation. Scaling during moderate_5rps is a valid behavioral outcome,
+# not automatically an invalid run (efficiency may still penalize it in
+# candidate selection, but the run itself remains valid). See CORR-19.
+
+profile: hpa_tuning_v1
+description: >
+  Canonical Phase-11C HPA-target tuning schedule. Five constant-RPS phases at
+  fixed intensity=3, using empirical Phase-10 single-replica CPU calibration
+  points (2/5/6/8 RPS) to discriminate 220%/230%/250% candidate targets under
+  the project's default 10% HPA tolerance. Must be generated ONCE (deterministic
+  arrivals -> the seed below is not consulted, but is recorded for provenance)
+  and then exact-replayed via --replay-schedule for every candidate run and
+  every repeat (3 valid repeats per candidate, 9 official trials total).
+seed: 42
+endpoint: /work
+intensity: 3
+
+phases:
+  - type: constant
+    name: baseline_2rps
+    duration_seconds: 90
+    target_rps: 2
+
+  - type: constant
+    name: moderate_5rps
+    duration_seconds: 90
+    target_rps: 5
+
+  - type: constant
+    name: discriminator_6rps
+    duration_seconds: 180
+    target_rps: 6
+
+  - type: constant
+    # Higher-load continuation / adequacy test -- NOT guaranteed to force
+    # scale-up for every candidate (see PHASE 11C.2 CORRECTION above).
+    name: scale_demand_8rps
+    duration_seconds: 180
+    target_rps: 8
+
+  - type: constant
+    name: recovery_2rps
+    duration_seconds: 540
+    target_rps: 2
+
+# Total duration: 90 + 90 + 180 + 180 + 540 = 1080 seconds (18 minutes).
+# Arrival process: deterministic (see task_outputs/phase_11c1_*.md Section 5
+# for rationale -- removes stochastic inter-arrival variance as a confound
+# between candidates/repeats, and matches the Phase-10 calibration
+# methodology's own choice for the same reason). Generate with:
+#   --arrival-process deterministic

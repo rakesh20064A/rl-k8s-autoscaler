@@ -1,0 +1,73 @@
+{
+  "phase": "16U",
+  "classification": "OFFLINE_PROTOCOL_FORMALIZATION_ONLY",
+  "note": "This file freezes a SMALL PPO configuration suitable for live, real-time (30s/decision) Kubernetes interaction on an M1/8GB machine. It deliberately deviates from configs/rl.yaml's existing training/ppo blocks, which were sized for a fast, non-real-time simulated backend (ScriptedBackend). Every deviation is listed explicitly with its reason. No hyperparameter search was performed to produce these values -- they are conservative, defensible defaults chosen for feasibility, not tuned for performance.",
+
+  "algorithm": "stable_baselines3.PPO",
+  "policy": "MlpPolicy",
+  "net_arch": [128, 128],
+  "unchanged_from_configs_rl_yaml": [
+    "policy", "net_arch", "learning_rate", "gamma", "gae_lambda", "clip_range",
+    "ent_coef", "vf_coef", "max_grad_norm", "batch_size", "n_epochs", "save_best"
+  ],
+
+  "hyperparameters": {
+    "learning_rate": 3.0e-4,
+    "gamma": 0.99,
+    "gae_lambda": 0.95,
+    "clip_range": 0.2,
+    "ent_coef": 0.01,
+    "vf_coef": 0.5,
+    "max_grad_norm": 0.5,
+    "n_epochs": 10,
+    "batch_size": 64,
+
+    "n_steps": 256,
+    "n_steps_deviation": {
+      "configs_rl_yaml_value": 2048,
+      "phase16u_value": 256,
+      "reason": "n_steps is the PPO rollout-buffer size in environment steps; at a real 30s decision interval, n_steps=2048 would require ~17 hours of live interaction PER rollout before a single gradient update, which is impractical to iterate on. n_steps=256 (~2.13 hours of live decision time per rollout) closely matches one full round-robin cycle through the 6 training profiles (270 decision steps, phase_16u_training_and_evaluation_workload_split.json), giving each PPO update roughly balanced exposure to all training workload shapes. 256 remains evenly divisible by batch_size=64 (4 minibatches per epoch), so batch_size/n_epochs are left unchanged."
+    },
+
+    "total_timesteps": 12288,
+    "total_timesteps_deviation": {
+      "configs_rl_yaml_value": 500000,
+      "phase16u_value": 12288,
+      "reason": "500000 steps at a real 30s decision interval is ~173 days of pure decision time alone -- infeasible for this capstone's live, single-machine, single-cluster M1/8GB environment. 12288 = 48 rollouts of n_steps=256, corresponding to ~45.5 full cycles through the 6 training profiles, for an estimated ~118.6 hours (~4.9 days) of total live wall-clock time including episode-reset and periodic dev-validation overhead (see phase_16u_direct_ppo_protocol.yaml Section 8). This is ~40x smaller than the original simulated-backend target and is disclosed as a genuine feasibility limitation, not hidden."
+    },
+
+    "eval_freq": 1024,
+    "eval_freq_deviation": {
+      "configs_rl_yaml_value": 10000,
+      "phase16u_value": 1024,
+      "reason": "scaled down proportionally to the reduced total_timesteps budget (10000/500000 ~= 1024/51200; kept slightly more frequent, one check per 4 rollouts, since the total budget is short enough that infrequent checkpointing risks missing the best policy within the available training window)."
+    },
+
+    "n_eval_episodes": 1,
+    "n_eval_episodes_deviation": {
+      "configs_rl_yaml_value": 5,
+      "phase16u_value": 1,
+      "reason": "each in-training dev-validation check consumes real live wall-clock time (unlike a simulated backend where 5 episodes are nearly free). A single fixed profile (constant, cheapest at 600s) is used per check to bound overhead; this check exists only to drive save_best checkpointing, not to produce a reportable evaluation result."
+    },
+
+    "save_best": true,
+
+    "seeds": [42],
+    "seeds_deviation": {
+      "configs_rl_yaml_value": [42, 7, 123],
+      "phase16u_value": [42],
+      "reason": "3-seed training at this live budget would require ~3x118.6 ~= 356 hours (~14.8 days) of continuous cluster time, judged infeasible for this capstone. A SINGLE live training seed (42, matching the existing seed already used by all six training traffic profiles) is frozen. This is disclosed as a limitation on the strength of any single-run PPO result -- not a silently dropped requirement. The final PPO-vs-HPA evaluation's own 3 repeats (phase_16u_training_and_evaluation_workload_split.json) provide the only run-to-run variance characterization available under this budget, and characterize environment/execution stochasticity, not policy-training stochasticity."
+    },
+
+    "tb_log_dir": "persistent-data/rl/tensorboard",
+    "checkpoint_dir": "persistent-data/rl/checkpoints"
+  },
+
+  "on_policy_correction": {
+    "statement": "PPO is on-policy. No replay buffer of historical (Iteration-2B/Iteration-3 or any other) transitions is used for PPO's policy-gradient or value-function updates. See phase_16u_direct_ppo_protocol.yaml Section 1 (correction_to_phase16t) for the exhaustive list of the ONLY permitted (non-training-loop) uses of historical data.",
+    "optional_behavior_cloning_pretraining": "not decided or preregistered in this phase; left as an explicitly optional, separately-justified choice for the implementation phase per phase_16u_direct_ppo_protocol.yaml Section 1, item 4."
+  },
+
+  "no_hyperparameter_search_performed": true,
+  "post_training_hyperparameter_changes": "any adjustment after live training begins requires a new, clearly labeled development iteration and must never use the final PPO-vs-HPA evaluation workload (phase_16u_training_and_evaluation_workload_split.json's final_evaluation_workload) for that adjustment."
+}

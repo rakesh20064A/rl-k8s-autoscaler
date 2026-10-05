@@ -1,0 +1,144 @@
+# configs/traffic_profiles/hpa_tuning/hpa_tuning_v2.yaml
+#
+# ============================================================================
+# HPA TUNING TRAFFIC ONLY -- NOT final benchmark traffic, NOT the held-out
+# unseen evaluation workload (configs/traffic_profiles/unseen_eval.yaml),
+# NOT an RL training profile.
+# ============================================================================
+#
+# Phase 11C.4E REDESIGN. Supersedes hpa_tuning_v1.yaml (preserved, not
+# deleted -- see docs/experimental_design_corrections.md CORR-24 and
+# task_outputs/phase_11c4e_hpa_candidate_and_schedule_redesign.md).
+#
+# v1's 220%/230%/250% candidate family is SUPERSEDED_BEFORE_ANY_VALID_OFFICIAL_
+# TUNING_RESULT: Phase 11C.4D's controlled, repeated (3x), final-path
+# (genuine Service load balancing + connection_mode=fresh) single-replica
+# Metrics-API CPU map showed the 220-vs-230 tolerance-adjusted boundary gap
+# (242m vs 253m, 11m) is smaller than the observed within-run and
+# between-repeat CPU variability at the one workload level whose median falls
+# in that gap (4.5 RPS: fraction of samples crossing 242m ranged 0.4-1.0
+# across three otherwise-identical repeats) -- not empirically distinguishable
+# with this measurement pipeline. No official 220/230/250 trial ever
+# completed validly (the sole 220% attempt was invalidated for an unrelated
+# traffic-delivery defect, CORR-21/22), so no valid result is discarded by
+# this redesign.
+#
+# NEW CANDIDATE FAMILY: 200% / 230% / 260% (tolerance-adjusted boundaries
+# 220m / 253m / 286m on the unchanged 100m CPU request). Selected using the
+# RAW, per-sample Phase-11C.4D Metrics-API distributions (not medians alone):
+#   - 3 RPS:  0% of samples cross 220m in all 3 repeats -> robust NONE-trigger.
+#   - 4 RPS:  75-100% of samples cross 220m, 0% cross 253m/286m in all 3
+#             repeats -> robust "200% only" trigger.
+#   - 5 RPS:  100% of samples cross 220m AND 253m, 0% cross 286m, in ALL 3
+#             repeats -> a perfectly robust "{200%,230%} trigger, 260% does
+#             not" discriminator.
+#   - 6 RPS:  100% cross 220m/253m, 75-100% cross 286m across repeats ->
+#             all three under real scale pressure (not perfectly unanimous at
+#             the 260% boundary alone, hence the added adequacy_8rps phase
+#             below for a fully unambiguous all-candidates-under-pressure
+#             observation).
+# 230% is retained as the center candidate: it is the Phase-11B canonical
+# baseline, substantial prior design work already centers on it, and it sits
+# usefully in the middle of this new family's empirically-verified staircase.
+# An alternative family (190%/230%/270%, boundaries 209m/253m/297m) was also
+# evaluated against the same raw distributions and rejected: its "230% only"
+# region (4 RPS) is slightly cleaner (100% vs 75-100%) but its all-candidates
+# region is NOT robust until 7 RPS (6 RPS crossing 297m ranges 0.25-1.0
+# across repeats -- unstable), making 200/230/260 the more evidence-efficient
+# choice within the same workload range.
+#
+# Sequential-trajectory principle (CORR-19, unchanged): this is a SEQUENTIAL
+# schedule. A candidate that scales during an earlier phase enters later
+# phases with different capacity than the one-replica map predicts -- that is
+# expected, legitimate candidate behavior, not a violation. The one-replica
+# map above designs meaningful INITIAL trigger opportunities; it does not
+# predict every later phase's outcome. Record actual phase-entry replica
+# state (scripts/hpa_phase_entry_snapshot.py) and interpret every phase after
+# the first conditionally on it.
+#
+# Intensity is fixed at 3 for every phase (do not vary intensity while tuning
+# HPA -- that would introduce a second independent variable).
+
+profile: hpa_tuning_v2
+description: >
+  Canonical Phase-11C.4E HPA-target tuning schedule (REDESIGNED). Six
+  constant-RPS phases at fixed intensity=3, using the final-path
+  (genuine Service load balancing, connection_mode=fresh), repeated (3x)
+  Phase-11C.4D single-replica Metrics-API CPU map to discriminate
+  200%/230%/260% candidate targets under the project's default 10% HPA
+  tolerance. Must be generated ONCE (deterministic arrivals -> the seed below
+  is not consulted, but is recorded for provenance) and then exact-replayed
+  via --replay-schedule for every candidate run and every repeat (3 valid
+  repeats per candidate, 9 official trials total).
+seed: 42
+endpoint: /work
+intensity: 3
+
+phases:
+  - type: constant
+    # Robust negative control -- Phase 11C.4D: 0% of steady-window samples
+    # crossed 220m (the lowest candidate's tolerance-adjusted boundary) in
+    # all 3 repeats. No candidate is expected to scale here.
+    name: baseline_3rps
+    duration_seconds: 90
+    target_rps: 3
+
+  - type: constant
+    # "200% only" probe -- Phase 11C.4D: 75-100% of samples crossed 220m,
+    # 0% crossed 253m/286m in all 3 repeats. Only the 200% candidate is
+    # expected to scale here; 230%/260% are expected to remain at 1 replica.
+    name: aggressive_probe_4rps
+    duration_seconds: 120
+    target_rps: 4
+
+  - type: constant
+    # Primary discriminator -- Phase 11C.4D: 100% of samples crossed BOTH
+    # 220m and 253m, 0% crossed 286m, in ALL 3 repeats (perfectly robust).
+    # 200% and 230% are both expected to scale here; 260% is expected not to.
+    name: discriminator_5rps
+    duration_seconds: 120
+    target_rps: 5
+
+  - type: constant
+    # Scale-pressure phase -- Phase 11C.4D: 100% crossed 220m/253m, 75-100%
+    # crossed 286m across repeats (not perfectly unanimous for 260% alone,
+    # hence adequacy_8rps below for an unambiguous all-candidates check).
+    # All three candidates are expected to experience real scale pressure.
+    name: scale_pressure_6rps
+    duration_seconds: 180
+    target_rps: 6
+
+  - type: constant
+    # Higher-load continuation / adequacy test, NOT a destructive stress
+    # test -- retained from v1 at the same RPS and duration. Final-path
+    # fresh-mode data (CORR-22 addendum) already exists for 8 RPS: one-replica
+    # CPU is high (~379.5m, far above all three new boundaries) and client
+    # p95 approached the 300ms SLA, making this a meaningful adequacy/
+    # reliability challenge after whatever scaling occurred in earlier
+    # phases -- not guaranteed to force a further scale-up for every
+    # candidate, since a candidate may already have sufficient capacity from
+    # its own earlier decisions (see CORR-18/19's phase-entry-state
+    # principle, reused unchanged here).
+    name: adequacy_8rps
+    duration_seconds: 180
+    target_rps: 8
+
+  - type: constant
+    # Recovery -- duration UNCHANGED from v1: 120s scale-down stabilization
+    # + 7 sequential -1-pod/60s reductions from maxReplicas=8 = 540s for the
+    # theoretical worst-case last reduction, independent of which
+    # averageUtilization values are being compared (a pure function of
+    # unchanged HPA behavior.scaleDown settings and maxReplicas=8).
+    name: recovery_2rps
+    duration_seconds: 540
+    target_rps: 2
+
+# Total duration: 90 + 120 + 120 + 180 + 180 + 540 = 1230 seconds (20.5 min).
+# +150s vs v1 (1080s), entirely from the added aggressive_probe_4rps phase
+# (120s) offset by discriminator_5rps replacing moderate_5rps at the same
+# 120s (vs v1's 90s) minus baseline shortened by 0s (baseline duration
+# unchanged at 90s, only its RPS changed from 2 to 3).
+# Arrival process: deterministic, matching v1 and the Phase-10/11C.4D
+# calibration methodology's own choice, for the same reason (removes
+# stochastic inter-arrival variance as a confound between candidates/repeats).
+# Generate with: --arrival-process deterministic

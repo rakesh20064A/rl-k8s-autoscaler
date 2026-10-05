@@ -1,0 +1,53 @@
+# configs/rl_dynamics.yaml
+#
+# Phase 15B.2 (CORR-31) froze this pointer; Phase 15B.2A (CORR-32) corrected
+# the referenced manifest before its first execution; Phase 15B.2B (CORR-33)
+# resolved remaining execution/model-identification ambiguities (request-rate
+# realization modeling, causal structure, traffic terminology, per-pod
+# routing diagnostics, HPA mechanics, session/attempt semantics, transition
+# semantics, generator margin); Phase 15B.2C (CORR-34) froze the ONE
+# authoritative global 102-slot execution order and made the per-pod routing
+# classifier exhaustive (4 tiers, no gaps); Phase 15B.2D (CORR-35) corrected
+# the routing classifier's fair-share mathematics from a whole-window 1/N
+# expectation (invalid under unequal Ready-serving exposure, e.g. replica
+# transitions) to an interval-level, traffic-weighted expected-routing-
+# opportunity calculation -- all without touching the frozen matrix or the
+# global campaign order. The full frozen matrix, randomized cell orders,
+# model families, acceptance criteria, canonical schedules, global execution
+# order, etc. live in experiments/manifests/rl_dynamics_calibration_v1.yaml
+# (the single authoritative source) -- this file exists only so a future
+# calibration runner/analysis script has one small, stable entry point to
+# import, mirroring how configs/rl.yaml/reward.yaml expose the MDP
+# contract's frozen numbers. Do not duplicate the full matrix here.
+
+dynamics_calibration_protocol_version: 1
+corrected_in_phase: "15B.2D"
+correction_reference: "CORR-35"
+manifest_path: experiments/manifests/rl_dynamics_calibration_v1.yaml
+protocol_doc_path: docs/rl_dynamics_calibration_protocol.md
+schedule_registry_path: configs/traffic_profiles/rl_dynamics_calibration/schedule_registry.json
+global_campaign_sequence_path: configs/traffic_profiles/rl_dynamics_calibration/global_campaign_sequence.json
+
+# Convenience top-level pointers (values authoritative in the manifest above
+# -- kept here only for quick reference, never edited independently).
+frozen_intensity: 3
+replica_fitting_anchors: [1, 2, 4, 6, 8]
+replica_interpolation_validation: [3, 5, 7]
+fitting_repeats: 3
+validation_repeats: 2
+replica_transition_repeats: 2
+workload_transition_repeats: 2
+official_new_calibration_run_count: 102
+historical_run_substitution_for_official_repeats: false
+generator_max_in_flight: 400
+required_max_in_flight_headroom_factor: 1.20
+required_max_in_flight_computed: 384
+global_campaign_sequence_total_entries: 102
+global_campaign_sequence_first_index: 1
+global_campaign_sequence_last_index: 102
+routing_min_expected_requests_per_pod: 50
+routing_run_level_minimum_assessable_pods: 2
+
+# This file does not itself enable execution of anything -- no traffic is
+# sent, no Kubernetes object is touched, by its mere presence.
+status: PROTOCOL_FROZEN_NOT_YET_EXECUTED

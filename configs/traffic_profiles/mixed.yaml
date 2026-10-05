@@ -1,0 +1,55 @@
+# configs/traffic_profiles/mixed.yaml
+# Mixed trace: concatenation of ramp, bursts, periodic, and quiet periods.
+# Closest to a realistic workday in a compressed timeframe.
+# This is the primary comparison scenario.
+
+profile: mixed
+description: "Realistic mixed workload: ramp + bursts + periodic + quiet phases"
+seed: 42
+
+duration_seconds: 2400
+intensity: 3
+endpoint: /work
+
+# The traffic runner interprets this as a sequence of phases.
+# Each phase is executed in order. total duration = sum of phase durations.
+phases:
+  - type: constant
+    duration_seconds: 120
+    rps: 5
+
+  - type: ramp
+    duration_seconds: 300
+    start_rps: 5
+    end_rps: 45
+
+  - type: constant
+    duration_seconds: 180
+    rps: 45
+
+  - type: burst
+    duration_seconds: 400
+    baseline_rps: 20
+    burst_rps: 75
+    burst_duration_seconds: 25
+    inter_burst_interval_seconds: 100
+
+  - type: ramp
+    duration_seconds: 200
+    start_rps: 20
+    end_rps: 5
+
+  - type: periodic
+    duration_seconds: 600
+    mean_rps: 18
+    amplitude_rps: 12
+    period_seconds: 200
+
+  - type: constant
+    duration_seconds: 300
+    rps: 40
+
+  - type: ramp
+    duration_seconds: 300
+    start_rps: 40
+    end_rps: 3

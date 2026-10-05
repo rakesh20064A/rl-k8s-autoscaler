@@ -1,0 +1,82 @@
+# Phase 16U — Safety and Fallback Protocol (FROZEN DESIGN)
+#
+# classification: OFFLINE_PROTOCOL_FORMALIZATION_ONLY
+#
+# This file makes explicit a distinction the task requires that the frozen
+# MDP contract (docs/rl_mdp_spec.md sec.9/13) already implements mechanically
+# but never names in these exact terms: PRE-ACTION safety rejection vs.
+# POST-ACTION emergency fallback. No new safety threshold is introduced here
+# beyond what docs/rl_mdp_spec.md already freezes -- this file organizes and
+# cross-references those existing rules under the requested framing, and adds
+# only the NEW live-training-specific restoration/fail-closed procedures that
+# the frozen contract left to a future implementation phase.
+
+phase: "16U"
+
+# ---------------------------------------------------------------------------
+# Pre-action safety rejection
+# ---------------------------------------------------------------------------
+pre_action_safety_rejection:
+  definition: "An action is rejected/clamped BEFORE any Kubernetes mutation is issued, because it is already known to violate a frozen bound. If the resulting effective_replica_delta is zero, no Deployment patch is sent at all."
+  mechanisms:
+    - id: "replica_bound_clamp"
+      rule: "effective_replica_delta = clip(current_desired + requested_replica_delta, 1, 8) - current_desired (docs/rl_mdp_spec.md sec.9)"
+      k8s_mutation_occurs: "only if effective_replica_delta != 0"
+    - id: "pending_scale_gate"
+      rule: "if deployment_spec_desired_replicas != deployment_status_ready_replicas at decision time, any non-HOLD action becomes effective HOLD (sec.12 rule 1)"
+      k8s_mutation_occurs: false
+    - id: "scale_down_cooldown"
+      rule: "a SCALE_DOWN_ONE within 60s of the last effective scaling action becomes effective HOLD (sec.12 rule 3)"
+      k8s_mutation_occurs: false
+    - id: "live_hpa_detected_at_controller_start"
+      rule: "if a live HPA object targeting the same Deployment is detected when the PPO controller starts, refuse to start entirely (fail closed) -- sec.13 table"
+      k8s_mutation_occurs: false
+      scope: "controller-start-time check, not a per-decision check"
+  never_a_post_hoc_refusal: "Pre-action rejection never depends on observing the outcome of the mutation -- it is decided entirely from decision-time state (current desired/ready replicas, time since last effective action, HPA-object presence)."
+
+# ---------------------------------------------------------------------------
+# Post-action emergency fallback
+# ---------------------------------------------------------------------------
+post_action_emergency_fallback:
+  definition: "If the live system becomes unhealthy or unobservable AFTER a permitted action was taken (or independent of any action), the controller does not attempt to 'refuse' the action retroactively -- the mutation already happened. Instead it detects the resulting bad state, deterministically HOLDs, records the event, and follows the frozen termination/restoration rules. This is never presented as if the action itself were prevented."
+  detection_and_response:
+    - condition: "required metric stale/missing, or ready_replicas==0 for the current step"
+      response: "effective HOLD; consecutive_invalid_steps += 1; action_override_reason=stale_or_missing_metric (sec.4/sec.7/sec.13)"
+    - condition: "Prometheus unreachable"
+      response: "effective HOLD; consecutive_invalid_steps += 1; action_override_reason=prometheus_unavailable (sec.13)"
+    - condition: "policy inference raises an exception"
+      response: "effective HOLD; error logged; action_override_reason=policy_inference_failure (sec.13)"
+    - condition: "Kubernetes API patch call fails"
+      response: "effective HOLD; no blind retry within the step; action_override_reason=k8s_api_failure (sec.13)"
+    - condition: "a previous step's K8s patch is still in flight when the next decision is due"
+      response: "apply only the latest decision; never double-apply (sec.13, controller-level invariant, not a per-step override reason)"
+  episode_termination_rules:
+    consecutive_invalid_steps: "starts at 0 at reset; any invalid decision step increments it by 1; a single fully-valid step resets it to 0 (not sticky); the 4th consecutive invalid step (120s of persistent telemetry failure at the 30s decision interval) sets terminated=True (sec.13)"
+    zero_ready_replicas_termination: "zero Ready replicas for more than 120 seconds is a separate, explicit termination condition, distinct from the telemetry-invalidity counter (sec.13)"
+  deterministic_fallback: "HOLD (preserve current desired replicas) in every failure case -- never an arbitrary reset, never blind retry-until-success (sec.13)."
+  restore_last_known_safe_state_after_termination:
+    trigger: "any episode that ends via terminated=True (either termination condition above)"
+    procedure: "direct Deployment patch to initial_replicas=1; confirm ready_replicas==1; bounded max wait 120s (mirrors phase_16u_direct_ppo_protocol.yaml Section 4's ppo_controlled_episodes restoration); on timeout, raise RESTORATION_TIMEOUT and stop the training/evaluation loop for manual inspection"
+    logging: "the terminating event and the restoration outcome are both recorded as safety_events in the relevant ledger (phase_16u_direct_ppo_protocol.yaml Section 11) -- never silently discarded, never excluded from any later report"
+
+# ---------------------------------------------------------------------------
+# Hard safety bounds (restated, unchanged)
+# ---------------------------------------------------------------------------
+hard_bounds:
+  replica_range: [1, 8]
+  enforced_by: "the environment wrapper itself (clip in sec.9), not merely relied upon from the policy network's output distribution"
+  action_magnitude_per_decision: "±1 replica only (Discrete(3) encoding, sec.9) -- no larger single-step jump exists in the action space, so no additional external clipping of jump size is needed beyond the ±1 encoding itself"
+  co_control_forbidden: "PPO and HPA never control the same Deployment simultaneously (phase_16u_direct_ppo_protocol.yaml Section 9)"
+
+# ---------------------------------------------------------------------------
+# What this file does NOT change
+# ---------------------------------------------------------------------------
+no_changes_to_frozen_contract: >
+  Every numeric threshold, override reason, and termination rule in this
+  file is copied from docs/rl_mdp_spec.md sec.9/12/13 unchanged. The only
+  NEW content is: (a) the explicit pre-action/post-action framing requested
+  by this phase's task instructions, (b) the concrete inter-episode
+  restoration procedure and its bounded timeout, and (c) the requirement
+  that safety events be logged in the new Phase16U ledgers (Section 11 of
+  phase_16u_direct_ppo_protocol.yaml). None of this reopens or edits
+  docs/rl_mdp_spec.md.

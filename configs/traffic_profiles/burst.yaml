@@ -1,0 +1,19 @@
+# configs/traffic_profiles/burst.yaml
+# Repeated short bursts on a low baseline.
+# Tests oscillation resistance and whether the autoscaler over-provisions between bursts.
+
+profile: burst
+description: "Repeated short traffic bursts on a low baseline"
+seed: 42
+
+duration_seconds: 1200
+intensity: 4
+endpoint: /work
+
+baseline_rps: 5
+burst_rps: 70
+burst_duration_seconds: 30
+inter_burst_interval_seconds: 120
+
+# Total number of bursts within the duration
+num_bursts: 7

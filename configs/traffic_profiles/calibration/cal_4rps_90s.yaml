@@ -1,0 +1,15 @@
+# configs/traffic_profiles/calibration/cal_4rps_90s.yaml
+# Stage-1 empirical single-replica capacity calibration profile.
+# Non-benchmark calibration artifact.
+
+profile: cal_4rps_90s
+description: "Calibration profile (4.0 RPS deterministic, 90.0s, intensity 3)"
+seed: 42
+endpoint: /work
+intensity: 3
+
+phases:
+  - name: cal_const_4rps
+    type: constant
+    duration_seconds: 90.0
+    target_rps: 4.0

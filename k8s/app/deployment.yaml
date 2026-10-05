@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app
+  namespace: autoscaler-app
+  labels:
+    app: demo-app
+    project: rl-k8s-autoscaler
+spec:
+  # Initial replica count — will be controlled by HPA or RL agent during experiments.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-app
+  template:
+    metadata:
+      labels:
+        app: demo-app
+        project: rl-k8s-autoscaler
+      annotations:
+        # Instruct Prometheus to scrape this pod directly (fallback if ServiceMonitor is not used)
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 30
+
+      containers:
+        - name: demo-app
+          image: rl-autoscaler-demo-app:local
+          # Never pull — image is built locally inside Minikube's Docker daemon.
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          envFrom:
+            - configMapRef:
+                name: demo-app-config
+
+          # Resource requests and limits are mandatory for HPA CPU metrics.
+          # CPU utilization = (actual CPU used) / (CPU requested).
+          # Without requests, HPA reports "unknown" utilization.
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+            timeoutSeconds: 3
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 5
+            timeoutSeconds: 3
+
+      # Spread pods across available nodes for realistic multi-pod experiments
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 50
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: demo-app
+                topologyKey: kubernetes.io/hostname

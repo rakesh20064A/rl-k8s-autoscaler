@@ -1,0 +1,16 @@
+# configs/traffic_profiles/smoke_test_15s.yaml
+# Low-load test-only timing verification profile (Phase 10C).
+# Exactly 15.0 seconds duration, ~1.0 RPS constant, intensity 3.
+# Non-benchmark test profile.
+
+profile: smoke_test_15s
+description: "Timing verification profile (1 RPS deterministic, 15.0s, intensity 3)"
+seed: 42
+endpoint: /work
+intensity: 3
+
+phases:
+  - name: const_15s
+    type: constant
+    duration_seconds: 15.0
+    target_rps: 1.0

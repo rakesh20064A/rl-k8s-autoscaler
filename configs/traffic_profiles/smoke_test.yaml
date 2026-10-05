@@ -1,0 +1,15 @@
+# configs/traffic_profiles/smoke_test.yaml
+# Low-load verification profile for traffic generator validation (Phase 10B).
+# Not an experimental benchmark profile.
+
+profile: smoke_test
+description: "Low-load test-only verification profile (~2 RPS, 25s, intensity 3)"
+seed: 42
+endpoint: /work
+intensity: 3
+
+phases:
+  - name: smoke_constant
+    type: constant
+    duration_seconds: 25.0
+    target_rps: 2.0

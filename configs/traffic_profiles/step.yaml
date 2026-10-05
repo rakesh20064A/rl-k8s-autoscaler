@@ -1,0 +1,22 @@
+# configs/traffic_profiles/step.yaml
+# Step traffic: low -> high -> low transition.
+# Tests how quickly each autoscaler reacts to abrupt load changes.
+
+profile: step
+description: "Step changes from low to high load then back"
+seed: 42
+
+duration_seconds: 900
+intensity: 3
+endpoint: /work
+
+# Traffic steps: list of (start_second, target_rps)
+steps:
+  - at_second: 0
+    rps: 5
+  - at_second: 180
+    rps: 50
+  - at_second: 540
+    rps: 5
+  - at_second: 720
+    rps: 30
