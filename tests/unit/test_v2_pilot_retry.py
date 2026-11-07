@@ -7,6 +7,7 @@ provenance machinery, all via fakes -- no real cluster/Prometheus needed.
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 
@@ -22,9 +23,27 @@ class TestSingleAuthoritativeUrl:
         """V2 Phase 3A's bug: LiveKubernetesBackend was constructed with no
         explicit prometheus_url, silently using its own unrelated default.
         Confirms train_ppo_live_v2.py's source now passes PROMETHEUS_URL
-        explicitly."""
+        explicitly, specifically INSIDE the `LiveKubernetesBackend(...)`
+        call itself (V2 Phase 4C-1: the call now spans multiple lines
+        alongside the explicit V2 HPA identity kwargs, so this anchors the
+        match to that call rather than a bare substring anywhere in the
+        file, which could pass vacuously)."""
         source = open("scripts/train_ppo_live_v2.py", encoding="utf-8").read()
-        assert "LiveKubernetesBackend(prometheus_url=PROMETHEUS_URL)" in source
+        call_match = re.search(r"LiveKubernetesBackend\(([^)]*)\)", source, re.DOTALL)
+        assert call_match is not None, "no LiveKubernetesBackend(...) call found"
+        assert "prometheus_url=PROMETHEUS_URL" in call_match.group(1)
+
+    def test_backend_receives_explicit_v2_hpa_identity(self):
+        """V2 Phase 4C-1 (P1-2): the pilot's LiveKubernetesBackend must be
+        constructed with the explicit V2 HPA identity constants, never a
+        bare call that would fall back to LiveKubernetesBackend's own V1
+        defaults (demo-app-hpa / k8s/hpa/hpa.yaml) -- anchored to the actual
+        `LiveKubernetesBackend(...)` call, not a bare file-wide substring."""
+        source = open("scripts/train_ppo_live_v2.py", encoding="utf-8").read()
+        call_match = re.search(r"LiveKubernetesBackend\(([^)]*)\)", source, re.DOTALL)
+        assert call_match is not None, "no LiveKubernetesBackend(...) call found"
+        assert "hpa_name=V2_HPA_NAME" in call_match.group(1)
+        assert "hpa_manifest_path=V2_HPA_MANIFEST_PATH" in call_match.group(1)
 
     def test_orchestrator_receives_the_shared_url(self):
         source = open("scripts/train_ppo_live_v2.py", encoding="utf-8").read()

@@ -26,6 +26,7 @@ from pathlib import Path
 
 import yaml
 
+from .action_selection import DEFAULT_NEAR_TIE_EPSILON
 from .config import DEFAULT_REWARD_YAML, PROJECT_ROOT, load_env_config_from_yaml
 from .gating import GatingConfig
 from .observation import ObservationConfig
@@ -33,6 +34,8 @@ from .reward_v2 import DEFAULT_REWARD_V2_YAML, RewardConfigV2, load_reward_confi
 
 DEFAULT_RL_V2_YAML = PROJECT_ROOT / "configs" / "rl_v2.yaml"
 DEFAULT_EXPERIMENT_YAML = PROJECT_ROOT / "configs" / "experiment.yaml"
+
+DEFAULT_EPSILON_STATUS = "provisional_unvalidated"
 
 EXPECTED_CONTROLLER_GENERATION = "v2"
 EXPECTED_WORKLOAD_CONTRACT = "multi_resource_v2"
@@ -108,3 +111,22 @@ def load_env_config_v2_from_yaml(
         workload_contract=workload_contract,
         reward_status=reward_status,
     )
+
+
+def load_safe_action_epsilon_from_v2_config(
+    rl_yaml_path: Path = DEFAULT_RL_V2_YAML,
+) -> "tuple[float, str]":
+    """Reads the `safe_action.near_tie_epsilon` / `safe_action.epsilon_status`
+    block directly out of rl_yaml_path -- additive, does not touch
+    `EnvConfigV2` or `load_env_config_v2_from_yaml()` (both frozen for
+    session_002 resumability). Lets V2 callers (e.g.
+    scripts/evaluate_ppo_vs_hpa_v2.py) source epsilon from rl_v2.yaml's own
+    contract instead of only action_selection.py's Python-level default.
+    Falls back to that same default/status if the block or keys are absent,
+    so this never raises on a well-formed but older rl_v2.yaml."""
+    with open(rl_yaml_path, "r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f)
+    safe_action = raw.get("safe_action") or {}
+    epsilon = float(safe_action.get("near_tie_epsilon", DEFAULT_NEAR_TIE_EPSILON))
+    epsilon_status = safe_action.get("epsilon_status", DEFAULT_EPSILON_STATUS)
+    return epsilon, epsilon_status

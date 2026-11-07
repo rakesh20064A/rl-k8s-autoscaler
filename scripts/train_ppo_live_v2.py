@@ -57,6 +57,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from autoscaler.src.rl_env.config_v2 import DEFAULT_RL_V2_YAML, load_env_config_v2_from_yaml  # noqa: E402
 from autoscaler.src.rl_env.controller_exclusivity import (  # noqa: E402
     CONTROLLER_PPO,
+    V2_HPA_MANIFEST_PATH,
+    V2_HPA_NAME,
     ControllerConflictError,
     acquire_controller,
     release_controller,
@@ -289,12 +291,20 @@ def run_pilot_training(seed: int = 42) -> Dict[str, Any]:
     env_config_v2 = load_env_config_v2_from_yaml()
     pilot_session_dir.mkdir(parents=True, exist_ok=False)  # must not already exist -- see resolve_next_pilot_session_dir
 
-    backend = LiveKubernetesBackend(prometheus_url=PROMETHEUS_URL)
+    # V2 Phase 4C-1 (P1-2): this pilot's own canonical HPA is
+    # demo-app-hpa-v2 (V2_HPA_NAME), never V1's demo-app-hpa -- the backend
+    # is constructed with that explicit identity so delete_hpa()/
+    # restore_hpa() below act on demo-app-hpa-v2.
+    backend = LiveKubernetesBackend(
+        prometheus_url=PROMETHEUS_URL, hpa_name=V2_HPA_NAME, hpa_manifest_path=V2_HPA_MANIFEST_PATH,
+    )
 
     # Step 2 (pre-removal): refuse closed on any UNEXPECTED conflict before
     # touching anything -- a stale non-"none" controller lock, or any HPA
-    # object other than the canonical "demo-app-hpa" this pilot is about to
-    # remove itself. `acquire_controller(CONTROLLER_PPO, ...)` cannot be
+    # object other than the canonical demo-app-hpa-v2 this pilot is about to
+    # remove itself (if V1's demo-app-hpa is present instead, that is an
+    # unexpected conflict too -- never silently deleted).
+    # `acquire_controller(CONTROLLER_PPO, ...)` cannot be
     # called yet at this point: by design (autoscaler.src.rl_env.
     # controller_exclusivity) it unconditionally refuses PPO while ANY HPA
     # is present -- including the canonical one THIS pilot is authorized to
@@ -308,7 +318,7 @@ def run_pilot_training(seed: int = 42) -> Dict[str, Any]:
     if existing_lock != CONTROLLER_NONE:
         raise ControllerConflictError(f"refusing to start: controller lock already held by {existing_lock!r}")
     existing_hpas = backend._kubectl.list_hpa_names()
-    unexpected_hpas = [h for h in existing_hpas if h != "demo-app-hpa"]
+    unexpected_hpas = [h for h in existing_hpas if h != V2_HPA_NAME]
     if unexpected_hpas:
         raise ControllerConflictError(f"refusing to start: unexpected HPA object(s) present: {unexpected_hpas}")
 

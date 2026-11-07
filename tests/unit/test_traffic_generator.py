@@ -34,6 +34,19 @@ from loadgen.traffic_generator import (
 
 _real_sleep = asyncio.sleep
 
+# V2 Phase 4C-1 hygiene: tests 7/8 below read real historical calibration
+# schedule CSVs that were never copied into this published/clean repo (a
+# pre-existing data gap, confirmed absent via direct filesystem search --
+# not a path bug). Skip them when that directory is absent rather than
+# hard-failing, without weakening the tests themselves for anyone who DOES
+# have that data locally.
+_CALIBRATION_DIR = (
+    Path(__file__).resolve().parents[2]
+    / "configs/traffic_profiles/rl_dynamics_calibration_iteration2b/final_unseen"
+)
+_CALIBRATION_DATA_PRESENT = _CALIBRATION_DIR.is_dir()
+_CALIBRATION_DATA_ABSENT_REASON = "historical calibration data excluded from the published repo"
+
 
 class _VirtualClock:
     """Virtual clock for deterministic, millisecond-fast asyncio scheduling tests."""
@@ -1277,6 +1290,7 @@ class TestCorr52FinalArrivalDeadlineSemantics(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(dropped[0].request_index, 1)
         self.assertEqual(generator.max_in_flight, 1)
 
+    @unittest.skipUnless(_CALIBRATION_DATA_PRESENT, _CALIBRATION_DATA_ABSENT_REASON)
     async def test_7_unaffected_schedules_i2bval_r1_v1_and_r6_v1_behaviorally_equivalent(self) -> None:
         """Test 7: representative unaffected frozen schedules (comfortable
         56-187ms boundary margins) dispatch identically regardless of
@@ -1317,6 +1331,7 @@ class TestCorr52FinalArrivalDeadlineSemantics(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(len(generator.completed_requests), len(real_schedule))
                 tmp.cleanup()
 
+    @unittest.skipUnless(_CALIBRATION_DATA_PRESENT, _CALIBRATION_DATA_ABSENT_REASON)
     async def test_8_three_near_boundary_schedule_families_all_fully_dispatch(self) -> None:
         """Test 8: all three near-boundary schedule families
         (i2bval_r1_V2, i2bval_r2_V1, i2bval_r4_V1) fully dispatch offline

@@ -282,13 +282,31 @@ class LiveKubernetesBackend:
         kubectl: Optional[KubectlRunner] = None,
         prom_client: Optional[PrometheusClient] = None,
         sleep_fn: Callable[[float], None] = time.sleep,
+        hpa_name: Optional[str] = None,
+        hpa_manifest_path: Optional[str] = None,
     ) -> None:
+        """V2 Phase 4C-1 (P1-2): `hpa_name`/`hpa_manifest_path` are additive,
+        optional overrides of `KubectlRunner`'s own V1 defaults
+        (`DEFAULT_HPA_NAME` / `"k8s/hpa/hpa.yaml"`) -- ignored (and
+        irrelevant) whenever `kubectl` is explicitly injected, since the
+        caller's own `KubectlRunner` already decides its HPA identity. Every
+        existing caller that omits both keeps BYTE-IDENTICAL V1 behaviour:
+        no `KubectlRunner` keyword changes unless a value was actually
+        given."""
         self.min_replicas = min_replicas
         self.max_replicas = max_replicas
         self.initial_replicas = initial_replicas
         self.pre_episode_stabilization_s = pre_episode_stabilization_s
         self.restoration_max_wait_s = restoration_max_wait_s
-        self._kubectl = kubectl or KubectlRunner(app_namespace=app_namespace, deployment=deployment)
+        if kubectl is not None:
+            self._kubectl = kubectl
+        else:
+            kubectl_kwargs: Dict[str, str] = {"app_namespace": app_namespace, "deployment": deployment}
+            if hpa_name is not None:
+                kubectl_kwargs["hpa_name"] = hpa_name
+            if hpa_manifest_path is not None:
+                kubectl_kwargs["hpa_manifest_path"] = hpa_manifest_path
+            self._kubectl = KubectlRunner(**kubectl_kwargs)
         self._prom = prom_client or PrometheusClient(base_url=prometheus_url)
         self._queries = _query_dict(app_namespace, deployment, route)
         self._app_namespace = app_namespace

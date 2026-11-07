@@ -59,6 +59,19 @@ HPA_NAME_BY_CONTROLLER = {
     CONTROLLER_CPU_MEMORY_HPA: "demo-app-hpa-v2",
 }
 
+# V2 Phase 4C-1 (P1-2): the ONE canonical identity for the V2 pipeline's own
+# HPA (CPU+memory), reusing HPA_NAME_BY_CONTROLLER above rather than a
+# second literal. Every V2 script (train_ppo_final_v2.py,
+# train_ppo_live_v2.py, evaluate_ppo_vs_hpa_v2.py) must import these two
+# constants instead of hardcoding "demo-app-hpa-v2" / the manifest path --
+# closes the R4F audit's "HPA identity is implicit" gap. V1's own identity
+# (`demo-app-hpa` / k8s/hpa/hpa.yaml) is unaffected and remains
+# `LiveKubernetesBackend`/`KubectlRunner`'s unchanged default.
+V2_HPA_NAME = HPA_NAME_BY_CONTROLLER[CONTROLLER_CPU_MEMORY_HPA]
+V2_HPA_MANIFEST_PATH = "k8s/hpa/hpa_v2_cpu_memory.yaml"
+V1_HPA_NAME = HPA_NAME_BY_CONTROLLER[CONTROLLER_CPU_HPA]
+V1_HPA_MANIFEST_PATH = "k8s/hpa/hpa.yaml"
+
 DEFAULT_LOCK_PATH = Path("persistent-data/controller/active_controller.json")
 
 
