@@ -21,7 +21,7 @@ different, redesigned formula (V2 Phase 2.1 PART 6), loaded via
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import yaml
@@ -98,12 +98,34 @@ def load_env_config_v2_from_yaml(
             f"{rl_yaml_path} workload_contract={workload_contract!r}, expected {EXPECTED_WORKLOAD_CONTRACT!r}"
         )
 
+    # V2 Phase 4D-B / CORR-55: `base` above was built from `experiment_cfg
+    # ["scaling"]` (configs/experiment.yaml, SHARED with V1 -- min_replicas=1,
+    # max_replicas=8, initial_replicas=1, and NEVER edited for this V2-only
+    # contract change). `rl_yaml_path`'s own `scaling_v2` block is the ONE
+    # V2-only override: required (fail-closed, never silently falls back to
+    # the V1-shared values) so a V2 config that forgot to carry this block
+    # is caught immediately rather than silently training against the old
+    # floor=1 contract. `base.observation`'s min/max replicas already come
+    # from THIS SAME file's `ready_replica_norm.raw_min/raw_max` (via the
+    # shared loader, config.py), so no observation override is needed here
+    # -- only gating/initial_replicas/reward's min_replicas/max_replicas,
+    # none of which the shared loader sources from rl_yaml_path.
+    scaling_v2 = rl_v2_raw.get("scaling_v2")
+    if scaling_v2 is None:
+        raise V2ConfigContractError(f"{rl_yaml_path} is missing the required scaling_v2 block")
+    v2_min_replicas = int(scaling_v2["min_replicas"])
+    v2_max_replicas = int(scaling_v2["max_replicas"])
+    v2_initial_replicas = int(scaling_v2["initial_replicas"])
+
+    gating_v2 = replace(base.gating, min_replicas=v2_min_replicas, max_replicas=v2_max_replicas)
+    reward_v2 = replace(reward_v2, min_replicas=v2_min_replicas, max_replicas=v2_max_replicas)
+
     return EnvConfigV2(
         decision_interval_s=base.decision_interval_s,
         pre_episode_stabilization_s=base.pre_episode_stabilization_s,
-        initial_replicas=base.initial_replicas,
+        initial_replicas=v2_initial_replicas,
         observation=base.observation,
-        gating=base.gating,
+        gating=gating_v2,
         reward=reward_v2,
         max_consecutive_invalid_steps=base.max_consecutive_invalid_steps,
         zero_ready_termination_seconds=base.zero_ready_termination_seconds,

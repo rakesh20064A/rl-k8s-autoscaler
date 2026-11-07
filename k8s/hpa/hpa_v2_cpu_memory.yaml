@@ -26,7 +26,10 @@ spec:
     kind: Deployment
     name: demo-app
 
-  minReplicas: 1
+  # V2 Phase 4D-B / CORR-55: minReplicas 1 -> 2 (both V2 training failures
+  # came from a single saturated pod at replicas=1; never raised for V1's
+  # own k8s/hpa/hpa.yaml, which stays at minReplicas=1).
+  minReplicas: 2
   maxReplicas: 8
 
   # Kubernetes autoscaling/v2 semantics (documented here, not re-implemented,

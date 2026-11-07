@@ -52,9 +52,17 @@ class TestV2ManifestStructure:
         assert v2["spec"]["scaleTargetRef"] == v1["spec"]["scaleTargetRef"]
 
     def test_replica_bounds_match_task_requirements(self):
+        """V2 Phase 4D-B / CORR-55: minReplicas raised 1 -> 2 for the V2
+        CPU+memory HPA (both V2 training failures traced to a single
+        saturated pod at replicas=1); maxReplicas unchanged."""
         v2 = _load(HPA_V2_PATH)
-        assert v2["spec"]["minReplicas"] == 1
+        assert v2["spec"]["minReplicas"] == 2
         assert v2["spec"]["maxReplicas"] == 8
+
+    def test_v1_hpa_min_replicas_unchanged(self):
+        v1 = _load(HPA_V1_PATH)
+        assert v1["spec"]["minReplicas"] == 1
+        assert v1["spec"]["maxReplicas"] == 8
 
     def test_has_both_cpu_and_memory_resource_metrics(self):
         v2 = _load(HPA_V2_PATH)

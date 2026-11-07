@@ -46,7 +46,7 @@ class TestGymnasiumCompatibility:
 
         cfg = load_env_config_v2_from_yaml()
         timeline = _timeline(cfg, 2, 0.1, 20_000_000)
-        backend = ScriptedBackend(timeline=timeline, initial_replicas=1)
+        backend = ScriptedBackend(timeline=timeline, initial_replicas=cfg.initial_replicas)
         env = KubernetesAutoscalerEnvV2(backend=backend, episode_duration_s=cfg.decision_interval_s * 2, config=cfg)
         assert isinstance(env, gym.Env)
 
@@ -55,7 +55,7 @@ class TestGymnasiumCompatibility:
 
         cfg = load_env_config_v2_from_yaml()
         timeline = _timeline(cfg, 20, 0.1, 20_000_000)
-        backend = ScriptedBackend(timeline=timeline, initial_replicas=1)
+        backend = ScriptedBackend(timeline=timeline, initial_replicas=cfg.initial_replicas)
         env = KubernetesAutoscalerEnvV2(backend=backend, episode_duration_s=600.0, config=cfg)
         check_env(env, warn=True)  # raises on failure
 
@@ -66,7 +66,7 @@ class TestGymnasiumCompatibility:
 
         cfg = load_env_config_v2_from_yaml()
         timeline = _timeline(cfg, 5, 0.1, 20_000_000)
-        backend = ScriptedBackend(timeline=timeline, initial_replicas=1)
+        backend = ScriptedBackend(timeline=timeline, initial_replicas=cfg.initial_replicas)
         env = KubernetesAutoscalerEnvV2(backend=backend, episode_duration_s=150.0, config=cfg)
         model = PPO(env=env, policy="MlpPolicy", n_steps=16, batch_size=8, verbose=0)  # must not raise
         assert model is not None
@@ -105,7 +105,9 @@ class TestSameSyntheticStatesBothEnvironments:
 
     def _run_one_step(self, env_cls, cfg, cpu_cores, memory_bytes, request_rate=10.0, latency_ms=50.0, error_rate=0.0):
         timeline = _timeline(cfg, 2, cpu_cores, memory_bytes, request_rate, latency_ms, error_rate)
-        backend = ScriptedBackend(timeline=timeline, initial_replicas=1)
+        # V2 Phase 4D-B / CORR-55: start each env at ITS OWN cfg.initial_replicas
+        # (V1=1, V2=2 as of this correction), never a shared hardcoded literal.
+        backend = ScriptedBackend(timeline=timeline, initial_replicas=cfg.initial_replicas)
         env = env_cls(backend=backend, episode_duration_s=cfg.decision_interval_s * 2, config=cfg)
         obs, _info = env.reset()
         _obs2, reward, _term, _trunc, info = env.step(HOLD)

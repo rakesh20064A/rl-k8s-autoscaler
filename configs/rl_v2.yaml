@@ -187,8 +187,8 @@ observation_v2:
     temporal: current
   - index: 9
     name: ready_replica_norm
-    description: (replicas_ready - 1) / (8 - 1) -- authoritative physical capacity, never hpa_status_current_replicas (CORR-25).
-    raw_min: 1.0
+    description: (replicas_ready - 2) / (8 - 2) -- authoritative physical capacity, never hpa_status_current_replicas (CORR-25). V2 Phase 4D-B / CORR-55 -- raw_min changed from 1.0 to 2.0, the V2 replica floor is now 2, never 1.
+    raw_min: 2.0
     raw_max: 8.0
     min: 0.0
     max: 1.0
@@ -234,6 +234,29 @@ safe_action:
   # value has not been chosen/validated and must not be treated as final.
   near_tie_epsilon: 0.05
   epsilon_status: provisional_unvalidated
+
+# ============================================================================
+# V2 Phase 4D-B / CORR-55: explicit, additive V2-only replica-bound override.
+# configs/experiment.yaml's own `scaling:` block (min_replicas=1,
+# max_replicas=8, initial_replicas=1) is SHARED with V1 and must stay
+# byte-identical for V1 -- it is never edited for this V2 contract change.
+# This block is the ONE place the V2 floor/initial value lives; config_v2.py's
+# load_env_config_v2_from_yaml() reads it and overrides the V1-shaped base
+# config's gating.min_replicas/initial_replicas (and reward_v2's own
+# min_replicas/max_replicas) with these values -- never a second scattered
+# literal anywhere else in the V2 pipeline. max_replicas is unchanged from
+# V1 (still 8) but stated explicitly here for completeness/future-proofing.
+# NOT read by load_env_config_from_yaml() (ignored like safe_action above).
+# ============================================================================
+scaling_v2:
+  # V2 Phase 4D-B (CORR-55): both V2 training failures (session_003
+  # zero_ready termination; session_003__attempt2 liveness restart) came
+  # from a single saturated pod at replicas=1 -- the only R4F P0 finding.
+  # Raising the floor to 2 means a single pod's saturation/restart can
+  # never alone drive the deployment's ready-replica count to zero.
+  min_replicas: 2
+  max_replicas: 8
+  initial_replicas: 2
 
 # ============================================================================
 # V2 IDENTITY METADATA (V2 Phase 1.1) -- explicit, additive, ignored by

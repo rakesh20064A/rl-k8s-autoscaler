@@ -85,6 +85,9 @@ def run_dry_run_validation(epsilon: Optional[float] = None) -> Dict[str, Any]:
     env_config = load_env_config_v2_from_yaml()
     yaml_epsilon, epsilon_status = load_safe_action_epsilon_from_v2_config()
     report["decision_interval_s"] = env_config.decision_interval_s
+    report["min_replicas"] = env_config.gating.min_replicas
+    report["max_replicas"] = env_config.gating.max_replicas
+    report["initial_replicas"] = env_config.initial_replicas
     report["near_tie_epsilon"] = yaml_epsilon if epsilon is None else epsilon
     report["epsilon_status"] = epsilon_status
     report["inference_path"] = "autoscaler.src.rl_env.safe_ppo_controller.run_safe_ppo_step"
@@ -109,6 +112,7 @@ def run_live_v2_episode(
     `run_dry_run_validation`'s docstring); an explicit value overrides it."""
     if epsilon is None:
         epsilon, _epsilon_status = load_safe_action_epsilon_from_v2_config()
+    env_config = load_env_config_v2_from_yaml()
     # V2 Phase 4C-1 (P1-2): this backend's HPA identity is explicitly the
     # V2 CPU+memory HPA (from the ONE canonical constant location,
     # controller_exclusivity.py), never the V1 default -- closes the R4F
@@ -119,11 +123,15 @@ def run_live_v2_episode(
     # matters for this backend's own (currently unused in this script)
     # delete_hpa()/restore_hpa() calls, so they would act on demo-app-hpa-v2
     # if ever invoked, never silently fall back to demo-app-hpa.
-    backend = LiveKubernetesBackend(hpa_name=V2_HPA_NAME, hpa_manifest_path=V2_HPA_MANIFEST_PATH)
+    # V2 Phase 4D-B / CORR-55: explicit V2 replica floor (2), never
+    # LiveKubernetesBackend's own V1-default min_replicas=1/initial_replicas=1.
+    backend = LiveKubernetesBackend(
+        hpa_name=V2_HPA_NAME, hpa_manifest_path=V2_HPA_MANIFEST_PATH,
+        min_replicas=env_config.gating.min_replicas, initial_replicas=env_config.initial_replicas,
+    )
     acquire_controller(CONTROLLER_PPO, backend._kubectl)
     try:
         model = load_ppo_model_safe(model_path)
-        env_config = load_env_config_v2_from_yaml()
         env = KubernetesAutoscalerEnvV2(backend=backend, episode_duration_s=episode_duration_s, config=env_config)
 
         obs, _info = env.reset()
@@ -164,7 +172,13 @@ def run_hpa_v2_episode(episode_duration_s: float, episode_id: str) -> Dict[str, 
     manifest (idempotent `kubectl apply`) so the canonical V2 HPA is left
     in place regardless of how the episode ends, and always releases the
     lock."""
-    backend = LiveKubernetesBackend(hpa_name=V2_HPA_NAME, hpa_manifest_path=V2_HPA_MANIFEST_PATH)
+    env_config = load_env_config_v2_from_yaml()
+    # V2 Phase 4D-B / CORR-55: explicit V2 replica floor (2), never
+    # LiveKubernetesBackend's own V1-default min_replicas=1/initial_replicas=1.
+    backend = LiveKubernetesBackend(
+        hpa_name=V2_HPA_NAME, hpa_manifest_path=V2_HPA_MANIFEST_PATH,
+        min_replicas=env_config.gating.min_replicas, initial_replicas=env_config.initial_replicas,
+    )
     acquire_controller(CONTROLLER_CPU_MEMORY_HPA, backend._kubectl)
     try:
         backend._kubectl.restore_hpa()  # kubectl apply -f V2_HPA_MANIFEST_PATH (idempotent)
@@ -172,7 +186,6 @@ def run_hpa_v2_episode(episode_duration_s: float, episode_id: str) -> Dict[str, 
         if V2_HPA_NAME not in applied_names:
             raise RuntimeError(f"failed to apply {V2_HPA_NAME!r}: live HPA names are {applied_names}")
 
-        env_config = load_env_config_v2_from_yaml()
         snapshot = backend.reset()  # canonical reset + stabilization; HPA governs scaling independently
         n_steps = int(round(episode_duration_s / env_config.decision_interval_s))
         samples: List[Dict[str, Any]] = [

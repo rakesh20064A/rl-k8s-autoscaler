@@ -46,10 +46,24 @@ def test_v2_config_produces_identical_env_config_to_v1():
     additions are completely inert to the frozen loader -- paired with the
     frozen reward.yaml on both sides so this isolates rl_v2.yaml's own
     effect (see test_v2_config_loads_without_loader_changes for why
-    reward_v2.yaml is no longer used with this loader)."""
+    reward_v2.yaml is no longer used with this loader).
+
+    V2 Phase 4D-B / CORR-55: the ONE deliberate exception is
+    `observation.min_replicas` -- rl_v2.yaml's own `ready_replica_norm.
+    raw_min` is now 2.0 (V1's rl.yaml stays 1.0). This raw-loader call
+    (bypassing config_v2.py's own gating/initial_replicas override) is
+    NEVER used directly in production V2 code -- only
+    `config_v2.load_env_config_v2_from_yaml()` is -- so the gating/
+    initial_replicas fields here still reflect V1's shared experiment.yaml
+    (1/1), which is expected and inert for this raw-loader-only test."""
     v1 = load_env_config_from_yaml()
     v2 = load_env_config_from_yaml(rl_yaml_path=RL_V2_PATH, reward_yaml_path=DEFAULT_REWARD_YAML)
-    assert dataclasses.asdict(v1) == dataclasses.asdict(v2)
+    v1_dict = dataclasses.asdict(v1)
+    v2_dict = dataclasses.asdict(v2)
+    assert v1_dict["observation"]["min_replicas"] == 1
+    assert v2_dict["observation"]["min_replicas"] == 2
+    del v1_dict["observation"]["min_replicas"], v2_dict["observation"]["min_replicas"]
+    assert v1_dict == v2_dict
 
 
 def test_v1_config_files_unchanged_by_v2_additions():
@@ -89,11 +103,25 @@ def test_v2_rl_config_has_identity_metadata():
 
 
 def test_v2_rl_config_preserves_observation_order_and_action_map():
+    """V2 Phase 4D-B / CORR-55: every observation_v2 entry is identical
+    between V1 and V2 EXCEPT `ready_replica_norm`'s own `raw_min`/
+    `description` (V2's replica floor is now 2, V1's stays 1) -- order,
+    names, indices, and every other entry's values are unchanged."""
     with open(DEFAULT_RL_YAML, encoding="utf-8") as f:
         rl_v1 = yaml.safe_load(f)
     with open(RL_V2_PATH, encoding="utf-8") as f:
         rl_v2 = yaml.safe_load(f)
-    assert rl_v2["observation_v2"] == rl_v1["observation_v2"]
+
+    v1_entries = [dict(e) for e in rl_v1["observation_v2"]]
+    v2_entries = [dict(e) for e in rl_v2["observation_v2"]]
+    assert [e["name"] for e in v1_entries] == [e["name"] for e in v2_entries]  # order/names unchanged
+    for v1_entry, v2_entry in zip(v1_entries, v2_entries):
+        if v1_entry["name"] == "ready_replica_norm":
+            assert v1_entry["raw_min"] == 1.0
+            assert v2_entry["raw_min"] == 2.0
+            del v1_entry["raw_min"], v2_entry["raw_min"], v1_entry["description"], v2_entry["description"]
+        assert v1_entry == v2_entry
+
     assert rl_v2["action_space"] == rl_v1["action_space"]
 
 
