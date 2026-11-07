@@ -60,7 +60,11 @@ persistent-data/transport_validation/
 persistent-data/hpa/
 persistent-data/hpa_mapping/
 persistent-data/models/
+persistent-data/controller/
 
 # --- Coverage ---
 .coverage
 htmlcov/
+
+# --- Demo UI run-history store (local runtime state, not source) ---
+demo_ui/.run_store/

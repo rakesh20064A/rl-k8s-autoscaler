@@ -1,0 +1,32 @@
+=== kubectl version ===
+Client Version: v1.35.1
+Kustomize Version: v5.7.1
+Server Version: v1.35.1
+=== current context ===
+minikube
+=== node describe (capacity/allocatable/conditions) ===
+Capacity:
+  cpu:                4
+  ephemeral-storage:  65739308Ki
+  hugepages-1Gi:      0
+  hugepages-2Mi:      0
+  hugepages-32Mi:     0
+  hugepages-64Ki:     0
+  memory:             4010880Ki
+  pods:               110
+Allocatable:
+  cpu:                4
+  ephemeral-storage:  65739308Ki
+  hugepages-1Gi:      0
+  hugepages-2Mi:      0
+  hugepages-32Mi:     0
+  hugepages-64Ki:     0
+  memory:             4010880Ki
+  pods:               110
+System Info:
+=== node conditions ===
+kubeletVersion: v1.35.1
+MemoryPressure False
+DiskPressure False
+PIDPressure False
+Ready True

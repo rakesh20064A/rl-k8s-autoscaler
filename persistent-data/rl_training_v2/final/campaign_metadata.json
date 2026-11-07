@@ -1,0 +1,27 @@
+{
+  "campaign_classification": "V2_FINAL_TRAINING_CAMPAIGN",
+  "campaign_last_updated_utc": "2026-10-12T07:53:38.624683+00:00",
+  "campaign_started_utc": "2026-10-11T13:14:59.722807+00:00",
+  "cumulative_timesteps": 768,
+  "cumulative_updates": 3,
+  "failed_physical_attempt": 2,
+  "failed_scientific_session_index": 3,
+  "failure_reason": "pod_restart_detected:demo-app-6579f6d9b-fdflt",
+  "latest_verified_model_path": "/Users/rakeshdandamudi/Capstone/rl-k8s-autoscaler-github-clean/persistent-data/rl_training_v2/final/sessions/session_002/ppo_model.zip",
+  "latest_verified_model_sha256": "c721144f006d6ff5281dac09eba7050d87c7668aaf23c6acb2ad63e7ba76d3f2",
+  "latest_verified_rng_state_path": "/Users/rakeshdandamudi/Capstone/rl-k8s-autoscaler-github-clean/persistent-data/rl_training_v2/final/sessions/session_002/rng_state.pkl",
+  "latest_verified_session_dir": "/Users/rakeshdandamudi/Capstone/rl-k8s-autoscaler-github-clean/persistent-data/rl_training_v2/final/sessions/session_002",
+  "n_steps_per_session": 256,
+  "next_global_schedule_episode_index": 42,
+  "planned_sessions": 20,
+  "remaining_timesteps": 4352,
+  "resume_eligible": true,
+  "sessions_completed": [
+    "session_000",
+    "session_001",
+    "session_002"
+  ],
+  "status": "stopped_on_failure",
+  "total_timesteps_budget": 5120,
+  "training_seed": 42
+}

@@ -60,6 +60,24 @@ spec:
             successThreshold: 1
             timeoutSeconds: 3
 
+          # V2 Phase 4B-R3: a TCP-socket liveness correction was proposed
+          # and LIVE-VALIDATED here, but REJECTED and reverted -- it
+          # prevented the liveness-restart (confirmed: 0 restarts under the
+          # same constant_cpu validation workload) but introduced a WORSE
+          # failure mode: with only 1 replica, a sustained-NotReady pod
+          # under CPU saturation left the Deployment with ZERO Ready
+          # replicas, which metrics-server/HPA explicitly excludes from its
+          # CPU sampling ("did not receive metrics for targeted pods, pods
+          # might be unready") -- HPA could not scale up AT ALL, and the
+          # single pod stayed NotReady (genuine total unavailability) for
+          # 4+ continuous minutes with no recovery path, versus the
+          # original HTTP-liveness restart's forced reset+recovery cycle.
+          # Per this phase's own validation gate ("no sustained zero-ready
+          # state" is a required success criterion, not optional), this
+          # correction does not meet the bar and was reverted to the
+          # original HTTP /health liveness. A different, more carefully
+          # designed correction (unrelated to probe TYPE alone) is needed
+          # in a future, separately-scoped phase.
           livenessProbe:
             httpGet:
               path: /health

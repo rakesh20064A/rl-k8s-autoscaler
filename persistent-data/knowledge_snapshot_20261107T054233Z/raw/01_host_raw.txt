@@ -1,0 +1,44 @@
+=== macOS version ===
+ProductName:		macOS
+ProductVersion:		26.6.2
+BuildVersion:		25G83
+=== chip/cpu ===
+Apple M1
+8
+4
+4
+=== memory ===
+8 GB
+=== disk free (repo volume) ===
+Filesystem      Size    Used   Avail Capacity iused ifree %iused  Mounted on
+/dev/disk3s5   228Gi   148Gi    53Gi    74%    1.5M  551M    0%   /System/Volumes/Data
+=== battery/power ===
+Now drawing from 'AC Power'
+ -InternalBattery-0 (id=22675555)	46%; charging; 2:35 remaining present: true
+=== pmset settings ===
+System-wide power settings:
+Currently in use:
+ standby              1
+ Sleep On Power Button 1
+ hibernatefile        /var/vm/sleepimage
+ powernap             1
+ networkoversleep     0
+ disksleep            10
+ sleep                1 (sleep prevented by powerd, coreaudiod, coreaudiod, coreaudiod, coreaudiod, runningboardd, runningboardd, runningboardd)
+ hibernatemode        3
+ ttyskeepawake        1
+ displaysleep         0 (display sleep prevented by Wispr Flow)
+ tcpkeepalive         1
+ lowpowermode         0
+ womp                 1
+=== shell ===
+/bin/zsh
+=== pyenv versions ===
+  system
+* 3.10.14 (set by /Users/rakeshdandamudi/Capstone/rl-k8s-autoscaler-github-clean/.python-version)
+  3.10.14/envs/ml-env
+  ml-env --> /Users/rakeshdandamudi/.pyenv/versions/3.10.14/envs/ml-env
+=== global python ===
+/Users/rakeshdandamudi/.pyenv/shims/python
+/Users/rakeshdandamudi/.pyenv/shims/python3
+Python 3.10.14

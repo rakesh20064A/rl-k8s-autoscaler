@@ -1,0 +1,30 @@
+# configs/traffic_profiles/demo_smoke_test.yaml
+# DEMO-ONLY connectivity/metrics smoke profile for the Streamlit Experiment
+# page's "Smoke Test" traffic option (scripts/run_demo_episode.py). NOT a
+# scientific training/evaluation profile: not in
+# rl_live_common.TRAINING_PROFILES, not hash-pinned, never used by
+# evaluate_ppo_vs_hpa.py's final-evaluation path.
+#
+# Deliberately >= configs/experiment.yaml's control_interval_seconds (30s).
+# The project's existing smoke_test_15s.yaml is only 15s -- SHORTER than one
+# 30s decision interval, so run_hpa_episode/run_ppo_episode's
+# `n_steps = round(duration_seconds / decision_interval_s)` evaluates to
+# round(15/30) == 0, meaning their measurement loop never executes even
+# once: the only Prometheus sample ever taken is the single pre-traffic
+# snapshot from backend.reset(), before `_start_holdout_traffic()` even
+# starts the generator. That is why the demo reported success/error RPS of
+# 0.0 and null latency -- not a traffic, routing, or Prometheus bug (traffic
+# was independently confirmed to reach demo-app via the raw request
+# counter). 40s guarantees n_steps=1, so one real backend.advance() happens
+# while traffic is active.
+profile: demo_smoke_test
+description: "Demo-only connectivity/metrics smoke check (~2 RPS, 40.0s, intensity 3)"
+seed: 42
+endpoint: /work
+intensity: 3
+
+phases:
+  - name: demo_smoke_constant
+    type: constant
+    duration_seconds: 40.0
+    target_rps: 2.0

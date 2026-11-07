@@ -74,13 +74,13 @@ class TestAppSmoke:
 
     def test_auto_mode_switch_does_not_crash(self):
         at = _run_page("Experiment")
-        mode_radio = next(r for r in at.radio if r.key == "du_mode_choice")
+        mode_radio = next(r for r in at.radio if r.key == "du_mode_widget")
         mode_radio.set_value("Auto").run()
         assert not at.exception
 
     def test_auto_mode_start_shows_pipeline(self):
         at = _run_page("Experiment")
-        mode_radio = next(r for r in at.radio if r.key == "du_mode_choice")
+        mode_radio = next(r for r in at.radio if r.key == "du_mode_widget")
         mode_radio.set_value("Auto").run()
         at.button[0].click().run()  # START, now in Auto mode
         assert not at.exception

@@ -1,0 +1,18 @@
+# configs/traffic_profiles/v2/constant_cpu.yaml
+# V2 multi-resource workload set (Part C). NOT a modification of the frozen
+# V1 configs/traffic_profiles/constant.yaml -- a new file, new namespace.
+# Explicit CPU-only baseline for the V2 resource-mix dimension: same
+# traffic shape/RPS as V1's constant.yaml, resource_mode made explicit
+# rather than left to the (equivalent) default.
+
+profile: constant_cpu
+description: "V2: constant medium load, CPU-only resource mode (explicit V1-equivalent baseline)"
+seed: 42
+
+duration_seconds: 600
+target_rps: 20
+intensity: 3
+endpoint: /work
+
+resource_mode: cpu
+memory_mb: 0

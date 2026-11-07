@@ -1,0 +1,8 @@
+=== monitoring namespace pods detail ===
+Unable to connect to the server: net/http: TLS handshake timeout
+=== helm list -A ===
+Error: kubernetes cluster unreachable: Get "https://127.0.0.1:49843/version": net/http: TLS handshake timeout
+=== helm get values kube-prom-stack -n monitoring (will scan for secrets) ===
+Error: kubernetes cluster unreachable: Get "https://127.0.0.1:49843/version": net/http: TLS handshake timeout
+=== prometheus statefulset resources/retention ===
+Unable to connect to the server: net/http: TLS handshake timeout

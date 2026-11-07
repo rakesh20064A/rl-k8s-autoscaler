@@ -108,9 +108,18 @@ STATUS_TRUNCATED = "truncated"
 STATUS_SAFETY_ABORTED = "safety_aborted"
 STATUS_TOOLING_FAILED = "tooling_failed"
 STATUS_SESSION_BOUNDARY_FORCED_RESET = "session_boundary_forced_reset"
+# V2 Phase 3C PART 3: an EXTERNAL caller-side safety mechanism (e.g. a V2
+# pilot's SB3 callback) stopped model.learn() mid-episode -- a different
+# event from STATUS_SESSION_BOUNDARY_FORCED_RESET (planned session-length
+# boundary) or STATUS_SAFETY_ABORTED (the environment's OWN consecutive-
+# invalid-telemetry logic). Added because V2 Phase 3A/3B's physical attempt
+# 2 (PPO pilot) demonstrated this exact gap: a callback-level stop never
+# reaches this wrapper's own step()'s terminated/truncated branch, so no
+# ledger row was written for that attempt at all.
+STATUS_PILOT_SAFETY_INTERRUPTED = "pilot_safety_interrupted"
 ALL_STATUSES = (
     STATUS_TRUNCATED, STATUS_SAFETY_ABORTED, STATUS_TOOLING_FAILED,
-    STATUS_SESSION_BOUNDARY_FORCED_RESET,
+    STATUS_SESSION_BOUNDARY_FORCED_RESET, STATUS_PILOT_SAFETY_INTERRUPTED,
 )
 
 
@@ -268,6 +277,54 @@ class LedgeredEpisodeWrapper(gym.Wrapper):
             "total_reward": self._total_reward,
             "reward_validity_counts": dict(self._reward_validity_counts),
             "safety_events": self._safety_events,
+            "controller_code_hash": self.controller_code_hash,
+            "config_hash": self.config_hash,
+        }
+        episode_ledger.append_row(self.ledger_path, row)
+        self._episode_completed = True
+        return True
+
+    def log_pilot_safety_interruption(self, reason: str) -> bool:
+        """V2 Phase 3C PART 3: called by an EXTERNAL safety mechanism (e.g.
+        scripts.v2_pilot_safety.PilotSafetyCallback) immediately after it
+        decides to stop model.learn() early, BEFORE this wrapper's own
+        step() has any chance to observe a terminated/truncated signal for
+        the in-progress episode (a callback-level SB3 stop never reaches
+        this wrapper's step() at all for that final step). Idempotent-safe
+        exactly like log_session_boundary_if_episode_in_progress(): returns
+        False (no row written) if the episode already completed normally
+        through this wrapper's own step() on this same final call -- this
+        is what prevents a duplicate row when both the environment's own
+        termination AND the external safety stop could plausibly fire for
+        the same step. Never fabricates terminated=True/truncated=True --
+        both are recorded as False, since the environment itself never
+        signalled either."""
+        if self._episode_completed:
+            return False
+        attempt_n = episode_ledger.next_physical_attempt_number(
+            self.ledger_path, self._scientific_episode_id, field="scientific_episode_id",
+        )
+        row = {
+            "episode_id": self._episode_id,
+            "scientific_episode_id": self._scientific_episode_id,
+            "global_schedule_episode_index": self._resolved_global_schedule_episode_index,
+            "physical_attempt_id": f"{self._scientific_episode_id}__attempt{attempt_n}",
+            "physical_attempt_number": attempt_n,
+            "role": self.role,
+            "seed": self.seed,
+            "traffic_profile": self.traffic_profile,
+            "profile_hash": self.profile_hash,
+            "n_decision_steps": self._n_steps,
+            "ppo_update_index": self._ppo_update_index,
+            "start_utc": self._start_utc,
+            "end_utc": datetime.now(timezone.utc).isoformat(),
+            "status": STATUS_PILOT_SAFETY_INTERRUPTED,
+            "valid": False,
+            "terminated": False,
+            "truncated": False,
+            "total_reward": self._total_reward,
+            "reward_validity_counts": dict(self._reward_validity_counts),
+            "safety_events": self._safety_events + [{"step_index": self._n_steps, "reason": reason}],
             "controller_code_hash": self.controller_code_hash,
             "config_hash": self.config_hash,
         }

@@ -1,0 +1,98 @@
+# configs/reward_v2.yaml
+# ============================================================================
+# V2 NAMESPACE -- a NEW file, not an edit of the frozen configs/reward.yaml.
+# NOT consumed by load_env_config_from_yaml()/reward.py (the frozen V1
+# loader and reward function) -- this file is read exclusively by the NEW,
+# parallel autoscaler/src/rl_env/reward_v2.py (RewardConfigV2/
+# compute_reward_v2()). `reward_contract_version` stays at 2 for namespace-
+# loader-compatibility reasons only (see configs/rl_v2.yaml's own note on
+# deferring a numeric contract bump) -- it does NOT mean the V2 reward
+# FORMULA is unchanged from V1; it very much is (see reward_status below
+# and autoscaler/src/rl_env/reward_v2.py's module docstring for the full
+# design rationale).
+# ============================================================================
+
+reward_contract_version: 2
+
+# V2 Phase 2.1 PART 6: the reward FORMULA itself is now redesigned (not
+# merely inherited) -- see autoscaler/src/rl_env/reward_v2.py. Still
+# NOT validated against a trained V2 policy (no V2 model exists yet); the
+# values below are a principled, evidence-informed design (see
+# tests/unit/test_reward_v1_audit.py for the V1 failure-mode evidence this
+# responds to, and tests/unit/test_reward_v2.py for this formula's own
+# numeric proof), not an empirically-tuned final reward.
+reward_status: v2_designed_pending_training_validation
+
+# Total V2 reward formula (autoscaler/src/rl_env/reward_v2.py docstring has
+# the full mathematical definition and the exact priority-ordering
+# rationale -- reliability > SLA > safe CPU/memory pressure > waste/
+# efficiency > scaling churn, realized via each term's MAXIMUM possible
+# per-step magnitude):
+#
+#   reward = - w_reliability * clip(error_rate, 0, 1)
+#            - w_sla         * clip(excess_sla^2, 0, 1)
+#            - w_pressure    * max(pressure_cpu, pressure_memory)
+#            - w_waste       * 1{waste_applies}
+#            - w_action      * 1{action_penalty_applies}
+#            - w_reversal    * 1{reversal_applies}
+#            - w_boundary    * 1{boundary_applies}
+#
+# KEY DESIGN CHANGE from V1 (see reward.py's unconditional
+# `w_resource * (current_replicas-1)/(max-1)` term): there is NO
+# unconditional per-replica resource cost. The `waste` term only applies
+# when the policy is CURRENTLY over-provisioned relative to ACTUAL,
+# CURRENTLY HEALTHY load (current_replicas > min_replicas AND both
+# cpu_per_replica/memory_per_replica are clearly low AND p95/error are
+# healthy) -- it is mathematically impossible to earn a lower waste cost by
+# staying small during an SLA violation, because the condition requires SLA
+# to already be healthy. This directly answers V2 Phase 2.1 PART 5's
+# audited V1 problem: a constant-per-step cost that competes against an
+# intermittent SLA penalty, structurally favoring low replica counts even
+# during sustained degradation.
+
+weights:
+  w_reliability: 6.0
+  w_sla: 4.0
+  w_pressure: 2.0
+  w_waste: 0.3
+  w_action: 0.1
+  w_reversal: 0.5
+  w_boundary: 0.2
+
+sla:
+  p95_target_ms: 300   # SYNC: must equal configs/experiment.yaml sla.p95_latency_ms
+
+# CPU/memory "unsafe pressure" -- genuinely multi-metric (PART 6 explicit
+# requirement): BOTH dimensions measured the same way (distance from a safe
+# ceiling toward the pod's actual hard resource limit, quadratic ramp,
+# clipped to [0,1]), and the WORSE of the two (max, not sum) drives the
+# penalty -- mirrors k8s/hpa/hpa_v2_cpu_memory.yaml's own "largest
+# recommendation wins" multi-metric semantics for a consistent mental model.
+pressure:
+  cpu_safe_high: 3.0      # 300% of the 100m CPU request -- same as V1's efficiency_cpu_high (CORR-23)
+  cpu_hard_limit: 5.0     # 500% = the pod's actual 500m CPU limit / 100m request
+  memory_safe_high: 1.2   # 120% of the 64Mi memory request -- matches the CALIBRATED_LIVE V2 HPA memory target
+  memory_hard_limit: 4.0  # 400% = the pod's actual 256Mi memory limit / 64Mi request
+
+# Waste (resource-efficiency) penalty -- SMALL, and conditioned on SLA
+# already being healthy (see the design-change note above). Replaces V1's
+# unconditional resource-count cost AND its "efficiency bonus" (a small
+# positive reward for being in a CPU band) with a single small NEGATIVE
+# cost for genuine, currently-observed over-provisioning only.
+waste:
+  cpu_waste_threshold: 0.3      # below 30% of the CPU request -- well under the 300% safe-pressure ceiling
+  memory_waste_threshold: 0.7   # below 70% of the memory request -- below the measured idle baseline is NOT required here, since waste never applies at min_replicas regardless of utilization
+
+# Action/reversal/boundary: UNCHANGED in shape from V1 (same override-
+# reason-driven eligibility, reward_v2.py's own
+# `_action_side_components()`) -- no new evidence this phase suggested
+# changing their mechanics, only how they rank relative to the redesigned
+# SLA/pressure/waste terms (see weights above).
+action:
+  per_action_cost: 1.0        # multiplied by w_action=0.1 -> max 0.1 per step
+reversal:
+  reversal_window_seconds: 120
+  per_reversal_cost: 1.0      # multiplied by w_reversal=0.5 -> max 0.5 per step
+boundary:
+  triggers_on: replica_bound_clamp
+  per_boundary_violation_cost: 1.0  # multiplied by w_boundary=0.2 -> max 0.2 per step

@@ -117,7 +117,18 @@ div[data-baseweb="popover"] li:hover, div[data-baseweb="menu"] li:hover {{
   background-color: var(--surface-2) !important;
 }}
 
-div[role="radiogroup"] label, div[role="radiogroup"] p {{ color: var(--ink) !important; }}
+/* Radio option text: Streamlit/BaseWeb may put the visible label in a
+   <p>, <span>, or plain <div> depending on version/widget context (not
+   always the <p> this rule used to assume alone), and can apply its own
+   inline/emotion-cache color for the circle+text wrapper. Force every
+   descendant of the label explicitly (not just label/p) so no radio's
+   option text can render invisible against this light canvas regardless
+   of which tag Streamlit happens to use. */
+div[role="radiogroup"] label,
+div[role="radiogroup"] label *,
+div[role="radiogroup"] p,
+div[role="radiogroup"] span,
+div[role="radiogroup"] div {{ color: var(--ink) !important; }}
 div[data-testid="stExpander"] summary, div[data-testid="stExpander"] p {{ color: var(--ink) !important; }}
 div[data-testid="stExpander"] {{ background-color: var(--surface); border-color: var(--hairline) !important; border-radius: {RADIUS}; }}
 

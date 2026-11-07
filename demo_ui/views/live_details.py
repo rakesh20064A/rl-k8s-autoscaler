@@ -1,17 +1,22 @@
-"""pages/live_details.py -- Technical inspection page (sec.16): CLUSTER,
-PROMETHEUS, HPA, PPO, TRAFFIC, EVENTS, PROVENANCE. Denser than the
-executive-dashboard feel of other pages -- engineering diagnostics.
+"""pages/live_details.py -- Technical inspection page (sec.16).
 
-Supports DEMO (fixture, full time series) and LIVE (real read-only
-Kubernetes + Prometheus instant snapshot) data sources (sec.9). LIVE mode
-never fabricates values: any field the real runtime cannot currently answer
-renders `Not available`.
+READ-ONLY monitor of whatever Experiment is doing. This page has NO
+controller/traffic-profile/DEMO-LIVE selector of its own, and the primary
+content is NEVER gated behind `st.session_state["du_data_source"]` --
+Experiment is the only control plane, and relying on that shared key here
+was itself the bug that let the fixture dashboard render by default on a
+fresh Streamlit session (before Experiment's own widget had ever run once
+to seed it). The primary view always shows experiment_store's real
+active/latest run -- `—`/empty-state placeholders, never fixture numbers,
+until that run actually exists. Fixture/demo content, if kept at all, lives
+only inside one collapsed expander at the bottom, clearly labeled.
 """
 
 from __future__ import annotations
 
 import streamlit as st
 
+from demo_ui import experiment_store
 from demo_ui.components.charts import line_chart, step_chart
 from demo_ui.components.controller_status import render_hpa_panel, render_ppo_panel
 from demo_ui.components.layout import render_metric_strip, render_topbar
@@ -21,12 +26,107 @@ from demo_ui.fixtures import build_all_fixture_summaries
 from demo_ui.live_providers import KubernetesClusterProvider, NOT_AVAILABLE, PrometheusMetricsProvider
 from demo_ui.models import Controller, TrafficProfile
 
+# Presentation-only axis ranges for an EMPTY chart (never measured data) --
+# keeps a stable, sensible frame instead of Plotly's arbitrary auto-range
+# for a trace with zero points. Real data overrides these entirely once it
+# exists (callers only pass these when there is no data yet).
+_REPLICAS_EMPTY_RANGE = (0, 8)  # autoscaler's own canonical min1/max8
+_LATENCY_EMPTY_RANGE = (0, 500)
+_CPU_EMPTY_RANGE = (0, 1)
+
 
 def _fmt(value, suffix: str = "") -> str:
     return NOT_AVAILABLE if value is None else f"{value:.1f}{suffix}"
 
 
-def _render_live_snapshot() -> None:
+def _run_status_label(rec: dict) -> str:
+    return (rec.get("stage") or rec.get("status", "unknown")).upper()
+
+
+def _render_run_banner(rec: dict | None, is_active: bool) -> None:
+    if rec is None:
+        st.markdown(
+            '<div class="du-panel mono" style="margin-bottom:0.6rem;">No LIVE experiment has been run yet.</div>',
+            unsafe_allow_html=True,
+        )
+        return
+    profile_label = rec["profile_name"].replace("_", " ").title()
+    prefix = "Current run" if is_active else "Latest completed run"
+    st.markdown(
+        f'<div class="du-panel mono" style="margin-bottom:0.6rem;">{prefix}: LIVE &middot; '
+        f'{rec["controller"]} &middot; {profile_label} &middot; <b>{_run_status_label(rec)}</b> '
+        f'&middot; {rec["run_id"]}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _render_run_telemetry(rec: dict | None) -> None:
+    """Metric cards + charts for the SAME run the banner names. Every
+    value here comes from that run's own persisted samples -- never the
+    instantaneous cluster read (see `_render_current_cluster_state` for
+    that, kept deliberately separate) and never a fixture."""
+    st.markdown('<div class="du-section-label" style="margin-top:0.6rem;">Experiment Telemetry</div>', unsafe_allow_html=True)
+
+    has_samples = bool((rec.get("summary") or {}).get("samples")) if rec is not None else False
+    empty_detail = None
+    if rec is None:
+        empty_primary = "No data available"
+        empty_detail = "Run an experiment to view this metric"
+    elif not has_samples:
+        empty_primary = "Waiting for first measurement…"
+    else:
+        empty_primary = None
+
+    ts_r, replicas = experiment_store.extract_series(rec, "replicas_desired")
+    ts_l, p95 = experiment_store.extract_series(rec, "latency_p95_ms")
+    ts_c, cpu = experiment_store.extract_series(rec, "cpu_cores")
+    ts_q, rps = experiment_store.extract_series(rec, "request_rate_rps")
+
+    render_metric_strip([
+        ("Controller", rec["controller"] if rec is not None else "—"),
+        ("Traffic", rec["profile_name"].replace("_", " ").title() if rec is not None else "—"),
+        ("RPS", f"{rps[-1]:.1f}" if rps else "—"),
+        ("CPU (cores)", f"{cpu[-1]:.3f}" if cpu else "—"),
+        ("Replicas", str(replicas[-1]) if replicas else "—"),
+        ("P95", f"{p95[-1]:.0f} ms" if p95 else "—"),
+    ])
+
+    c1, c2 = st.columns(2)
+    c1.plotly_chart(
+        step_chart("Replicas over time", ts_r, replicas, "replicas",
+                   empty_message=empty_primary, empty_detail=empty_detail, empty_y_range=_REPLICAS_EMPTY_RANGE),
+        use_container_width=True,
+    )
+    c2.plotly_chart(
+        line_chart("P95 Latency", ts_l, {"p95": p95}, "ms",
+                   empty_message=empty_primary, empty_detail=empty_detail, empty_y_range=_LATENCY_EMPTY_RANGE),
+        use_container_width=True,
+    )
+    st.plotly_chart(
+        line_chart("CPU", ts_c, {"cpu": cpu}, "cores",
+                   empty_message=empty_primary, empty_detail=empty_detail, empty_y_range=_CPU_EMPTY_RANGE),
+        use_container_width=True,
+    )
+
+
+def _render_experiment_events(rec: dict | None) -> None:
+    st.markdown('<div class="du-section-label" style="margin-top:0.5rem;">Experiment Events</div>', unsafe_allow_html=True)
+    summary = (rec.get("summary") or {}) if rec is not None else {}
+    scaling_events = summary.get("scaling_events")
+    if rec is None or scaling_events is None:
+        st.markdown('<div class="du-panel mono">No experiment events yet.</div>', unsafe_allow_html=True)
+        return
+    st.markdown(f'<div class="du-panel mono">{scaling_events} scaling event(s) recorded this run.</div>', unsafe_allow_html=True)
+
+
+def _render_current_cluster_state() -> None:
+    """Deliberately separate from, and never mixed into, the experiment
+    telemetry above: this is the live cluster's state RIGHT NOW, which may
+    have nothing to do with any experiment run (e.g. idle between runs).
+    Still real, read-only Kubernetes/Prometheus data -- never fabricated --
+    just explicitly scoped so it can never be mistaken for the run's own
+    historical measurements."""
+    st.markdown('<div class="du-section-label" style="margin-top:0.8rem;">Current Cluster State</div>', unsafe_allow_html=True)
     st.caption("Requires an already-running, externally-managed Prometheus port-forward on localhost:9090. This page never starts or stops one.")
 
     k8s = KubernetesClusterProvider()
@@ -39,25 +139,13 @@ def _render_live_snapshot() -> None:
     snap = prom.get_live_snapshot()
     events = k8s.get_recent_events()
 
-    st.markdown('<div class="du-section-label">Cluster</div>', unsafe_allow_html=True)
+    ready_count = sum(1 for p in pods if p.state.value == "READY")
     render_metric_strip([
+        ("Pods ready", f"{ready_count}/{len(pods)}" if pods else NOT_AVAILABLE),
         ("Deployment", f"{dep['desired']}/{dep['ready']}" if dep else NOT_AVAILABLE),
-        ("Pods", str(len(pods))),
-        ("Node", "Ready"),
+        ("HPA present", "Yes" if hpa is not None else "No"),
+        ("Prometheus", "Reachable" if snap.target_up else f"DOWN: {snap.target_health_message}"),
     ])
-
-    st.markdown('<div class="du-section-label" style="margin-top:0.5rem;">Prometheus</div>', unsafe_allow_html=True)
-    render_metric_strip([
-        ("Target Health", snap.target_health_message if snap.target_up else f"DOWN: {snap.target_health_message}"),
-        ("RPS", _fmt(snap.request_rate_rps)),
-        ("CPU (cores)", _fmt(snap.cpu_cores)),
-        ("Memory (MB)", _fmt(snap.memory_bytes / 1e6 if snap.memory_bytes is not None else None)),
-        ("P50", _fmt(snap.latency_p50_ms, " ms")),
-        ("P95", _fmt(snap.latency_p95_ms, " ms")),
-        ("P99", _fmt(snap.latency_p99_ms, " ms")),
-        ("Error rate", _fmt(snap.error_rate_rps)),
-    ])
-    st.caption("Charts and the evidence log require a running historical sampler and remain DEMO-only in this phase.")
 
     col1, col2 = st.columns(2)
     with col1:
@@ -71,28 +159,15 @@ def _render_live_snapshot() -> None:
     with col2:
         render_pod_panel(pods, restarts=restarts)
 
-    st.markdown('<div class="du-section-label" style="margin-top:0.5rem;">Events</div>', unsafe_allow_html=True)
+    st.markdown('<div class="du-section-label" style="margin-top:0.5rem;">Recent Kubernetes Events</div>', unsafe_allow_html=True)
     if events:
         rows = "\n".join(f"{e['lastTimestamp']:<22} {e['type']:<8} {e['reason']:<20} {e['message']}" for e in events)
         st.markdown(f'<pre class="mono" style="font-size:12px;">{rows}</pre>', unsafe_allow_html=True)
     else:
         st.markdown(f'<div class="du-panel mono">{NOT_AVAILABLE}</div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="du-section-label" style="margin-top:0.5rem;">Provenance</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="du-panel mono" style="font-size:12px;">Data source: LIVE read-only (Kubernetes + Prometheus)</div>',
-        unsafe_allow_html=True,
-    )
 
-
-def render() -> None:
-    data_source = st.radio("Data source", ["DEMO", "LIVE"], horizontal=True, key="du_live_details_source", label_visibility="collapsed")
-    render_topbar(mode_label=data_source, is_live=(data_source == "LIVE"))
-
-    if data_source == "LIVE":
-        _render_live_snapshot()
-        return
-
+def _render_fixture_dashboard() -> None:
     summaries = build_all_fixture_summaries()
 
     col1, col2 = st.columns(2)
@@ -142,3 +217,24 @@ def render() -> None:
         render_pod_panel(run.pods)
 
     render_log_viewer(run.logs)
+
+
+def render() -> None:
+    render_topbar(mode_label="LIVE", is_live=True)
+
+    rec = experiment_store.active_run()
+    is_active = rec is not None
+    if rec is None:
+        rec = experiment_store.latest_run()
+
+    _render_run_banner(rec, is_active)
+    _render_run_telemetry(rec)
+    _render_experiment_events(rec)
+    _render_current_cluster_state()
+
+    with st.expander("Demo fixture data (simulated, not real LIVE results)"):
+        st.caption("Optional simulated reference data -- not generated until you load it.")
+        if st.button("Load demo fixture data", key="du_load_live_fixture"):
+            st.session_state["du_show_live_fixture"] = True
+        if st.session_state.get("du_show_live_fixture", False):
+            _render_fixture_dashboard()

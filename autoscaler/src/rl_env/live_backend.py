@@ -170,6 +170,19 @@ class KubectlRunner:
         out = self._jsonpath(["get", "hpa", "-n", self.app_namespace, "--no-headers"])
         return out != ""
 
+    def list_hpa_names(self) -> List[str]:
+        """V2 Phase 2: unlike `hpa_exists()` (a single present/absent bit),
+        this names WHICH HPA object(s) exist -- needed because V2 introduces
+        a second, independently-nameable HPA variant
+        (k8s/hpa/hpa_v2_cpu_memory.yaml's `demo-app-hpa-v2`, alongside the
+        frozen `demo-app-hpa`) that Kubernetes would otherwise allow to
+        coexist with the first, independently issuing scale decisions
+        against the same Deployment -- a genuine double-controller hazard
+        (see controller_exclusivity.py). Returns an empty list if no HPA
+        object exists in the namespace."""
+        out = self._jsonpath(["get", "hpa", "-n", self.app_namespace, "-o", "jsonpath={.items[*].metadata.name}"])
+        return out.split() if out else []
+
     def delete_hpa(self) -> None:
         self.run(["kubectl", "delete", "hpa", self.hpa_name, "-n", self.app_namespace, "--ignore-not-found"], self.timeout_s)
 

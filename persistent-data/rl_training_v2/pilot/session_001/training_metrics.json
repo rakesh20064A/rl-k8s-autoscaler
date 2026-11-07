@@ -1,0 +1,25 @@
+{
+  "n_steps_seen": 7,
+  "profile_counts": {
+    "ramp_mixed": 7
+  },
+  "action_counts": {
+    "0": 1,
+    "1": 2,
+    "2": 4
+  },
+  "effective_action_counts": {
+    "0": 1,
+    "1": 2,
+    "2": 4
+  },
+  "override_counts": {
+    "none": 6,
+    "scale_down_cooldown": 1
+  },
+  "invalid_step_count": 0,
+  "invalid_step_rate": 0.0,
+  "max_memory_mib": 281.8671875,
+  "termination_reason": "memory_safety_threshold_breached:280.3MiB",
+  "num_timesteps": 7
+}
