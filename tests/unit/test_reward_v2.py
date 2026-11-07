@@ -37,11 +37,97 @@ def _reward(
 
 
 class TestConfigLoadsFromYaml:
-    def test_default_yaml_matches_dataclass_defaults(self):
-        assert load_reward_config_v2_from_yaml() == RewardConfigV2()
+    def test_yaml_diverges_from_dataclass_defaults_only_in_the_recalibrated_fields(self):
+        """V2 Phase 4D-D3 / CORR-57: configs/reward_v2.yaml's live
+        sla.p95_target_ms/waste.cpu_waste_threshold/waste.memory_waste_threshold
+        were deliberately recalibrated (300->1000, 0.3->1.0, 0.7->1.0,
+        evidence-gated) while RewardConfigV2's own Python-level defaults
+        were intentionally left at their original values (still used as
+        this test file's own `CFG` fixture for generic formula-shape
+        tests below, and as the frozen fallback for any caller that
+        constructs RewardConfigV2() directly without loading the YAML).
+        Every OTHER field must still match exactly."""
+        loaded = load_reward_config_v2_from_yaml()
+        default = RewardConfigV2()
+        assert loaded.sla_p95_target_ms == 1000.0
+        assert default.sla_p95_target_ms == 300.0
+        assert loaded.cpu_waste_threshold == 1.0
+        assert default.cpu_waste_threshold == 0.3
+        assert loaded.mem_waste_threshold == 1.0
+        assert default.mem_waste_threshold == 0.7
+        import dataclasses
+
+        loaded_d = dataclasses.asdict(loaded)
+        default_d = dataclasses.asdict(default)
+        for key in ("sla_p95_target_ms", "cpu_waste_threshold", "mem_waste_threshold"):
+            del loaded_d[key], default_d[key]
+        assert loaded_d == default_d
 
     def test_default_yaml_path_exists(self):
         assert DEFAULT_REWARD_V2_YAML.exists()
+
+
+class TestRecalibratedSlaAndWasteCorr57:
+    """V2 Phase 4D-D3 / CORR-57: tests against the REAL loaded
+    configs/reward_v2.yaml (1000ms SLA, 1.0/1.0 waste thresholds), not the
+    generic `CFG` fixture -- proves the live, evidence-gated configuration
+    behaves exactly as the gate analysis required."""
+
+    LIVE_CFG = load_reward_config_v2_from_yaml()
+
+    def _reward_live(self, *, replicas, p95_ms, error_rate, cpu_per_replica, memory_per_replica):
+        return compute_reward_v2(
+            decision_state_valid=True, outcome_state_valid=True,
+            p95_latency_ms=p95_ms, error_rate=error_rate,
+            deployment_current_replicas=replicas, cpu_per_replica=cpu_per_replica,
+            memory_per_replica=memory_per_replica, requested_delta=0, effective_delta=0,
+            override_reason=OVERRIDE_NONE, is_reversal=False, config=self.LIVE_CFG,
+        )
+
+    def test_p95_975_is_not_penalized(self):
+        result = self._reward_live(
+            replicas=4, p95_ms=975.0, error_rate=0.0, cpu_per_replica=0.3, memory_per_replica=0.9,
+        )
+        assert result.components["sla"] == 0.0
+
+    def test_p95_2200_is_penalized(self):
+        result = self._reward_live(
+            replicas=2, p95_ms=2200.0, error_rate=0.0, cpu_per_replica=4.0, memory_per_replica=0.7,
+        )
+        assert result.components["sla"] > 0.0
+
+    def test_waste_fires_under_new_thresholds_above_floor(self):
+        result = self._reward_live(
+            replicas=4, p95_ms=975.0, error_rate=0.0, cpu_per_replica=0.3, memory_per_replica=0.9,
+        )
+        assert result.components["waste"] == self.LIVE_CFG.w_waste
+        assert result.components["waste"] > 0.0
+
+    def test_waste_does_not_fire_at_or_above_new_thresholds(self):
+        at_cpu_threshold = self._reward_live(
+            replicas=4, p95_ms=975.0, error_rate=0.0, cpu_per_replica=1.0, memory_per_replica=0.9,
+        )
+        at_mem_threshold = self._reward_live(
+            replicas=4, p95_ms=975.0, error_rate=0.0, cpu_per_replica=0.3, memory_per_replica=1.0,
+        )
+        assert at_cpu_threshold.components["waste"] == 0.0
+        assert at_mem_threshold.components["waste"] == 0.0
+
+    def test_waste_never_fires_during_an_sla_violation_under_new_target(self):
+        result = self._reward_live(
+            replicas=4, p95_ms=1200.0, error_rate=0.0, cpu_per_replica=0.3, memory_per_replica=0.9,
+        )
+        assert result.components["waste"] == 0.0
+        assert result.components["sla"] > 0.0
+
+    def test_v1_reward_completely_unaffected(self):
+        """V1's own reward.py/configs/reward.yaml must still use 300ms --
+        confirmed by loading V1's real config, independent of this file's
+        V2-only CFG/LIVE_CFG fixtures."""
+        from autoscaler.src.rl_env.config import load_env_config_from_yaml
+
+        v1_cfg = load_env_config_from_yaml()
+        assert v1_cfg.reward.sla_p95_target_ms == 300.0
 
 
 class TestPriorityOrderingByMaxMagnitude:

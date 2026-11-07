@@ -295,3 +295,89 @@ class TestKubectlRunnerListHpaNames:
         fk = FakeKubectl(hpa_names=["demo-app-hpa", "demo-app-hpa-v2"])
         runner = KubectlRunner(run=fk.run)
         assert runner.list_hpa_names() == ["demo-app-hpa", "demo-app-hpa-v2"]
+
+
+class TestIdleValidityCorr56:
+    """V2 Phase 4D-D3 / CORR-56: a pod that has never served a request on
+    this route since its last restart exposes NO time series at all for
+    `demo_app_requests_total`/`demo_app_requests_in_progress` (app/src/
+    metrics.py's lazily-labeled Counter/Gauge) -- an ABSENT, non-errored
+    Prometheus result for these two queries must be treated as a genuine
+    0.0, not None, so determine_validity() correctly classifies true idle
+    as valid/no_traffic rather than invalid."""
+
+    def test_absent_request_rate_and_in_progress_become_zero_not_none(self):
+        fake_prom = FakePrometheusClient(values={
+            "cpu_cores": 0.01, "memory_bytes": 30_000_000.0,
+            # request_rate_rps, error_rate_rps, requests_in_progress, latency
+            # deliberately absent from the dict -> query() returns (None, None)
+            # for each, matching the REAL PrometheusClient.query()'s own
+            # documented contract: "(None, None) if metric is absent or
+            # returns NaN (no error)" -- a histogram_quantile over zero
+            # samples returns NaN, which that real client already converts
+            # to None upstream of this function.
+        })
+        backend = _backend(FakeKubectl(), fake_prom)
+        backend.reset()
+        snap = backend.advance(30.0)
+        assert snap.metrics.query_error is False
+        assert snap.metrics.request_rate_rps == 0.0
+        assert snap.metrics.error_rate_rps == 0.0
+        assert snap.metrics.requests_in_progress == 0.0
+
+    def test_absent_metrics_classify_as_valid_no_traffic(self):
+        from autoscaler.src.rl_env.observation import LATENCY_STATE_NO_TRAFFIC, determine_validity
+
+        fake_prom = FakePrometheusClient(values={
+            "cpu_cores": 0.01, "memory_bytes": 30_000_000.0,
+            # request_rate_rps, error_rate_rps, requests_in_progress, latency ALL absent
+        })
+        backend = _backend(FakeKubectl(), fake_prom)
+        backend.reset()
+        snap = backend.advance(30.0)
+        validity = determine_validity(snap.metrics)
+        assert validity.sample_valid is True
+        assert validity.latency_observation_state == LATENCY_STATE_NO_TRAFFIC
+
+    def test_genuine_query_error_on_request_rate_still_invalidates(self):
+        """The fix must not weaken fail-closed handling: a REAL query
+        error (not mere absence) on request_rate_rps must still leave
+        both request_rate_rps and error_rate_rps None, and query_error
+        True -- unchanged from before this phase."""
+        fake_prom = FakePrometheusClient(error_on="request_rate_rps")
+        backend = _backend(FakeKubectl(), fake_prom)
+        backend.reset()
+        snap = backend.advance(30.0)
+        assert snap.metrics.request_rate_rps is None
+        assert snap.metrics.error_rate_rps is None
+        assert snap.metrics.query_error is True
+
+    def test_genuine_query_error_on_requests_in_progress_still_invalidates(self):
+        fake_prom = FakePrometheusClient(error_on="requests_in_progress")
+        backend = _backend(FakeKubectl(), fake_prom)
+        backend.reset()
+        snap = backend.advance(30.0)
+        assert snap.metrics.requests_in_progress is None
+        assert snap.metrics.query_error is True
+
+    def test_target_down_still_forces_everything_none(self):
+        """Fail-closed on a genuine target-down condition is completely
+        unaffected by this fix -- target_up=False short-circuits before
+        any of the absence-defaulting logic runs."""
+        fake_prom = FakePrometheusClient(target_up=False)
+        backend = _backend(FakeKubectl(), fake_prom)
+        backend.reset()
+        snap = backend.advance(30.0)
+        assert snap.metrics.target_up is False
+        assert snap.metrics.request_rate_rps is None
+        assert snap.metrics.requests_in_progress is None
+
+    def test_real_traffic_with_nonzero_in_progress_still_reported_correctly(self):
+        """Non-regression: the ordinary, already-tested real-traffic case
+        (values present, non-zero) is completely unaffected."""
+        fake_prom = FakePrometheusClient()  # default values: 5.0 rps, 1.0 in-progress, etc.
+        backend = _backend(FakeKubectl(), fake_prom)
+        backend.reset()
+        snap = backend.advance(30.0)
+        assert snap.metrics.request_rate_rps == 5.0
+        assert snap.metrics.requests_in_progress == 1.0

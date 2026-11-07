@@ -2100,3 +2100,74 @@ This correction is prospective only. It does not reclassify, recompute, or modif
 
 **Applies to phases**: 4B-R2, 4B-R3, 4B-R4F (prior phases that discovered and diagnosed the single-saturated-pod failure mode as the campaign's only P0), 4D-B (this correction). See `persistent-data/traffic/v2_phase4db_min2_contract_report.md`.
 
+## CORR-56 — Idle (Zero-Traffic) Samples Incorrectly Classified Invalid (Phase 4D-D3)
+
+### Problem
+
+Phase 4D-D2's live validation (`S1 idle_baseline`, 120s, zero traffic) produced 0/4 valid samples -- every sample's `latency_observation_state` was `invalid`, contrary to the frozen contract (`observation.py`'s `determine_validity()`): `request_rate_rps == 0.0` is explicitly documented as a VALID `no_traffic` state, never a failure.
+
+### Root Cause
+
+`app/src/metrics.py`'s `REQUEST_COUNT`/`REQUESTS_IN_PROGRESS` (both `prometheus_client.Counter`/`Gauge` instances declared with label names but never pre-registered) are LAZILY labeled: `.labels(route=..., status_code=...).inc()`/`.labels(route=...).dec()` are only ever called from inside `app/src/main.py`'s request handler (lines 118, 139, 141), never at startup. Consequently, a pod that has never served a single request on a given route since its last restart exposes **no Prometheus time series at all** for `demo_app_requests_total{route=...}` or `demo_app_requests_in_progress{route=...}` -- not a stale-but-present zero, a genuinely absent series. `autoscaler/src/rl_env/live_backend.py`'s `_snapshot_metrics()` (prior to this fix) treated ANY absent query result uniformly as `None`, regardless of whether the query itself errored or simply matched nothing -- so a genuinely-idle-since-restart pod produced `request_rate_rps=None`/`requests_in_progress=None`, which `determine_validity()` correctly (per its OWN contract) classifies as `invalid` (`STALE_OR_MISSING_METRIC`), since `None` is indistinguishable, at that layer, from "Prometheus/the exporter is actually broken."
+
+Confirmed directly, live, read-only: as of this phase, both pods' `demo_app_requests_in_progress{route="/work"}` and `rate(demo_app_requests_total{route="/work"}[1m])` now correctly return `0` (not absent) -- because Phase 4D-D1's own earlier traffic scenarios already touched these labels on both pods, "unlocking" their lazy registration. This is consistent with, and does not contradict, the root-cause diagnosis: the defect is specific to a pod that has NEVER served the route in question, which was true at the start of Phase 4D-D1 (pods had been idle since their last restart, 8-9 hours earlier) and is no longer reproducible live without a pod restart (not performed, per this phase's own constraints).
+
+### Decision
+
+Fixed in `autoscaler/src/rl_env/live_backend.py`'s `_snapshot_metrics()` (NOT the frozen `observation.py`, per this phase's explicit preference for non-governing files): an ABSENT (not errored) result for `request_rate_rps` or `requests_in_progress` now defaults to `0.0` instead of `None`, matching the project's own established null-vs-zero convention (CORR-9) and the frozen validity contract's own intent. This defaulting is applied PER-QUERY, keyed off that specific query's own error flag -- a genuine query error (not mere absence) on either metric still leaves it `None` and `query_error=True`, preserving the existing "an errored request-rate query forces error_rate_rps None too" contract byte-for-byte. `cpu_cores`/`memory_bytes` (cAdvisor container-level metrics, unrelated to the app's own lazy label registration, exist as soon as the container starts regardless of traffic) are deliberately left unchanged -- their absence remains a genuine failure signal, never defaulted.
+
+### Scientific Impact
+
+**None to any already-recorded evidence.** This is a live-cluster-query interpretation fix in a non-frozen module; it does not alter `observation.py`, the reward formula, the 11-feature contract, or any V1 behavior. It changes ONLY what a live idle (zero-traffic-since-restart) window reports: previously `invalid` (discarded, prior-value-held), now correctly `valid`/`no_traffic` with `request_rate_rps=0.0`. A live re-check post-fix (this phase) confirms `determine_validity()` now returns `sample_valid=True, latency_observation_state="no_traffic"` for the current idle state (though, as noted above, the pods were no longer in the exact pre-first-request condition that originally exposed the bug, so this re-check is a non-regression confirmation, not a reproduction of the original failure).
+
+### V1 Investigation (evidence only)
+
+Investigated whether this same root cause explains V1's PPO1/PPO2 evaluation terminations (`results/evaluation/ledgers/ppo_final_evaluation_ledger.jsonl`: `termination_reason: consecutive_invalid_steps_limit_reached`, PPO1 at 23/50 decisions, PPO2 at 20/50). **Evidence found: NO, this is not the same mechanism.** PPO1/PPO2 terminated roughly 10-11.5 minutes INTO their respective ~25-minute episodes, well after real traffic had already been flowing continuously (the lazy-registration gap this correction fixes can only manifest on or near a pod's very FIRST request since restart, which these mid-episode terminations are not consistent with). `results/evaluation/analysis.md`'s own existing text attributes these to genuine "telemetry/target unavailability," consistent with the project's independently-documented CORR-1 cluster-resource-contention finding, not this lazy-metric-registration defect. `v1_invalid_terminations_explained = NO` (evidence-based, not merely absence of proof).
+
+### Preserved Invariants
+
+`target_up=False` and genuine `query_error=True` paths are completely unaffected -- both still force every metric to `None` (target-down case) or still propagate `query_error=True` (per-query error case) exactly as before. No change to `observation.py`, `environment_v2.py`, `reward_v2.py`, or any reward weight/threshold.
+
+### Non-Retroactivity
+
+No historical telemetry, ledger, or evaluation result is reclassified or recomputed. This is prospective only, affecting live queries from this phase onward. `active_correction_reference` is updated globally to `"CORR-56"` (`prior_correction_reference: "CORR-55"`).
+
+**Applies to phases**: 4D-D1 (discovered the defect via the idle_baseline scenario), 4D-D2 (diagnosed it as an open anomaly), 4D-D3 (this correction). See `persistent-data/traffic/v2_phase4dd3_prefreeze_fixes_report.md`.
+
+## CORR-57 — V2 SLA Target and Waste Thresholds Recalibrated (Phase 4D-D3)
+
+### Problem
+
+Phase 4D-D2's live validation found that `constant_memory`/`constant_mixed` steady-state traffic consistently produces `p95_latency_norm ≈ 975ms` (a `histogram_quantile(0.95)` bucket-interpolation artifact of `app/src/metrics.py`'s frozen `(..., 0.5, 1.0, ...)` histogram buckets, given these profiles' own ~500ms memory-hold-per-request design -- nearly all requests land just inside the `(0.5s, 1.0s]` bucket, and Prometheus linearly interpolates within that single coarse bucket). Against the ORIGINAL 300ms SLA target, this made the SLA term permanently, uninformatively penalized for these two profiles (99.2-99.6% of historical steps penalized) regardless of actual system health, and simultaneously made the `waste` term's own `p95 < target` eligibility condition essentially unreachable whenever a step was otherwise eligible for it -- confirmed directly: **0 of 1,310 historical telemetry steps, and 0 of 30 new Phase 4D-D2 validation samples, ever triggered `waste`**, even under a read-only counterfactual loosening both thresholds up to `cpu_waste_threshold=1.3`/`memory_waste_threshold=1.2` (only 1.14% of eligible historical steps fired even then).
+
+### Evidence Gates (all evaluated BEFORE any change, all passed)
+
+Proposed values: `sla.p95_target_ms` 300 -> 1000, `waste.cpu_waste_threshold` 0.3 -> 1.0, `waste.memory_waste_threshold` 0.7 -> 1.0 (floor=2, per CORR-55, unchanged).
+
+- **G1** (S2 `fixed2_cpu`, p95≈2.2s, still SLA-penalized under 1000ms target): all 9 valid samples (1758-2333ms) exceed 1000ms -- **PASS**.
+- **G2** (memory/mixed steady-state p95≈975ms NOT penalized under 1000ms): all 17 qualifying samples (900-1000ms range) fall below 1000ms -- **PASS**.
+- **G3** (waste fires in (0%, 40%] of eligible historical steps, `replicas > 2`): 167/792 eligible steps fire (21.09%) -- **PASS**.
+- **G4** (zero sanity violations -- waste never co-occurs with `pressure > 0`, `p95 >= target`, `memory_per_replica >= 1.0`, or `cpu_per_replica >= 1.0`, in either historical or new validation data): 0 violations in both -- **PASS**.
+
+All 4 gates passed; the recalibration was applied.
+
+### Decision
+
+Changed ONLY `configs/reward_v2.yaml`'s three values (`sla.p95_target_ms`, `waste.cpu_waste_threshold`, `waste.memory_waste_threshold`) as proposed above, with adjacent comments explaining the change and citing this correction. `configs/experiment.yaml`'s own shared `sla.p95_latency_ms=300` (V1's value, and the OLD "must stay in sync" convention `reward_v2.yaml` previously documented) is **unchanged** -- V2 now deliberately diverges from it. V1's own `configs/reward.yaml`/`reward.py` are completely untouched and confirmed still `300.0` by direct load.
+
+**Consumers of the V2 SLA target traced** (file:line): `configs/reward_v2.yaml`'s own `sla.p95_target_ms` (the source); `autoscaler/src/rl_env/reward_v2.py:160`'s `load_reward_config_v2_from_yaml()` (reads it into `RewardConfigV2.sla_p95_target_ms`); `reward_v2.py:240` (the SLA excess calculation) and `reward_v2.py:252` (the waste eligibility condition's own `p95_ms < config.sla_p95_target_ms` check) -- both consume the loaded config value dynamically, requiring no code change. No V2-aware SLA-violation metric exists yet in `scripts/evaluate_ppo_vs_hpa_v2.py` (nothing to trace there); `decision_record_v2.py` stores only the raw p95 value, no baked-in threshold; `demo_ui/` was confirmed to have zero V2 awareness (no reference to `reward_v2`/`rl_v2`/`config_v2`/`KubernetesAutoscalerEnvV2` anywhere in that package) -- its own hardcoded `300.0` (`demo_ui/fixtures.py`) is V1's value and correctly untouched.
+
+### Scientific Impact
+
+Changes the V2 reward's own numeric behavior going forward (training has not yet started under either the old or new values, so nothing is retroactively invalidated). Pre-existing V2 tests that hardcoded a "violation" latency value shared between V1 and V2 calls (`tests/unit/test_environment_v2.py`'s `test_c_sla_violation_state`, `test_severe_sla_violation_dominates_over_healthy_waste_free_state`) were updated to use distinct, still-clearly-violating latency values per env version (V1 stays at 600ms against its unchanged 300ms target; V2 now uses 1500ms against its new 1000ms target) -- not a weakening of either test's intent.
+
+### Preserved Invariants
+
+Reward weights (`w_reliability`, `w_sla`, `w_pressure`, `w_waste`, `w_action`, `w_reversal`, `w_boundary`), the `pressure` block's own thresholds, the 11-feature observation contract, the action space, and every V1 value are completely unchanged. The `waste`-never-fires-during-an-SLA-violation invariant (the reward's own core design claim) is preserved and re-verified under the new thresholds (G4, and a new direct unit test).
+
+### Non-Retroactivity
+
+No historical telemetry or evaluation result is recomputed or reclassified; this applies prospectively to training/validation from this phase onward. `active_correction_reference` is updated globally to `"CORR-57"` (`prior_correction_reference: "CORR-56"`).
+
+**Applies to phases**: 4D-D2 (discovered the SLA/waste defect and produced the counterfactual evidence base), 4D-D3 (this correction, gate evaluation and application). See `persistent-data/traffic/v2_phase4dd3_prefreeze_fixes_report.md`.
+

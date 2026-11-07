@@ -144,6 +144,30 @@ class TestBuildSampleRow:
         assert row["hpa_v2_present"] is False
         assert row["hpa_v2_cpu_current_pct"] is None
 
+    def test_max_per_pod_memory_mib_persisted(self):
+        """V2 Phase 4D-D3 (Fix D): the same value evaluate_safety_abort()
+        already queries for the 230Mi guard must also be persisted into
+        the sample row, not only used transiently."""
+        obs_result = ObservationBuildResult(
+            normalized=[0.5] * 11, raw={}, validity=_FakeValidity(True, "observed"), ready_replicas_used=2,
+        )
+        row = mod.build_sample_row(
+            scenario="hpa_memory", timestamp_utc="t", elapsed_in_scenario_s=30.0, obs_result=obs_result,
+            replicas_desired=4, replicas_ready=4, hpa_status=None, pod_restart_counts={}, pod_request_rates=None,
+            max_per_pod_memory_mib=81.4,
+        )
+        assert row["max_per_pod_memory_mib"] == 81.4
+
+    def test_max_per_pod_memory_mib_defaults_to_none(self):
+        obs_result = ObservationBuildResult(
+            normalized=[0.5] * 11, raw={}, validity=_FakeValidity(True, "observed"), ready_replicas_used=2,
+        )
+        row = mod.build_sample_row(
+            scenario="idle_baseline", timestamp_utc="t", elapsed_in_scenario_s=0.0, obs_result=obs_result,
+            replicas_desired=2, replicas_ready=2, hpa_status=None, pod_restart_counts={}, pod_request_rates=None,
+        )
+        assert row["max_per_pod_memory_mib"] is None
+
 
 @dataclass(frozen=True)
 class _FakeValidity:
@@ -442,6 +466,30 @@ class TestValidationRunnerFullRun:
         assert "demo-app-hpa-v2" in kubectl.list_hpa_names()
         assert read_lock() == CONTROLLER_NONE
         assert orch.force_cleanup_calls == 1
+
+
+class TestRunnerLedgerPathHygiene:
+    """V2 Phase 4D-D3 (Fix D): the runner must never write provenance into
+    V1's shared `persistent-data/rl_training/traffic_provenance_ledger.jsonl`
+    (`scripts.traffic_orchestrator.TRAFFIC_PROVENANCE_LEDGER_PATH`, the
+    base `TrafficOrchestrator`'s own default) -- it must pass an explicit,
+    run-local ledger path instead."""
+
+    def test_default_orchestrator_uses_run_local_ledger_path(self, tmp_path):
+        import scripts.traffic_orchestrator as to
+
+        runner = mod.ValidationRunner(output_dir=tmp_path / "run")
+        assert runner.orchestrator.ledger_path == runner.output_dir / "traffic_provenance_ledger.jsonl"
+        assert runner.orchestrator.ledger_path != to.TRAFFIC_PROVENANCE_LEDGER_PATH
+        assert runner.orchestrator.ledger_path.parent == runner.output_dir
+
+    def test_orchestrators_own_default_behaviour_for_training_callers_is_unchanged(self):
+        """The fix is scoped to THIS runner's own construction call --
+        to.TrafficOrchestrator's own dataclass default must remain V1's
+        shared path, since other (training) callers still rely on it."""
+        import scripts.traffic_orchestrator as to
+
+        assert to.TrafficOrchestrator().ledger_path == to.TRAFFIC_PROVENANCE_LEDGER_PATH
 
 
 def test_scenarios_constant_matches_task_spec():

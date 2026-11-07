@@ -149,10 +149,15 @@ class TestSameSyntheticStatesBothEnvironments:
         assert v2_info_low["reward_components"]["pressure"] == pytest.approx(0.0)
 
     def test_c_sla_violation_state(self):
+        """V2 Phase 4D-D3 / CORR-57: V1's SLA target stays 300ms (600ms is
+        still a clear violation); V2's was recalibrated to 1000ms, so a
+        comparably clear violation now needs a distinctly higher latency
+        (1500ms) -- the two env versions no longer share one "violation"
+        latency value, since they no longer share one SLA target."""
         v1_cfg = load_env_config_from_yaml()
         v2_cfg = load_env_config_v2_from_yaml()
         v1_reward, v1_info = self._run_one_step(KubernetesAutoscalerEnv, v1_cfg, 0.15, 20_000_000, latency_ms=600.0)
-        v2_reward, v2_info = self._run_one_step(KubernetesAutoscalerEnvV2, v2_cfg, 0.15, 20_000_000, latency_ms=600.0)
+        v2_reward, v2_info = self._run_one_step(KubernetesAutoscalerEnvV2, v2_cfg, 0.15, 20_000_000, latency_ms=1500.0)
         assert v1_info["reward_components"]["sla"] > 0.0
         assert v2_info["reward_components"]["sla"] > 0.0
         assert v1_reward < 0
@@ -183,10 +188,13 @@ class TestSameSyntheticStatesBothEnvironments:
 
 class TestV2SlaErrorDominanceIntactInRealEnvironment:
     def test_severe_sla_violation_dominates_over_healthy_waste_free_state(self):
+        """V2 Phase 4D-D3 / CORR-57: 900ms is no longer a violation under
+        the recalibrated 1000ms SLA target (it was, under the old 300ms
+        one) -- 1500ms is unambiguously still a severe violation."""
         v2_cfg = load_env_config_v2_from_yaml()
         helper = TestSameSyntheticStatesBothEnvironments()
         violation_reward, _ = helper._run_one_step(
-            KubernetesAutoscalerEnvV2, v2_cfg, 0.1, 20_000_000, latency_ms=900.0,
+            KubernetesAutoscalerEnvV2, v2_cfg, 0.1, 20_000_000, latency_ms=1500.0,
         )
         healthy_reward, _ = helper._run_one_step(
             KubernetesAutoscalerEnvV2, v2_cfg, 0.1, 20_000_000, latency_ms=50.0,
