@@ -5,7 +5,7 @@ V2 Phase 2 PART 5: the thin, reusable V2 controller step function that
 once per decision step. Composes three already-independently-tested V2
 modules -- `safe_inference` (observation validation + safe action
 selection, including policy-inference-failure handling), the existing
-`KubernetesAutoscalerEnv.step()` (gating/actuation, UNCHANGED, frozen since
+`KubernetesAutoscalerEnvV2.step()` (gating/actuation, UNCHANGED since
 Phase 15B.1), and `decision_record_v2` (structured telemetry) -- into the
 exact flow the task requires:
 
@@ -27,13 +27,13 @@ from typing import Any, Dict, Tuple
 import numpy as np
 
 from .decision_record_v2 import DecisionRecordV2, build_decision_record_v2
-from .environment import KubernetesAutoscalerEnv
+from .environment_v2 import KubernetesAutoscalerEnvV2
 from .safe_inference import SafeInferenceResult, infer_safe_action
 from .types import OVERRIDE_POLICY_INFERENCE_FAILURE
 
 
 def run_safe_ppo_step(
-    env: KubernetesAutoscalerEnv,
+    env: KubernetesAutoscalerEnvV2,
     model: Any,
     observation: np.ndarray,
     model_identifier: str,

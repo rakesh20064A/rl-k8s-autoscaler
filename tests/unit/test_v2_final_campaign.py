@@ -117,7 +117,9 @@ class _FakeKubectl:
         self.wait_calls = []
 
     def list_hpa_names(self):
-        return ["demo-app-hpa"]
+        # V2 Phase 4C-1 (P1-2): the campaign's own canonical HPA is now
+        # demo-app-hpa-v2, not V1's demo-app-hpa.
+        return ["demo-app-hpa-v2"]
 
     def delete_hpa(self):
         self.delete_hpa_called = True
@@ -130,7 +132,7 @@ class _FakeKubectl:
 
 
 class _FakeBackend:
-    def __init__(self, prometheus_url=None):
+    def __init__(self, prometheus_url=None, hpa_name=None, hpa_manifest_path=None):
         self._kubectl = _FakeKubectl()
         self.restoration_max_wait_s = 1.0
         self.set_desired_replicas_calls = []

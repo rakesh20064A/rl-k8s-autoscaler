@@ -71,6 +71,8 @@ from autoscaler.src.rl_env.config_v2 import DEFAULT_RL_V2_YAML, load_env_config_
 from autoscaler.src.rl_env.controller_exclusivity import (  # noqa: E402
     CONTROLLER_NONE,
     CONTROLLER_PPO,
+    V2_HPA_MANIFEST_PATH,
+    V2_HPA_NAME,
     ControllerConflictError,
     acquire_controller,
     read_lock,
@@ -482,14 +484,17 @@ def run_campaign_preflight() -> Dict[str, Any]:
     checks["demo_app_pods"] = [p.__dict__ for p in pods]
     checks["demo_app_healthy"] = bool(pods) and all(p.restart_count == 0 and p.ready for p in pods)
 
-    # Canonical HPA present.
+    # Canonical HPA present. V2 Phase 4C-1 (P1-2): the V2 campaign's own
+    # canonical HPA is demo-app-hpa-v2 (V2_HPA_NAME), never V1's
+    # demo-app-hpa -- fails closed (canonical_hpa_present=False) if V1's
+    # HPA is the one present instead, rather than silently accepting it.
     try:
         proc = subprocess.run(
             ["kubectl", "get", "hpa", "-n", "autoscaler-app", "-o", "json"], capture_output=True, text=True, timeout=15,
         )
         hpa_names = [item["metadata"]["name"] for item in json.loads(proc.stdout or "{}").get("items", [])]
         checks["hpa_names"] = hpa_names
-        checks["canonical_hpa_present"] = "demo-app-hpa" in hpa_names
+        checks["canonical_hpa_present"] = V2_HPA_NAME in hpa_names
     except Exception as exc:  # noqa: BLE001
         checks["canonical_hpa_present"] = False
         checks["hpa_error"] = str(exc)
@@ -817,9 +822,17 @@ def run_final_training_campaign(seed: int = FINAL_TRAINING_SEED) -> Dict[str, An
     if existing_lock != CONTROLLER_NONE:
         raise ControllerConflictError(f"refusing to start: controller lock already held by {existing_lock!r}")
 
-    backend = LiveKubernetesBackend(prometheus_url=PROMETHEUS_URL)
+    # V2 Phase 4C-1 (P1-2): this campaign's own canonical HPA is
+    # demo-app-hpa-v2 (V2_HPA_NAME) -- the backend is constructed with that
+    # explicit identity so its own delete_hpa()/restore_hpa() calls below
+    # act on demo-app-hpa-v2, never falling back to V1's demo-app-hpa
+    # default. If V1's demo-app-hpa happens to be present, it is caught
+    # here as an unexpected HPA (fails closed, never auto-deleted).
+    backend = LiveKubernetesBackend(
+        prometheus_url=PROMETHEUS_URL, hpa_name=V2_HPA_NAME, hpa_manifest_path=V2_HPA_MANIFEST_PATH,
+    )
     existing_hpas = backend._kubectl.list_hpa_names()
-    unexpected_hpas = [h for h in existing_hpas if h != "demo-app-hpa"]
+    unexpected_hpas = [h for h in existing_hpas if h != V2_HPA_NAME]
     if unexpected_hpas:
         raise ControllerConflictError(f"refusing to start: unexpected HPA object(s) present: {unexpected_hpas}")
 

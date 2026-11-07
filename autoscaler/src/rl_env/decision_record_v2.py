@@ -50,6 +50,17 @@ class DecisionRecordV2:
     epsilon: float
 
     model_identifier: str
+
+    # V2 Phase 4C-1 (R4F sec.4.5 gap closure): the PLAIN argmax action (the
+    # policy's own top-probability pick, BEFORE the near-tie-epsilon
+    # selector can override it to HOLD), recorded alongside the already-
+    # existing safe_selected_action_* fields above so both the pre- and
+    # post-tie-break choice are visible per decision. None only on a
+    # policy_inference_failure step (no distribution to take an argmax of).
+    # Additive -- no existing field's meaning or value changes.
+    raw_argmax_action_index: Optional[int] = None
+    raw_argmax_action_name: Optional[str] = None
+
     controller_identifier: str = CONTROLLER_IDENTIFIER_PPO_V2
     extra: Dict[str, Any] = field(default_factory=dict)
 
@@ -84,6 +95,16 @@ def build_decision_record_v2(
     `pending_scale_gate` -- hence these are passed separately rather than
     re-derived here)."""
     is_failure = inference_result.override_reason != "none"
+
+    raw_argmax_action_index: Optional[int] = None
+    raw_argmax_action_name: Optional[str] = None
+    if inference_result.probabilities is not None:
+        from .action_selection import compute_margin_stats
+
+        margin_stats = compute_margin_stats(inference_result.probabilities)
+        raw_argmax_action_index = margin_stats.argmax_action_index
+        raw_argmax_action_name = margin_stats.argmax_action_name
+
     return DecisionRecordV2(
         timestamp_utc=timestamp_utc,
         observation_vector=list(observation_vector),
@@ -105,6 +126,8 @@ def build_decision_record_v2(
         near_tie=inference_result.is_tie,
         epsilon=inference_result.epsilon,
         model_identifier=model_identifier,
+        raw_argmax_action_index=raw_argmax_action_index,
+        raw_argmax_action_name=raw_argmax_action_name,
         controller_identifier=controller_identifier,
         extra=extra or {},
     )
