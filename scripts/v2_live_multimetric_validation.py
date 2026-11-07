@@ -219,10 +219,15 @@ def build_sample_row(
     hpa_status: Optional[Dict[str, Any]],
     pod_restart_counts: Dict[str, int],
     pod_request_rates: Optional[Dict[str, float]],
+    max_per_pod_memory_mib: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Pure function assembling one JSONL row. `obs_result` is an
     `observation.ObservationBuildResult` (the SAME type `environment_v2.py`
-    gets from `build_observation()`)."""
+    gets from `build_observation()`). `max_per_pod_memory_mib` (V2 Phase
+    4D-D3, Fix D) is the SAME value `evaluate_safety_abort()` already
+    queries for the 230Mi guard -- persisted here too, so a post-hoc
+    analysis of any run never has to approximate it from
+    `memory_per_replica`'s own average-based raw observation."""
     return {
         "timestamp_utc": timestamp_utc,
         "scenario": scenario,
@@ -240,6 +245,7 @@ def build_sample_row(
         "hpa_v2_desired_replicas": hpa_status.get("desired_replicas") if hpa_status else None,
         "pod_restart_counts": pod_restart_counts,
         "pod_request_rates_rps": pod_request_rates,
+        "max_per_pod_memory_mib": max_per_pod_memory_mib,
     }
 
 
@@ -310,6 +316,15 @@ class ValidationRunner:
         )
         self.orchestrator = orchestrator if orchestrator is not None else ValidationTrafficOrchestrator(
             http_get=_default_http_get, traffic_base_dir=self.output_dir / "traffic",
+            # V2 Phase 4D-D3 (Fix D): explicit, own-run-directory ledger path --
+            # the base `to.TrafficOrchestrator`'s own default
+            # (`TRAFFIC_PROVENANCE_LEDGER_PATH`) points at V1's SHARED
+            # `persistent-data/rl_training/traffic_provenance_ledger.jsonl`,
+            # which this validation runner must never write into. The
+            # orchestrator's own default behaviour for training callers is
+            # completely unchanged -- only this runner's own construction
+            # passes an explicit override.
+            ledger_path=self.output_dir / "traffic_provenance_ledger.jsonl",
         )
 
     # -- small I/O helpers ---------------------------------------------------
@@ -403,6 +418,7 @@ class ValidationRunner:
                     obs_result=obs_result, replicas_desired=snapshot.replicas.desired,
                     replicas_ready=snapshot.replicas.ready, hpa_status=hpa_status,
                     pod_restart_counts=restart_counts, pod_request_rates=request_rates,
+                    max_per_pod_memory_mib=max_mem_mib,
                 )
                 self._append_sample(row)
                 n_samples += 1

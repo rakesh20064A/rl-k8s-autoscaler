@@ -207,17 +207,25 @@ def _query_dict(app_namespace: str, deployment: str, route: str) -> Dict[str, st
 
 
 def _snapshot_metrics(prom: PrometheusClient, queries: Dict[str, str], app_namespace: str, deployment: str) -> RawMetricSnapshot:
-    """Query Prometheus for one decision step and apply the SAME null/zero
-    policy as collect_sample() (collectors/metrics_collector.py lines
-    ~512-534), ported verbatim rather than re-derived:
+    """Query Prometheus for one decision step and apply the null/zero
+    policy, originally ported verbatim from collect_sample()
+    (collectors/metrics_collector.py lines ~512-534), REFINED in V2 Phase
+    4D-D3 / CORR-56 for request_rate_rps/requests_in_progress (see the
+    inline comment at their defaulting below for why):
       - target down -> every rate field is None (never inferred as 0).
-      - request_rate_rps itself missing/errored -> error_rate_rps also None
-        (an error rate is meaningless without a request-rate denominator).
+      - request_rate_rps ABSENT (no error) -> 0.0, and error_rate_rps also
+        0.0 (CORR-56: a pod that has never served this route since its
+        last restart has no time series at all, not a stale/zero one --
+        this is indistinguishable from genuine zero traffic).
       - request_rate_rps present -> error_rate_rps absent-without-error
         becomes a genuine 0.0 (real "no 5xx traffic", not a fabrication).
+      - requests_in_progress ABSENT (no error) -> 0.0 (CORR-56, same lazy-
+        label-registration reasoning).
       - ANY query error (including on cpu/memory/in-progress/latency)
         forces `query_error=True`, matching determine_validity()'s
-        unconditional invalidity on query_error (observation.py).
+        unconditional invalidity on query_error (observation.py) -- this
+        is checked BEFORE any of the above defaulting is consulted, so a
+        genuine Prometheus/instrumentation failure is never masked by it.
     Latency is converted seconds -> milliseconds here (RawMetricSnapshot's
     contract; the PromQL/metrics_collector.py convention keeps latency in
     seconds).
@@ -231,17 +239,46 @@ def _snapshot_metrics(prom: PrometheusClient, queries: Dict[str, str], app_names
         )
 
     values: Dict[str, Optional[float]] = {}
+    errored: Dict[str, bool] = {}
     any_query_error = False
     for name, promql in queries.items():
         val, err = prom.query(promql)
+        errored[name] = bool(err)
         if err:
             any_query_error = True
         values[name] = val
 
+    # V2 Phase 4D-D3 / CORR-56: `app/src/metrics.py`'s REQUEST_COUNT/
+    # REQUESTS_IN_PROGRESS are LAZILY labeled (`.labels(route=...).inc()`
+    # is only ever called from inside the request handler, never
+    # pre-registered at startup) -- so a pod that has never served a
+    # single request on this route since its last restart exposes NO
+    # time series at all for `demo_app_requests_total{route=...}` or
+    # `demo_app_requests_in_progress{route=...}`, not a stale/zero one.
+    # An EMPTY (not errored) Prometheus result for these two queries is
+    # therefore indistinguishable, in effect, from "genuinely zero
+    # requests in the window" -- exactly the valid no-traffic state the
+    # frozen contract (observation.py's determine_validity()) already
+    # defines, never a failure. This defaulting applies ONLY when the
+    # query for that SPECIFIC metric did not itself error (`errored[name]`
+    # is False) -- a genuine per-query error still leaves that value None,
+    # preserving the existing "a failed request_rate_rps query forces
+    # error_rate_rps None too" contract. `any_query_error` also still
+    # propagates via `query_error` below regardless, which
+    # determine_validity() checks BEFORE ever looking at these values, so
+    # an actual Prometheus/instrumentation failure is caught exactly as
+    # before either way. cpu_cores/memory_bytes (cAdvisor container-level
+    # metrics, unrelated to the app's own lazy label registration) are
+    # deliberately left None-on-absent, unchanged -- their absence is
+    # never an expected, legitimate state.
     total_rate = values.get("request_rate_rps")
     if total_rate is None:
-        request_rate = None
-        error_rate = None
+        if errored.get("request_rate_rps"):
+            request_rate = None
+            error_rate = None
+        else:
+            request_rate = 0.0
+            error_rate = 0.0
     else:
         request_rate = total_rate
         error_rate = values.get("error_rate_rps")
@@ -251,11 +288,15 @@ def _snapshot_metrics(prom: PrometheusClient, queries: Dict[str, str], app_names
     latency_s = values.get("latency_p95_seconds")
     latency_ms = None if latency_s is None else latency_s * 1000.0
 
+    requests_in_progress = values.get("requests_in_progress")
+    if requests_in_progress is None and not errored.get("requests_in_progress"):
+        requests_in_progress = 0.0
+
     return RawMetricSnapshot(
         request_rate_rps=request_rate,
         error_rate_rps=error_rate,
         latency_p95_ms=latency_ms,
-        requests_in_progress=values.get("requests_in_progress"),
+        requests_in_progress=requests_in_progress,
         cpu_cores=values.get("cpu_cores"),
         memory_bytes=values.get("memory_bytes"),
         target_up=True,
