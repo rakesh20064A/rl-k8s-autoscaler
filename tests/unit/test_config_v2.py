@@ -74,16 +74,39 @@ class TestIdentityMetadataValidated:
 
 
 class TestObservationContractUnchanged:
-    def test_observation_config_numerically_identical_to_v1(self):
-        """The 11-element observation contract has NOT changed -- only the
-        reward differs. Direct proof: V2's ObservationConfig/GatingConfig
-        are byte-identical to V1's."""
+    def test_observation_config_identical_to_v1_except_replica_floor(self):
+        """The 11-element observation contract's ORDER/NAMES/RANGES have
+        not changed -- only the reward formula differs -- EXCEPT for the
+        replica-bound fields, which V2 Phase 4D-B / CORR-55 deliberately
+        raises to a floor of 2 for V2 only (V1 stays at 1). Every other
+        field of ObservationConfig/GatingConfig remains byte-identical."""
         v1 = load_env_config_from_yaml()
         v2 = load_env_config_v2_from_yaml()
-        assert dataclasses.asdict(v1.observation) == dataclasses.asdict(v2.observation)
-        assert dataclasses.asdict(v1.gating) == dataclasses.asdict(v2.gating)
+        v1_obs = dataclasses.asdict(v1.observation)
+        v2_obs = dataclasses.asdict(v2.observation)
+        v1_gating = dataclasses.asdict(v1.gating)
+        v2_gating = dataclasses.asdict(v2.gating)
+        for key in ("min_replicas",):
+            del v1_obs[key], v2_obs[key]
+            del v1_gating[key], v2_gating[key]
+        assert v1_obs == v2_obs
+        assert v1_gating == v2_gating
         assert v1.decision_interval_s == v2.decision_interval_s
-        assert v1.initial_replicas == v2.initial_replicas
+
+    def test_v2_replica_floor_is_2_v1_stays_1(self):
+        """V2 Phase 4D-B / CORR-55: the ONE intentional divergence from V1
+        this correction introduces -- V2's replica floor (gating,
+        observation normalization, and initial/reset replicas) is 2; V1's
+        own is untouched at 1. Upper bound (8) is identical for both."""
+        v1 = load_env_config_from_yaml()
+        v2 = load_env_config_v2_from_yaml()
+        assert v1.gating.min_replicas == 1
+        assert v2.gating.min_replicas == 2
+        assert v1.gating.max_replicas == v2.gating.max_replicas == 8
+        assert v1.observation.min_replicas == 1
+        assert v2.observation.min_replicas == 2
+        assert v1.initial_replicas == 1
+        assert v2.initial_replicas == 2
 
     def test_observation_size_still_eleven(self):
         from autoscaler.src.rl_env.observation import OBSERVATION_SIZE

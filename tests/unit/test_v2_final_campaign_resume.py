@@ -134,7 +134,7 @@ class _FakeKubectl:
 
 
 class _FakeBackend:
-    def __init__(self, prometheus_url=None, hpa_name=None, hpa_manifest_path=None):
+    def __init__(self, prometheus_url=None, hpa_name=None, hpa_manifest_path=None, min_replicas=None, initial_replicas=None):
         self._kubectl = _FakeKubectl()
         self.restoration_max_wait_s = 1.0
 

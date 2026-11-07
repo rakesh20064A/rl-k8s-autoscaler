@@ -177,7 +177,7 @@ def run_dry_run_validation(seed: int = 42) -> Dict[str, Any]:
 
     # 7. No-learning integration check: construct V2 env (ScriptedBackend
     # only), reset, step through a few SCRIPTED actions, verify shapes.
-    backend = ScriptedBackend(timeline=_synthetic_dry_run_timeline(), initial_replicas=1)
+    backend = ScriptedBackend(timeline=_synthetic_dry_run_timeline(), initial_replicas=env_config_v2.initial_replicas)
     env = KubernetesAutoscalerEnvV2(backend=backend, episode_duration_s=270.0, config=env_config_v2)
     obs, _info = env.reset(seed=seed)
     report["observation_shape"] = list(obs.shape)
@@ -295,8 +295,11 @@ def run_pilot_training(seed: int = 42) -> Dict[str, Any]:
     # demo-app-hpa-v2 (V2_HPA_NAME), never V1's demo-app-hpa -- the backend
     # is constructed with that explicit identity so delete_hpa()/
     # restore_hpa() below act on demo-app-hpa-v2.
+    # V2 Phase 4D-B / CORR-55: explicit V2 replica floor (2), never
+    # LiveKubernetesBackend's own V1-default min_replicas=1/initial_replicas=1.
     backend = LiveKubernetesBackend(
         prometheus_url=PROMETHEUS_URL, hpa_name=V2_HPA_NAME, hpa_manifest_path=V2_HPA_MANIFEST_PATH,
+        min_replicas=env_config_v2.gating.min_replicas, initial_replicas=env_config_v2.initial_replicas,
     )
 
     # Step 2 (pre-removal): refuse closed on any UNEXPECTED conflict before

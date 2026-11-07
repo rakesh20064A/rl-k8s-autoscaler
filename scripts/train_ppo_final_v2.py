@@ -96,12 +96,31 @@ from scripts.train_ppo_live_v2 import PILOT_ROOT  # noqa: E402
 from scripts.v2_training_instrumentation import build_update_metrics_row  # noqa: E402
 
 # -- V2 final-training namespace: distinct from the pilot AND from V1 --
-FINAL_ROOT = PROJECT_ROOT / "persistent-data" / "rl_training_v2" / "final"
+#
+# V2 Phase 4D-B / CORR-55: the replica-floor contract change (1 -> 2) means
+# the old 768-step campaign (session_002 verified, session_003/
+# session_003__attempt2 failed) can never be validly resumed -- its
+# checkpoints were trained under the floor=1 contract. That campaign's
+# entire directory, `.../rl_training_v2/final/`, is PRESERVED UNTOUCHED AS
+# EVIDENCE (never written to again, see LEGACY_FINAL_ROOT below) and a
+# FRESH namespace, `.../rl_training_v2/final_min2/`, is used for every V2
+# final-campaign write from this point on. Same budget (5,120 steps, 20
+# sessions x 256), same schedule logic -- only the namespace and the
+# replica floor changed.
+LEGACY_FINAL_ROOT = PROJECT_ROOT / "persistent-data" / "rl_training_v2" / "final"
+FINAL_ROOT = PROJECT_ROOT / "persistent-data" / "rl_training_v2" / "final_min2"
 FINAL_SESSIONS_DIR = FINAL_ROOT / "sessions"
 FINAL_LEDGER_PATH = FINAL_ROOT / "ppo_training_episode_ledger_v2.jsonl"
 FINAL_TRAFFIC_LEDGER_PATH = FINAL_ROOT / "traffic_provenance_ledger_v2.jsonl"
 FINAL_UPDATE_METRICS_PATH = FINAL_ROOT / "ppo_update_metrics.jsonl"
 FINAL_CAMPAIGN_METADATA_PATH = FINAL_ROOT / "campaign_metadata.json"
+
+# The reserved final-model promotion path for THIS (min2) campaign -- a
+# distinct sentinel from training_contract_v2.V2_MODEL_PATH (the original
+# "models/ppo_v2/ppo_model_v2.zip", which stays protected too, see
+# `assert_final_namespace_isolated` below) so a future reader never
+# confuses the two campaigns' eventual promoted-model identity.
+FINAL_MODEL_PATH_MIN2 = PROJECT_ROOT / "models" / "ppo_v2" / "ppo_model_v2_min2.zip"
 
 SB3_CHECKPOINT_NAME = "ppo_model.zip"
 RNG_STATE_NAME = "rng_state.pkl"
@@ -141,21 +160,28 @@ def _current_v2_governing_hashes() -> Dict[str, str]:
 
 class FinalNamespaceViolation(RuntimeError):
     """Raised when final-campaign code is about to write somewhere outside
-    its own `persistent-data/rl_training_v2/final/` namespace -- fail
-    closed against both the V1 namespace (reusing training_contract_v2's
-    existing guard) and the V2 PILOT namespace (session_000-003 must never
-    be touched by this script)."""
+    its own `persistent-data/rl_training_v2/final_min2/` namespace -- fail
+    closed against the V1 namespace (reusing training_contract_v2's
+    existing guard), the V2 PILOT namespace (session_000-003 must never be
+    touched by this script), and the LEGACY `final/` (floor=1) campaign
+    namespace (V2 Phase 4D-B / CORR-55 -- preserved as evidence, never
+    written to again)."""
 
 
 def assert_final_namespace_isolated(paths: List[Path]) -> None:
     assert_v1_artifacts_untouched(paths)  # reuse the existing V1 guard unmodified
     pilot_root_resolved = PILOT_ROOT.resolve()
+    legacy_final_root_resolved = LEGACY_FINAL_ROOT.resolve()
     for p in paths:
         resolved = p.resolve()
         if resolved == pilot_root_resolved or pilot_root_resolved in resolved.parents:
             raise FinalNamespaceViolation(f"refusing to write into the frozen V2 PILOT namespace: {p}")
-        if p == V2_MODEL_PATH:
-            raise FinalNamespaceViolation("final-campaign sessions must never write the reserved final-model path")
+        if resolved == legacy_final_root_resolved or legacy_final_root_resolved in resolved.parents:
+            raise FinalNamespaceViolation(
+                f"refusing to write into the legacy (floor=1) final/ campaign namespace, preserved as evidence: {p}"
+            )
+        if p in (V2_MODEL_PATH, FINAL_MODEL_PATH_MIN2):
+            raise FinalNamespaceViolation("final-campaign sessions must never write a reserved final-model path")
 
 
 def resolve_next_final_session_dir(sessions_root: Path = FINAL_SESSIONS_DIR) -> Path:
@@ -316,6 +342,8 @@ def run_dry_run_validation(seed: int = FINAL_TRAINING_SEED) -> Dict[str, Any]:
         ("v1_ledger", V1_TRAINING_LEDGER),
         ("pilot_session_000", PILOT_ROOT / "session_000" / "ppo_model.zip"),
         ("reserved_final_model_path", V2_MODEL_PATH),
+        ("reserved_final_model_path_min2", FINAL_MODEL_PATH_MIN2),
+        ("legacy_final_campaign_session", LEGACY_FINAL_ROOT / "sessions" / "session_003" / SB3_CHECKPOINT_NAME),
     ):
         try:
             assert_final_namespace_isolated([bad_path])
@@ -340,7 +368,7 @@ def run_dry_run_validation(seed: int = FINAL_TRAINING_SEED) -> Dict[str, Any]:
 
         def build_env(seed_for_profile_lookup: int):
             env_config_v2 = load_env_config_v2_from_yaml()
-            backend = ScriptedBackend(timeline=_synthetic_dry_run_timeline(), initial_replicas=1)
+            backend = ScriptedBackend(timeline=_synthetic_dry_run_timeline(), initial_replicas=env_config_v2.initial_replicas)
             raw_env = KubernetesAutoscalerEnvV2(backend=backend, episode_duration_s=270.0, config=env_config_v2)
             return LedgeredEpisodeWrapper(
                 raw_env, ledger_path=tmp_root / "ledger.jsonl", traffic_profile="constant_cpu",
@@ -508,8 +536,10 @@ def run_campaign_preflight() -> Dict[str, Any]:
     checks["prometheus_preflight"] = prom_check
     checks["prometheus_ok"] = prom_check["all_ok"]
 
-    # Final model must not already exist (no auto-promotion ever).
-    checks["final_model_absent"] = not V2_MODEL_PATH.exists()
+    # Final model must not already exist (no auto-promotion ever). Checks
+    # BOTH the original V2_MODEL_PATH and this campaign's own
+    # FINAL_MODEL_PATH_MIN2 reserved path (V2 Phase 4D-B / CORR-55).
+    checks["final_model_absent"] = not V2_MODEL_PATH.exists() and not FINAL_MODEL_PATH_MIN2.exists()
 
     # Pilot sessions 000-003 unchanged (row-count-based, non-invasive check).
     expected_pilot_rows = {"session_000": 2, "session_001": 7, "session_002": 139, "session_003": 256}
@@ -590,7 +620,13 @@ def run_one_final_session(
     session_dir.mkdir(parents=True, exist_ok=False)
 
     env_config_v2 = load_env_config_v2_from_yaml()
-    backend = LiveKubernetesBackend(prometheus_url=PROMETHEUS_URL)
+    # V2 Phase 4D-B / CORR-55: explicit V2 replica floor (2), never
+    # LiveKubernetesBackend's own V1-default min_replicas=1/initial_replicas=1.
+    backend = LiveKubernetesBackend(
+        prometheus_url=PROMETHEUS_URL,
+        min_replicas=env_config_v2.gating.min_replicas,
+        initial_replicas=env_config_v2.initial_replicas,
+    )
     baseline_pods = get_pod_health("autoscaler-app", "app=demo-app")
     baseline_restart_counts = {p.name: p.restart_count for p in baseline_pods}
 
@@ -822,14 +858,18 @@ def run_final_training_campaign(seed: int = FINAL_TRAINING_SEED) -> Dict[str, An
     if existing_lock != CONTROLLER_NONE:
         raise ControllerConflictError(f"refusing to start: controller lock already held by {existing_lock!r}")
 
+    env_config_v2 = load_env_config_v2_from_yaml()
     # V2 Phase 4C-1 (P1-2): this campaign's own canonical HPA is
     # demo-app-hpa-v2 (V2_HPA_NAME) -- the backend is constructed with that
     # explicit identity so its own delete_hpa()/restore_hpa() calls below
     # act on demo-app-hpa-v2, never falling back to V1's demo-app-hpa
     # default. If V1's demo-app-hpa happens to be present, it is caught
     # here as an unexpected HPA (fails closed, never auto-deleted).
+    # V2 Phase 4D-B / CORR-55: explicit V2 replica floor (2), never
+    # LiveKubernetesBackend's own V1-default min_replicas=1/initial_replicas=1.
     backend = LiveKubernetesBackend(
         prometheus_url=PROMETHEUS_URL, hpa_name=V2_HPA_NAME, hpa_manifest_path=V2_HPA_MANIFEST_PATH,
+        min_replicas=env_config_v2.gating.min_replicas, initial_replicas=env_config_v2.initial_replicas,
     )
     existing_hpas = backend._kubectl.list_hpa_names()
     unexpected_hpas = [h for h in existing_hpas if h != V2_HPA_NAME]
