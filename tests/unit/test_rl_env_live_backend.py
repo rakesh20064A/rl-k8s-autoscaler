@@ -43,6 +43,7 @@ class FakeKubectl:
     available: int = 1
     scale_should_fail: bool = False
     hpa_present: bool = False
+    hpa_names: List[str] = field(default_factory=list)
     calls: List[List[str]] = field(default_factory=list)
 
     def run(self, cmd: List[str], timeout: float) -> subprocess.CompletedProcess:
@@ -62,6 +63,9 @@ class FakeKubectl:
             }
             return _proc(rc=0, stdout=str(field_map[cmd[-1]]))
         if cmd[:3] == ["kubectl", "get", "hpa"]:
+            if "-o" in cmd and cmd[cmd.index("-o") + 1].startswith("jsonpath={.items"):
+                names = self.hpa_names if self.hpa_names else (["demo-app-hpa"] if self.hpa_present else [])
+                return _proc(rc=0, stdout=" ".join(names))
             return _proc(rc=0, stdout="demo-app-hpa   ..." if self.hpa_present else "")
         if cmd[:3] == ["kubectl", "delete", "hpa"]:
             self.hpa_present = False
@@ -270,3 +274,24 @@ class TestKubectlRunnerHpaLifecycle:
         assert fk.hpa_present is False
         runner.restore_hpa()
         assert fk.hpa_present is True
+
+
+class TestKubectlRunnerListHpaNames:
+    """V2 Phase 2: list_hpa_names() names WHICH HPA(s) exist, needed for
+    controller_exclusivity.py to distinguish the CPU-only vs CPU+memory V2
+    HPA variants (unlike hpa_exists()'s single present/absent bit)."""
+
+    def test_empty_when_no_hpa(self):
+        fk = FakeKubectl(hpa_present=False)
+        runner = KubectlRunner(run=fk.run)
+        assert runner.list_hpa_names() == []
+
+    def test_single_name_when_one_hpa_present(self):
+        fk = FakeKubectl(hpa_names=["demo-app-hpa"])
+        runner = KubectlRunner(run=fk.run)
+        assert runner.list_hpa_names() == ["demo-app-hpa"]
+
+    def test_multiple_names_when_both_hpa_variants_present(self):
+        fk = FakeKubectl(hpa_names=["demo-app-hpa", "demo-app-hpa-v2"])
+        runner = KubectlRunner(run=fk.run)
+        assert runner.list_hpa_names() == ["demo-app-hpa", "demo-app-hpa-v2"]

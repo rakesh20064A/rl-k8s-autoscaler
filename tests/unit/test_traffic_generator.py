@@ -1282,7 +1282,7 @@ class TestCorr52FinalArrivalDeadlineSemantics(unittest.IsolatedAsyncioTestCase):
         56-187ms boundary margins) dispatch identically regardless of
         CORR-52, proving no behavioral change for the three already-official
         Phase16L slots."""
-        project_root = Path("/Users/rakeshdandamudi/Capstone/rl-k8s-autoscaler")
+        project_root = Path(__file__).resolve().parents[2]
         for cell in ("i2bval_r1_V1", "i2bval_r6_V1"):
             with self.subTest(cell=cell):
                 schedule_path = (
@@ -1321,7 +1321,7 @@ class TestCorr52FinalArrivalDeadlineSemantics(unittest.IsolatedAsyncioTestCase):
         """Test 8: all three near-boundary schedule families
         (i2bval_r1_V2, i2bval_r2_V1, i2bval_r4_V1) fully dispatch offline
         under realistic injected overshoot, with zero schedule-file changes."""
-        project_root = Path("/Users/rakeshdandamudi/Capstone/rl-k8s-autoscaler")
+        project_root = Path(__file__).resolve().parents[2]
         for cell in ("i2bval_r1_V2", "i2bval_r2_V1", "i2bval_r4_V1"):
             with self.subTest(cell=cell):
                 schedule_path = (
@@ -1412,7 +1412,7 @@ class TestCorr52FinalArrivalDeadlineSemantics(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(meta["total_sent"], 2)
 
         import sys as _sys
-        _sys.path.insert(0, str(Path("/Users/rakeshdandamudi/Capstone/rl-k8s-autoscaler")))
+        _sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
         from scripts.dynamics_calibration_lib import check_offered_equals_sent
         ok, _ = check_offered_equals_sent(meta)
         self.assertFalse(ok)

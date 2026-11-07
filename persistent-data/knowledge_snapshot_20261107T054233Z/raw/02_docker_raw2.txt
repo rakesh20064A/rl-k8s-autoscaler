@@ -1,0 +1,20 @@
+=== docker ps -a ===
+NAMES      STATUS              IMAGE                                 PORTS
+minikube   Up About a minute   gcr.io/k8s-minikube/kicbase:v0.0.50   127.0.0.1:49844->22/tcp, 127.0.0.1:49846->2376/tcp, 127.0.0.1:49842->5000/tcp, 127.0.0.1:49843->8443/tcp, 127.0.0.1:49845->32443/tcp
+=== images ===
+IMAGE                                                                                                 ID             DISK USAGE   CONTENT SIZE   EXTRA
+alpine/socat:latest                                                                                   c5a091e1e735       24.4MB         7.52MB        
+docker/desktop-cloud-provider-kind:v0.6.0                                                             46d51b990e97        587MB          156MB        
+docker/desktop-containerd-registry-mirror:v0.0.4                                                      1de142695bb0       51.1MB         16.3MB        
+envoyproxy/envoy:v1.36.7                                                                              29d778ba078e        239MB         60.5MB        
+gcr.io/k8s-minikube/kicbase:v0.0.50                                                                   ffefe6978189       1.88GB          507MB        
+gcr.io/k8s-minikube/kicbase@sha256:eb4fec00e8ad70adf8e6436f195cc429825ffb85f95afcdb5d8d9deb576f3e93   eb4fec00e8ad       1.88GB          507MB   U    
+jenkins/jenkins:latest                                                                                e6f50f00dd8e        761MB          248MB        
+kindest/node:v1.36.1                                                                                  3489c7674813       1.27GB          350MB        
+rl-autoscaler-demo-app:local                                                                          75911ce139a5        268MB         58.9MB        
+rl-autoscaler-demo-app:phase5e                                                                        dec88d9a305a        268MB         58.9MB        
+=== leftover relay containers? ===
+=== settings store (redacted scan) ===
+Cpus = 4
+DiskSizeMiB = 65536
+KubernetesEnabled = False

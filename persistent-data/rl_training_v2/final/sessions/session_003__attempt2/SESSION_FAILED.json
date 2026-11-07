@@ -1,0 +1,7 @@
+{
+  "reason": "pod_restart_detected:demo-app-6579f6d9b-fdflt",
+  "session_timesteps_completed": 17,
+  "expected_session_timesteps": 256,
+  "scientific_session_index": 3,
+  "physical_attempt_number": 2
+}

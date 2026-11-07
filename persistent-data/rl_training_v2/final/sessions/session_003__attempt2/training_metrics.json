@@ -1,0 +1,28 @@
+{
+  "n_steps_seen": 17,
+  "profile_counts": {
+    "constant_cpu": 17
+  },
+  "action_counts": {
+    "0": 6,
+    "1": 6,
+    "2": 5
+  },
+  "effective_action_counts": {
+    "0": 6,
+    "1": 6,
+    "2": 5
+  },
+  "override_counts": {
+    "none": 14,
+    "scale_down_cooldown": 2,
+    "replica_bound_clamp": 1
+  },
+  "invalid_step_count": 0,
+  "invalid_step_rate": 0.0,
+  "max_per_pod_memory_mib": 69.4921875,
+  "max_aggregate_memory_mib": 130.4765625,
+  "termination_reason": "pod_restart_detected:demo-app-6579f6d9b-fdflt",
+  "num_timesteps": 785,
+  "session_timesteps": 17
+}

@@ -1,0 +1,35 @@
+# configs/traffic_profiles/v2/ramp_mixed.yaml
+# V2 multi-resource workload set (Part C). New file; does not modify the
+# frozen V1 configs/traffic_profiles/ramp.yaml. Identical ramp-up/hold/
+# ramp-down shape and RPS values, mixed CPU+memory resource mode added.
+
+profile: ramp_mixed
+description: "V2: gradual ramp-up/hold/ramp-down, mixed CPU+memory resource mode"
+seed: 42
+
+duration_seconds: 1200
+intensity: 3
+endpoint: /work
+
+ramp_up_start_rps: 3
+ramp_up_peak_rps: 60
+ramp_up_seconds: 400
+hold_seconds: 200
+ramp_down_seconds: 400
+ramp_down_end_rps: 3
+
+resource_mode: mixed
+memory_mb: 16
+
+# V2 Phase 2.1 PART 3 (revised live, V2 Phase 2.2 PART 3): explicit,
+# profile-specific safety ceiling, tighter than the load generator's
+# general --max-in-flight=50 default. Originally set to 10 from an
+# analytical estimate; LOWERED to 8 after live measurement through the
+# actual loadgen/traffic_generator.py path (not an ad hoc client) showed a
+# real peak of ~222.8Mi (87% of the 256Mi limit, only 13% headroom) at
+# cap=10 -- too close for comfort given measurement noise and real
+# concurrent-connection overhead not captured by the simple per-request
+# model. At cap=8: ~60Mi idle + 8*16MB = ~188Mi (73% of the limit), ~27%
+# headroom. See loadgen/traffic_generator.py's
+# TrafficGenerator.effective_max_in_flight.
+memory_safe_max_in_flight: 8

@@ -1,0 +1,421 @@
+=== all namespaces ===
+NAME              STATUS   AGE
+autoscaler-app    Active   62d
+default           Active   62d
+kube-node-lease   Active   62d
+kube-public       Active   62d
+kube-system       Active   62d
+monitoring        Active   62d
+=== all pods -A -o wide ===
+NAMESPACE        NAME                                                   READY   STATUS    RESTARTS          AGE     IP              NODE       NOMINATED NODE   READINESS GATES
+autoscaler-app   demo-app-6579f6d9b-96fjb                               1/1     Running   6 (3m13s ago)     25d     10.244.11.246   minikube   <none>           <none>
+autoscaler-app   demo-app-6579f6d9b-jhdpm                               1/1     Running   9 (3m13s ago)     25d     10.244.11.248   minikube   <none>           <none>
+kube-system      coredns-7d764666f9-27pfd                               1/1     Running   29 (3m13s ago)    62d     10.244.11.251   minikube   <none>           <none>
+kube-system      coredns-7d764666f9-pvn68                               1/1     Running   31 (3m13s ago)    62d     10.244.11.252   minikube   <none>           <none>
+kube-system      etcd-minikube                                          1/1     Running   27 (3m13s ago)    62d     192.168.49.2    minikube   <none>           <none>
+kube-system      kube-apiserver-minikube                                1/1     Running   132 (3m13s ago)   62d     192.168.49.2    minikube   <none>           <none>
+kube-system      kube-controller-manager-minikube                       1/1     Running   70 (3m13s ago)    62d     192.168.49.2    minikube   <none>           <none>
+kube-system      kube-proxy-nq6z6                                       1/1     Running   22 (3m13s ago)    62d     192.168.49.2    minikube   <none>           <none>
+kube-system      kube-scheduler-minikube                                1/1     Running   29 (3m13s ago)    62d     192.168.49.2    minikube   <none>           <none>
+kube-system      metrics-server-9d74bb658-7vwgr                         0/1     Running   2 (31s ago)       2m49s   10.244.11.254   minikube   <none>           <none>
+kube-system      storage-provisioner                                    1/1     Running   232 (70s ago)     62d     192.168.49.2    minikube   <none>           <none>
+monitoring       kube-prom-stack-grafana-59cdf9bbd8-264lx               2/3     Running   206 (3m13s ago)   61d     10.244.11.249   minikube   <none>           <none>
+monitoring       kube-prom-stack-kube-prome-operator-5669867d79-b24vt   1/1     Running   259 (2m22s ago)   61d     10.244.11.245   minikube   <none>           <none>
+monitoring       kube-prom-stack-kube-state-metrics-75dcd676c-jmgmt     1/1     Running   280 (2m22s ago)   62d     10.244.11.250   minikube   <none>           <none>
+monitoring       prometheus-kube-prom-stack-kube-prome-prometheus-0     2/2     Running   146 (3m13s ago)   62d     10.244.11.253   minikube   <none>           <none>
+=== demo-app deployment full yaml ===
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "7"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{},"labels":{"app":"demo-app","project":"rl-k8s-autoscaler"},"name":"demo-app","namespace":"autoscaler-app"},"spec":{"replicas":1,"selector":{"matchLabels":{"app":"demo-app"}},"template":{"metadata":{"annotations":{"prometheus.io/path":"/metrics","prometheus.io/port":"8080","prometheus.io/scrape":"true"},"labels":{"app":"demo-app","project":"rl-k8s-autoscaler"}},"spec":{"affinity":{"podAntiAffinity":{"preferredDuringSchedulingIgnoredDuringExecution":[{"podAffinityTerm":{"labelSelector":{"matchLabels":{"app":"demo-app"}},"topologyKey":"kubernetes.io/hostname"},"weight":50}]}},"containers":[{"envFrom":[{"configMapRef":{"name":"demo-app-config"}}],"image":"rl-autoscaler-demo-app:local","imagePullPolicy":"Never","livenessProbe":{"failureThreshold":5,"httpGet":{"path":"/health","port":8080},"initialDelaySeconds":10,"periodSeconds":10,"timeoutSeconds":3},"name":"demo-app","ports":[{"containerPort":8080,"name":"http","protocol":"TCP"}],"readinessProbe":{"failureThreshold":3,"httpGet":{"path":"/health","port":8080},"initialDelaySeconds":5,"periodSeconds":5,"successThreshold":1,"timeoutSeconds":3},"resources":{"limits":{"cpu":"500m","memory":"256Mi"},"requests":{"cpu":"100m","memory":"64Mi"}}}],"terminationGracePeriodSeconds":30}}}}
+  creationTimestamp: "2026-09-06T04:56:33Z"
+  generation: 4108
+  labels:
+    app: demo-app
+    project: rl-k8s-autoscaler
+  name: demo-app
+  namespace: autoscaler-app
+  resourceVersion: "1039911"
+  uid: d62a35f5-e41e-43cb-b073-1c49efc4d7a8
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 2
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: demo-app
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/restartedAt: "2026-10-11T12:08:53+05:30"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8080"
+        prometheus.io/scrape: "true"
+      labels:
+        app: demo-app
+        project: rl-k8s-autoscaler
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: demo-app
+              topologyKey: kubernetes.io/hostname
+            weight: 50
+      containers:
+      - envFrom:
+        - configMapRef:
+            name: demo-app-config
+        image: rl-autoscaler-demo-app:local
+        imagePullPolicy: Never
+        livenessProbe:
+          failureThreshold: 5
+          httpGet:
+            path: /health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 3
+        name: demo-app
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 3
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
+          requests:
+            cpu: 100m
+            memory: 64Mi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+status:
+  availableReplicas: 2
+  conditions:
+  - lastTransitionTime: "2026-09-06T04:56:33Z"
+    lastUpdateTime: "2026-10-12T08:57:02Z"
+    message: ReplicaSet "demo-app-6579f6d9b" has successfully progressed.
+    reason: NewReplicaSetAvailable
+    status: "True"
+    type: Progressing
+  - lastTransitionTime: "2026-11-07T05:41:50Z"
+    lastUpdateTime: "2026-11-07T05:41:50Z"
+    message: Deployment has minimum availability.
+    reason: MinimumReplicasAvailable
+    status: "True"
+    type: Available
+  observedGeneration: 4108
+  readyReplicas: 2
+  replicas: 2
+  terminatingReplicas: 0
+  updatedReplicas: 2
+=== replicasets ===
+NAME                  DESIRED   CURRENT   READY   AGE   CONTAINERS   IMAGES                         SELECTOR
+demo-app-647f665b49   0         0         0       61d   demo-app     rl-autoscaler-demo-app:local   app=demo-app,pod-template-hash=647f665b49
+demo-app-64f7c7578d   0         0         0       25d   demo-app     rl-autoscaler-demo-app:local   app=demo-app,pod-template-hash=64f7c7578d
+demo-app-6579f6d9b    2         2         2       26d   demo-app     rl-autoscaler-demo-app:local   app=demo-app,pod-template-hash=6579f6d9b
+demo-app-6c45b57597   0         0         0       62d   demo-app     rl-autoscaler-demo-app:local   app=demo-app,pod-template-hash=6c45b57597
+demo-app-6c674db95d   0         0         0       27d   demo-app     rl-autoscaler-demo-app:local   app=demo-app,pod-template-hash=6c674db95d
+demo-app-88f4df884    0         0         0       34d   demo-app     rl-autoscaler-demo-app:local   app=demo-app,pod-template-hash=88f4df884
+=== services ===
+apiVersion: v1
+items:
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"labels":{"app":"demo-app","project":"rl-k8s-autoscaler","purpose":"primary-metrics-source"},"name":"demo-app","namespace":"autoscaler-app"},"spec":{"ports":[{"name":"http","port":80,"protocol":"TCP","targetPort":8080}],"selector":{"app":"demo-app"},"type":"ClusterIP"}}
+    creationTimestamp: "2026-09-06T04:56:33Z"
+    labels:
+      app: demo-app
+      project: rl-k8s-autoscaler
+      purpose: primary-metrics-source
+    name: demo-app
+    namespace: autoscaler-app
+    resourceVersion: "31337"
+    uid: 1c52774f-06f8-43f8-99db-9a3e106d80b1
+  spec:
+    clusterIP: 10.101.205.196
+    clusterIPs:
+    - 10.101.205.196
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      app: demo-app
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"labels":{"app":"demo-app","project":"rl-k8s-autoscaler","purpose":"experiment-load-generator-access"},"name":"demo-app-loadtest","namespace":"autoscaler-app"},"spec":{"ports":[{"name":"http","port":80,"protocol":"TCP","targetPort":8080}],"selector":{"app":"demo-app"},"sessionAffinity":"None","type":"NodePort"}}
+    creationTimestamp: "2026-09-08T09:47:41Z"
+    labels:
+      app: demo-app
+      project: rl-k8s-autoscaler
+      purpose: experiment-load-generator-access
+    name: demo-app-loadtest
+    namespace: autoscaler-app
+    resourceVersion: "29576"
+    uid: 51e82f94-25b9-41a3-8386-7357d762a2ae
+  spec:
+    clusterIP: 10.103.81.151
+    clusterIPs:
+    - 10.103.81.151
+    externalTrafficPolicy: Cluster
+    internalTrafficPolicy: Cluster
+    ipFamilies:
+    - IPv4
+    ipFamilyPolicy: SingleStack
+    ports:
+    - name: http
+      nodePort: 31891
+      port: 80
+      protocol: TCP
+      targetPort: 8080
+    selector:
+      app: demo-app
+    sessionAffinity: None
+    type: NodePort
+  status:
+    loadBalancer: {}
+kind: List
+metadata:
+  resourceVersion: ""
+=== endpointslices ===
+apiVersion: v1
+items:
+- addressType: IPv4
+  apiVersion: discovery.k8s.io/v1
+  endpoints:
+  - addresses:
+    - 10.244.11.248
+    conditions:
+      ready: true
+      serving: true
+      terminating: false
+    nodeName: minikube
+    targetRef:
+      kind: Pod
+      name: demo-app-6579f6d9b-jhdpm
+      namespace: autoscaler-app
+      uid: b23ff885-f19a-4c51-9396-a770f92b4e57
+  - addresses:
+    - 10.244.11.246
+    conditions:
+      ready: true
+      serving: true
+      terminating: false
+    nodeName: minikube
+    targetRef:
+      kind: Pod
+      name: demo-app-6579f6d9b-96fjb
+      namespace: autoscaler-app
+      uid: d313f632-4f24-429d-80fe-45301a1bce0b
+  kind: EndpointSlice
+  metadata:
+    annotations:
+      endpoints.kubernetes.io/last-change-trigger-time: "2026-11-07T05:41:49Z"
+    creationTimestamp: "2026-09-06T04:56:33Z"
+    generateName: demo-app-
+    generation: 17186
+    labels:
+      app: demo-app
+      endpointslice.kubernetes.io/managed-by: endpointslice-controller.k8s.io
+      kubernetes.io/service-name: demo-app
+      project: rl-k8s-autoscaler
+      purpose: primary-metrics-source
+    name: demo-app-bwzlr
+    namespace: autoscaler-app
+    ownerReferences:
+    - apiVersion: v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Service
+      name: demo-app
+      uid: 1c52774f-06f8-43f8-99db-9a3e106d80b1
+    resourceVersion: "1039907"
+    uid: 739e684b-c261-43e5-a4ad-5f4bf0837891
+  ports:
+  - name: http
+    port: 8080
+    protocol: TCP
+- addressType: IPv4
+  apiVersion: discovery.k8s.io/v1
+  endpoints:
+  - addresses:
+    - 10.244.11.248
+    conditions:
+      ready: true
+      serving: true
+      terminating: false
+    nodeName: minikube
+    targetRef:
+      kind: Pod
+      name: demo-app-6579f6d9b-jhdpm
+      namespace: autoscaler-app
+      uid: b23ff885-f19a-4c51-9396-a770f92b4e57
+  - addresses:
+    - 10.244.11.246
+    conditions:
+      ready: true
+      serving: true
+      terminating: false
+    nodeName: minikube
+    targetRef:
+      kind: Pod
+      name: demo-app-6579f6d9b-96fjb
+      namespace: autoscaler-app
+      uid: d313f632-4f24-429d-80fe-45301a1bce0b
+  kind: EndpointSlice
+  metadata:
+    annotations:
+      endpoints.kubernetes.io/last-change-trigger-time: "2026-11-07T05:41:49Z"
+    creationTimestamp: "2026-09-08T09:47:41Z"
+    generateName: demo-app-loadtest-
+    generation: 17167
+    labels:
+      app: demo-app
+      endpointslice.kubernetes.io/managed-by: endpointslice-controller.k8s.io
+      kubernetes.io/service-name: demo-app-loadtest
+      project: rl-k8s-autoscaler
+      purpose: experiment-load-generator-access
+    name: demo-app-loadtest-fdzjn
+    namespace: autoscaler-app
+    ownerReferences:
+    - apiVersion: v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: Service
+      name: demo-app-loadtest
+      uid: 51e82f94-25b9-41a3-8386-7357d762a2ae
+    resourceVersion: "1039905"
+    uid: 7451aca9-759d-4599-96fb-5042d44324be
+  ports:
+  - name: http
+    port: 8080
+    protocol: TCP
+kind: List
+metadata:
+  resourceVersion: ""
+=== hpa ===
+apiVersion: v1
+items: []
+kind: List
+metadata:
+  resourceVersion: ""
+=== configmaps ===
+apiVersion: v1
+items:
+- apiVersion: v1
+  data:
+    LOG_HEALTH_REQUESTS: "false"
+    LOG_LEVEL: INFO
+    MAX_WORK_DURATION_SECONDS: "10"
+  kind: ConfigMap
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","data":{"LOG_HEALTH_REQUESTS":"false","LOG_LEVEL":"INFO","MAX_WORK_DURATION_SECONDS":"10"},"kind":"ConfigMap","metadata":{"annotations":{},"labels":{"app":"demo-app","project":"rl-k8s-autoscaler"},"name":"demo-app-config","namespace":"autoscaler-app"}}
+    creationTimestamp: "2026-09-06T04:56:33Z"
+    labels:
+      app: demo-app
+      project: rl-k8s-autoscaler
+    name: demo-app-config
+    namespace: autoscaler-app
+    resourceVersion: "2875"
+    uid: a9bdc2fe-5c12-46b2-8e12-99bc17f05ce5
+- apiVersion: v1
+  data:
+    ca.crt: |
+      -----BEGIN CERTIFICATE-----
+      MIIDBjCCAe6gAwIBAgIBATANBgkqhkiG9w0BAQsFADAVMRMwEQYDVQQDEwptaW5p
+      a3ViZUNBMB4XDTI2MDIyMTExMDYwOFoXDTM2MDIyMDExMDYwOFowFTETMBEGA1UE
+      AxMKbWluaWt1YmVDQTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMcE
+      RixQKnShccBBzjSLoX+Wtng3drLJgBZIGy7avAFSN25tp7g3vLlCPpFBe4UrKd7d
+      2wNJo7L1SrDpmnvNVEevfrw908yb6sSVMA6Es7tsZuXoWqjY+pFqUWLTRUwBSN1+
+      myNXQa7US3v9wJhxNeA2TfyACN6OPwplsD6iGqFKr02TXakEb1dUaFeLM6UxvgqV
+      M1RX6Pq5snMsbKIVMuHshkws8YL8ueyZKbma9DZvAGu2SPgMGqTP58mXzSq9o9qY
+      LbQWKiIC2Cujt6vUtAuPEj3MzYW8hSRW8Rju3892qB/V5hK3C/sPYnA+vUD1Kuzu
+      fW8+zL3gvyv8aI+XkRECAwEAAaNhMF8wDgYDVR0PAQH/BAQDAgKkMB0GA1UdJQQW
+      MBQGCCsGAQUFBwMCBggrBgEFBQcDATAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQW
+      BBTbbMnuejvkC3POeD1d7EbBwLvM3DANBgkqhkiG9w0BAQsFAAOCAQEAoL7SJAT8
+      ZYYGQPAcklB2X3yB8V9xvnjB06jpZzNHKC00puLweqSO069piQiCCyQh82w3R4/Q
+      7ueQCZV0D+mUfBXEmG0e8weyCghllE271sELsBvgYRVdW5UvqfI2YTvT3hnknBwd
+      td7PuyEydlTa7zK2g3VuwCjlvFU5zOQsi5AJHzDP2Ecpp9/U8QZMFk9NVhz2R1bT
+      C394sHEzaW7vEvsll82AsnN84+HWdweC6T9lah7dYNkt/Uki3A/XBgf603FWRQjA
+      kHAZ9EhkGdDTVclvdPzcTFY0LOGjkq/rZvNcQr9gSpPSieszH+M+5XNZWCycSE2/
+      eoBtrgUS1q054A==
+      -----END CERTIFICATE-----
+  kind: ConfigMap
+  metadata:
+    annotations:
+      kubernetes.io/description: Contains a CA bundle that can be used to verify the
+        kube-apiserver when using internal endpoints such as the internal service
+        IP or kubernetes.default.svc. No other usage is guaranteed across distributions
+        of Kubernetes clusters.
+    creationTimestamp: "2026-09-06T04:56:33Z"
+    name: kube-root-ca.crt
+    namespace: autoscaler-app
+    resourceVersion: "2873"
+    uid: 0db5e8ce-dfc0-4137-9ed1-f0d77631e934
+kind: List
+metadata:
+  resourceVersion: ""
+=== recent events ===
+LAST SEEN   TYPE      REASON           OBJECT                         MESSAGE
+3m5s        Normal    SandboxChanged   pod/demo-app-6579f6d9b-96fjb   Pod sandbox changed, it will be killed and re-created.
+3m5s        Normal    SandboxChanged   pod/demo-app-6579f6d9b-jhdpm   Pod sandbox changed, it will be killed and re-created.
+3m2s        Normal    Pulled           pod/demo-app-6579f6d9b-96fjb   Container image "rl-autoscaler-demo-app:local" already present on machine and can be accessed by the pod
+3m2s        Normal    Created          pod/demo-app-6579f6d9b-96fjb   Container created
+3m1s        Normal    Pulled           pod/demo-app-6579f6d9b-jhdpm   Container image "rl-autoscaler-demo-app:local" already present on machine and can be accessed by the pod
+3m1s        Normal    Started          pod/demo-app-6579f6d9b-96fjb   Container started
+3m1s        Normal    Created          pod/demo-app-6579f6d9b-jhdpm   Container created
+3m          Normal    Started          pod/demo-app-6579f6d9b-jhdpm   Container started
+2m48s       Warning   Unhealthy        pod/demo-app-6579f6d9b-jhdpm   Liveness probe failed: Get "http://10.244.11.248:8080/health": dial tcp 10.244.11.248:8080: connect: connection refused
+2m46s       Warning   Unhealthy        pod/demo-app-6579f6d9b-96fjb   Readiness probe failed: Get "http://10.244.11.246:8080/health": dial tcp 10.244.11.246:8080: connect: connection refused
+2m46s       Warning   Unhealthy        pod/demo-app-6579f6d9b-jhdpm   Readiness probe failed: Get "http://10.244.11.248:8080/health": dial tcp 10.244.11.248:8080: connect: connection refused
+2m46s       Warning   Unhealthy        pod/demo-app-6579f6d9b-96fjb   Liveness probe failed: Get "http://10.244.11.246:8080/health": dial tcp 10.244.11.246:8080: connect: connection refused
+92s         Warning   Unhealthy        pod/demo-app-6579f6d9b-96fjb   Liveness probe failed: Get "http://10.244.11.246:8080/health": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+83s         Warning   Unhealthy        pod/demo-app-6579f6d9b-jhdpm   Liveness probe failed: Get "http://10.244.11.248:8080/health": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+38s         Warning   Unhealthy        pod/demo-app-6579f6d9b-jhdpm   Readiness probe failed: Get "http://10.244.11.248:8080/health": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+37s         Warning   Unhealthy        pod/demo-app-6579f6d9b-96fjb   Readiness probe failed: Get "http://10.244.11.246:8080/health": context deadline exceeded (Client.Timeout exceeded while awaiting headers)

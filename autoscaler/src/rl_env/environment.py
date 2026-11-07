@@ -99,6 +99,7 @@ class KubernetesAutoscalerEnv(gym.Env):
         truncated: bool,
         snapshot_before,
         snapshot_after,
+        is_reversal: bool = False,
     ) -> Dict[str, Any]:
         rb = snapshot_before.replicas
         ra = snapshot_after.replicas
@@ -127,6 +128,14 @@ class KubernetesAutoscalerEnv(gym.Env):
             "action_override_reason": override_reason,
             "bound_clamped": bound_clamped,
             "pending_scale": pending_scale,
+            # V2 Phase 2.2 PART 4: purely additive -- exposes the already-
+            # computed decision-time reversal flag so a separate V2
+            # environment/reward wrapper (environment_v2.py) can correctly
+            # recompute action/reversal/boundary eligibility externally,
+            # without reimplementing this step's direction-tracking logic.
+            # Never read by this class's own (frozen) reward.compute_reward()
+            # call, which already received `is_reversal` directly.
+            "is_reversal": is_reversal,
             "sample_valid": obs_result.validity.sample_valid,
             "observation_age_seconds": 0.0,
             "consecutive_invalid_steps": self._consecutive_invalid_steps,
@@ -306,6 +315,7 @@ class KubernetesAutoscalerEnv(gym.Env):
             bound_clamped=bound_clamped, pending_scale=pending_scale,
             reward_result=reward_result, terminated=terminated, truncated=truncated,
             snapshot_before=snapshot_before, snapshot_after=snapshot_after,
+            is_reversal=is_reversal,
         )
         return (
             np.array(obs_result.normalized, dtype=np.float32),

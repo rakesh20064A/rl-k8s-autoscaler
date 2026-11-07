@@ -1,0 +1,252 @@
+# configs/rl_v2.yaml
+# ============================================================================
+# V2 NAMESPACE -- a NEW file, not an edit of the frozen configs/rl.yaml.
+#
+# This phase (V2 Phase 1) does NOT change the observation vector, the
+# action map, or any reward weight -- it only adds the new, additive
+# `safe_action` block below (consumed by
+# autoscaler/src/rl_env/action_selection.py, not by
+# load_env_config_from_yaml(), which ignores unrecognized top-level keys).
+# `rl_contract_version` is therefore left at 2, matching V1 EXACTLY and
+# truthfully: it has not actually changed yet. The project's own
+# versioning discipline (see the paragraph below, copied verbatim from
+# configs/rl.yaml) requires a version bump ONLY when observation_v2's
+# order/names/ranges or the action map actually change -- neither has,
+# here. A future phase that genuinely changes the observation/action/
+# reward contract must bump this to a new explicit version AND extend
+# autoscaler/src/rl_env/config.py's version check accordingly (that
+# loader extension was NOT made in this phase, since it is not yet needed
+# -- see V2 Phase 1's own audit/report for this explicit decision).
+# ============================================================================
+#
+# configs/rl.yaml
+# PPO agent and training configuration.
+# All hyperparameters are tracked here so experiments are reproducible without
+# editing source code.
+#
+# Phase 15A / 15A.1 (CORR-27): the observation vector, action encoding, and
+# decision-interval reference below are FROZEN per docs/rl_mdp_spec.md (the
+# authoritative contract). Do not edit observation_v2's order, names, or
+# ranges without bumping rl_contract_version and updating docs/rl_mdp_spec.md
+# first. v2 (Phase 15A.1) corrected the v1 draft's CPU clip range (4.0->5.0x
+# request) and several missing-data/wording issues -- see CORR-27. The vector
+# SHAPE/ORDER did not change, but the config block was renamed
+# observation_v1 -> observation_v2 because its normalization semantics did
+# change, and silently mutating a "v1"-named block would violate the
+# project's own versioning discipline.
+
+rl_contract_version: 2
+
+agent:
+  # NOTE: mode, model_path, and control_interval_seconds are the authoritative
+  # values in configs/experiment.yaml under the `rl:` key.
+  # Do NOT duplicate them here — read them exclusively from experiment.yaml.
+  # RL_DECISION_INTERVAL_SECONDS is experiment.yaml's rl.control_interval_seconds
+  # (30s), frozen as the MDP step interval by Phase 15A / docs/rl_mdp_spec.md sec.1.
+  #
+  # Observation vector version tag — used to detect mismatches between
+  # training-time and inference-time observation space (and, as of v2, also
+  # a normalization-semantics mismatch even though the vector shape is the
+  # same 11 elements as v1 -- see docs/rl_mdp_spec.md Change Log).
+  observation_version: "v2"
+
+# Action space -- FROZEN, immutable, UNCHANGED by v2 (docs/rl_mdp_spec.md sec.9).
+# 0 = SCALE_DOWN_ONE (-1)  |  1 = HOLD (0)  |  2 = SCALE_UP_ONE (+1)
+# Boundary handling (min=1/max=8, from configs/experiment.yaml scaling.*) is
+# enforced by the environment, never by the policy itself -- see
+# docs/rl_mdp_spec.md sec.9/13.
+action_space:
+  n_actions: 3
+  action_map:
+    0: -1
+    1:  0
+    2: +1
+
+# PPO hyperparameters (Stable-Baselines3 PPO)
+ppo:
+  learning_rate: 3.0e-4
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy: MlpPolicy
+  # Policy network hidden layers
+  net_arch: [128, 128]
+
+# Training settings
+training:
+  total_timesteps: 500000
+  # Evaluate the policy every N timesteps using validation traces
+  eval_freq: 10000
+  # Number of evaluation episodes per checkpoint
+  n_eval_episodes: 5
+  # Best model is saved when mean eval reward improves
+  save_best: true
+  # Seeds to train with (report mean across all seeds in the final result)
+  seeds: [42, 7, 123]
+  # Tensorboard log directory (relative to project root)
+  tb_log_dir: persistent-data/rl/tensorboard
+  # Checkpoint directory
+  checkpoint_dir: persistent-data/rl/checkpoints
+
+# Observation space definition (v2, CORR-27) -- FROZEN exact order,
+# docs/rl_mdp_spec.md sec.4-8. Each entry: name, raw_min/raw_max
+# (pre-normalization physical range used for clipping), normalized min/max
+# (post-transform, fed to the policy), source, temporal ("current" = this
+# decision step's mean of Prometheus samples in (t-30s, t]; "trend" =
+# current step value minus the 90s-span EWMA of prior step values,
+# docs/rl_mdp_spec.md sec.5). Values outside raw range are clipped, never
+# errored. Missing-data behavior is specified in docs/rl_mdp_spec.md sec.6-7,
+# not here.
+observation_v2:
+  - index: 0
+    name: cpu_per_replica
+    description: (cpu_cores / ready_replicas) / 0.100, i.e. fraction of the 100m CPU request per Ready replica -- a NOMINALLY COMPARABLE proxy to HPA's averageUtilization/100, not literally identical to it (docs/rl_mdp_spec.md sec.4, CORR-27).
+    raw_min: 0.0
+    raw_max: 5.0
+    min: 0.0
+    max: 1.0
+    source: cpu_cores, replicas_ready
+    temporal: current
+  - index: 1
+    name: cpu_per_replica_delta
+    description: current step's cpu_per_replica minus its 90s EWMA (momentum/trend, not a raw one-step difference).
+    raw_min: -5.0
+    raw_max: 5.0
+    min: -1.0
+    max: 1.0
+    source: cpu_cores, replicas_ready
+    temporal: trend
+  - index: 2
+    name: memory_per_replica
+    description: (memory_bytes / ready_replicas) / 67108864, i.e. fraction of the 64MiB memory request per Ready replica.
+    raw_min: 0.0
+    raw_max: 4.0
+    min: 0.0
+    max: 1.0
+    source: memory_bytes, replicas_ready
+    temporal: current
+  - index: 3
+    name: in_progress_per_replica
+    description: requests_in_progress / ready_replicas -- secondary queueing-pressure signal, redundant with CPU on this CPU-bound app but retained per Phase 15A evaluation for robustness.
+    raw_min: 0.0
+    raw_max: 20.0
+    min: 0.0
+    max: 1.0
+    source: requests_in_progress, replicas_ready
+    temporal: current
+  - index: 4
+    name: request_rate_norm
+    description: sum(rate(demo_app_requests_total{route="/work"}[1m])), normalized against a 100 RPS design ceiling, justified ONLY from non-held-out development profile peaks (burst=70, ramp=60, step=50 RPS). Never justified from any held-out evaluation workload's parameters (CORR-27; see docs/rl_mdp_spec.md sec.22).
+    raw_min: 0.0
+    raw_max: 100.0
+    min: 0.0
+    max: 1.0
+    source: request_rate_rps
+    temporal: current
+  - index: 5
+    name: request_rate_delta
+    description: current step's request_rate_rps minus its 90s EWMA.
+    raw_min: -100.0
+    raw_max: 100.0
+    min: -1.0
+    max: 1.0
+    source: request_rate_rps
+    temporal: trend
+  - index: 6
+    name: p95_latency_norm
+    description: latency_p95_seconds (ms), normalized against a 2000ms ceiling (~6.67x the 300ms SLA target). If request_rate_rps==0 with no histogram observations, this is semantically 0ms ("no_traffic", CORR-27) -- not a telemetry failure; see docs/rl_mdp_spec.md sec.6.
+    raw_min: 0.0
+    raw_max: 2000.0
+    min: 0.0
+    max: 1.0
+    source: latency_p95_seconds
+    temporal: current
+  - index: 7
+    name: p95_latency_delta
+    description: current step's p95 latency (ms) minus its 90s EWMA.
+    raw_min: -2000.0
+    raw_max: 2000.0
+    min: -1.0
+    max: 1.0
+    source: latency_p95_seconds
+    temporal: trend
+  - index: 8
+    name: error_rate
+    description: error_rate_rps (5xx only, live-observable) / request_rate_rps; 0.0 if request_rate_rps==0; null (missing) if request_rate_rps is null.
+    raw_min: 0.0
+    raw_max: 1.0
+    min: 0.0
+    max: 1.0
+    source: error_rate_rps, request_rate_rps
+    temporal: current
+  - index: 9
+    name: ready_replica_norm
+    description: (replicas_ready - 1) / (8 - 1) -- authoritative physical capacity, never hpa_status_current_replicas (CORR-25).
+    raw_min: 1.0
+    raw_max: 8.0
+    min: 0.0
+    max: 1.0
+    source: replicas_ready
+    temporal: current
+  - index: 10
+    name: seconds_since_last_scale_norm
+    description: controller-tracked seconds since the last EFFECTIVE (non-HOLD) action, capped per experiment.yaml rl.time_since_scale_cap_seconds.
+    raw_min: 0.0
+    raw_max: 300.0
+    min: 0.0
+    max: 1.0
+    source: controller-internal
+    temporal: current
+
+# Trend/history configuration (docs/rl_mdp_spec.md sec.5). EWMA span is
+# expressed in decision steps, not seconds, so it scales automatically if
+# RL_DECISION_INTERVAL_SECONDS is ever revised via a documented correction.
+history:
+  ewma_span_steps: 3   # 3 steps x 30s = 90s
+  applies_to: [cpu_per_replica, request_rate_norm, p95_latency_norm]
+
+# Maximum request rate / latency used for normalization (requests/sec, ms).
+# Kept here (in addition to observation_v2's raw_max, which is authoritative)
+# only for backward-compatible readability; observation_v2 entries above are
+# the single source of truth if these ever disagree.
+normalization:
+  max_request_rate: 100.0
+  max_p95_latency_ms: 2000.0
+
+# ============================================================================
+# V2 ADDITION (new in this file only -- not present in configs/rl.yaml).
+# Consumed by autoscaler/src/rl_env/action_selection.py's
+# select_safe_deterministic_action(). NOT read by load_env_config_from_yaml().
+# ============================================================================
+safe_action:
+  # PROVISIONAL default -- explicitly NOT a validated/final scientific
+  # value (matches action_selection.py's own DEFAULT_NEAR_TIE_EPSILON).
+  # Must be reviewed against real V2 policy probability distributions
+  # before being used in any final V2 evaluation. NOT wired into live V2
+  # inference yet (V2 Phase 1.1) -- the selector module exists and is
+  # fully tested (including epsilon=0 exact-tie-only behavior), but this
+  # value has not been chosen/validated and must not be treated as final.
+  near_tie_epsilon: 0.05
+  epsilon_status: provisional_unvalidated
+
+# ============================================================================
+# V2 IDENTITY METADATA (V2 Phase 1.1) -- explicit, additive, ignored by
+# load_env_config_from_yaml() exactly like safe_action above (proven safe by
+# tests/unit/test_v2_config_namespace.py::test_v2_config_loads_without_loader_
+# changes). rl_contract_version stays at 2 (see the file-header note above):
+# this block gives V2 its own explicit identity WITHOUT requiring a numeric
+# contract-version bump, which would need broader invasive loader changes
+# not justified yet (observation_v2's 11 values and the reward are both
+# still numerically inherited from V1 as of this phase -- see
+# reward_status below and configs/reward_v2.yaml).
+# ============================================================================
+controller_generation: v2
+workload_contract: multi_resource_v2
+inference_policy: safe_near_tie_hold
+reward_status: v2_designed_pending_training_validation

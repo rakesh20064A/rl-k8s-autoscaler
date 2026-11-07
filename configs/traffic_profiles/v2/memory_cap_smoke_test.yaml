@@ -1,0 +1,27 @@
+# configs/traffic_profiles/v2/memory_cap_smoke_test.yaml
+# V2 Phase 2.2 PART 3: a SHORT, smoke-test-only profile (NOT a scientific
+# calibration/training profile -- see "smoke"/"test" in the name, which
+# `TrafficGenerator._write_metadata()` already flags as `test_non_benchmark:
+# true`) for proving the loadgen's `memory_safe_max_in_flight` cap actually
+# limits dispatch concurrency live, through the real
+# loadgen/traffic_generator.py path -- never an ad hoc curl loop.
+#
+# target_rps=30 with memory_hold_ms=2000 deliberately demands FAR more
+# concurrency than the declared cap (steady-state concurrent requests would
+# be ~30 req/s * 2s hold = ~60 without a cap) -- this is intentional, to
+# force the cap to actually bind and produce observable `dropped_overload`
+# rows, not merely sit below it unexercised.
+
+profile: memory_cap_smoke_test
+description: "V2 Phase 2.2 PART 3: short smoke test proving memory_safe_max_in_flight binds live"
+seed: 42
+
+duration_seconds: 60
+target_rps: 30
+intensity: 1
+endpoint: /work
+
+resource_mode: memory
+memory_mb: 16
+memory_hold_ms: 2000
+memory_safe_max_in_flight: 8

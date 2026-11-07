@@ -26,6 +26,19 @@ from typing import Any, Dict, List, Optional, Tuple
 import httpx
 import yaml
 
+# V2: mirrors app/src/workload.py's VALID_RESOURCE_MODES. Duplicated
+# deliberately rather than imported -- the load generator and the demo app
+# are separate deployables (loadgen runs host-side, app runs in-cluster)
+# with no shared dependency today, and this is a 3-value literal tuple, not
+# logic worth coupling the two processes over.
+VALID_RESOURCE_MODES = ("cpu", "memory", "mixed")
+
+# V2 Phase 1.1: mirrors app/src/workload.py's DEFAULT_MEMORY_HOLD_MS. A
+# legacy profile never sets memory_hold_ms, so this default only matters
+# once resource_mode/memory_mb already make a profile non-default (see
+# _dispatch_single_request's conditional URL construction below).
+DEFAULT_MEMORY_HOLD_MS = 500
+
 
 class ProfileParseError(Exception):
     """Raised when traffic profile YAML cannot be parsed."""
@@ -178,6 +191,10 @@ class TrafficProfile:
         endpoint: str,
         intensity: int,
         phases: List[Phase],
+        resource_mode: str = "cpu",
+        memory_mb: int = 0,
+        memory_hold_ms: int = DEFAULT_MEMORY_HOLD_MS,
+        memory_safe_max_in_flight: Optional[int] = None,
     ) -> None:
         self.profile_name = profile_name
         self.description = description
@@ -186,6 +203,30 @@ class TrafficProfile:
         self.intensity = intensity
         self.phases = phases
         self.total_duration = sum(p.duration_seconds for p in phases)
+        # V2 Phase 2.1 PART 3: an OPTIONAL, profile-specific concurrency
+        # ceiling that applies ONLY to memory/mixed-mode profiles (see
+        # TrafficGenerator.__init__'s `effective_max_in_flight`). The
+        # generator's own general `--max-in-flight` (default 50) is a
+        # CPU-era concurrency safety valve unrelated to memory sizing; at
+        # MAX_WORK_MEMORY_MB=16 (app/src/workload.py), a true 50-way
+        # concurrent memory/mixed burst would reach ~800MB, far exceeding
+        # the pod's 256Mi limit (V2 Phase 1.1's disclosed trade-off). This
+        # field lets a V2 memory/mixed profile declare its OWN safe
+        # concurrency bound WITHOUT lowering `--max-in-flight` globally
+        # (which would also needlessly constrain CPU-only profiles). None
+        # (the default) means "no additional V2-specific cap" -- every
+        # pre-V2 and CPU-only profile is completely unaffected.
+        self.memory_safe_max_in_flight = memory_safe_max_in_flight
+        # V2 additions: whole-profile resource dimension, forwarded as extra
+        # /work query params (see _dispatch_single_request) ONLY when the
+        # profile is genuinely non-default. Defaults ("cpu", 0, DEFAULT_
+        # MEMORY_HOLD_MS) are IDENTICAL to V1's only behavior, so any
+        # existing profile that omits these fields is completely unaffected
+        # -- not just numerically, but at the literal dispatched URL level
+        # (V2 Phase 1.1 legacy-compatibility requirement).
+        self.resource_mode = resource_mode
+        self.memory_mb = memory_mb
+        self.memory_hold_ms = memory_hold_ms
 
     def get_phase_and_target_rps(self, elapsed: float) -> Tuple[float, str, str]:
         """Determine target RPS and active phase at any elapsed experiment time."""
@@ -220,6 +261,27 @@ def parse_traffic_profile(yaml_path: Path) -> TrafficProfile:
     seed = int(data.get("seed", 42))
     endpoint = data.get("endpoint", "/work")
     intensity = int(data.get("intensity", 3))
+    # V2: optional, additive fields. Omitted entirely by every existing
+    # (pre-V2) profile file, so `.get(..., "cpu")`/`.get(..., 0)` reproduce
+    # V1 behavior exactly for them -- validated, never silently coerced.
+    resource_mode = data.get("resource_mode", "cpu")
+    if resource_mode not in VALID_RESOURCE_MODES:
+        raise ProfileParseError(
+            f"Invalid resource_mode {resource_mode!r} in {yaml_path}; must be one of {VALID_RESOURCE_MODES}"
+        )
+    memory_mb = int(data.get("memory_mb", 0))
+    if memory_mb < 0:
+        raise ProfileParseError(f"memory_mb must be >= 0 in {yaml_path}, got {memory_mb}")
+    memory_hold_ms = int(data.get("memory_hold_ms", DEFAULT_MEMORY_HOLD_MS))
+    if memory_hold_ms < 0:
+        raise ProfileParseError(f"memory_hold_ms must be >= 0 in {yaml_path}, got {memory_hold_ms}")
+    memory_safe_max_in_flight = data.get("memory_safe_max_in_flight")
+    if memory_safe_max_in_flight is not None:
+        memory_safe_max_in_flight = int(memory_safe_max_in_flight)
+        if memory_safe_max_in_flight <= 0:
+            raise ProfileParseError(
+                f"memory_safe_max_in_flight must be > 0 in {yaml_path}, got {memory_safe_max_in_flight}"
+            )
 
     phases: List[Phase] = []
 
@@ -356,6 +418,10 @@ def parse_traffic_profile(yaml_path: Path) -> TrafficProfile:
         endpoint=endpoint,
         intensity=intensity,
         phases=phases,
+        resource_mode=resource_mode,
+        memory_mb=memory_mb,
+        memory_hold_ms=memory_hold_ms,
+        memory_safe_max_in_flight=memory_safe_max_in_flight,
     )
 
 
@@ -608,6 +674,13 @@ REQUESTS_CSV_FIELDNAMES = [
     "error_message",
 ]
 
+# V2 note: resource_mode/memory_mb are deliberately NOT added to
+# PlannedRequest/this schedule's persisted columns. They are a
+# whole-profile setting (TrafficProfile.resource_mode/.memory_mb), not a
+# per-request arrival-schedule field, and this CSV's exact column set is
+# load-bearing for the frozen V1 schedule-hash verification pipeline
+# (traffic_orchestrator.py / load_planned_schedule's exact-replay check) --
+# changing it here would risk invalidating that unrelated, frozen contract.
 SCHEDULE_CSV_FIELDNAMES = [
     "request_index",
     "planned_elapsed_seconds",
@@ -669,6 +742,20 @@ class TrafficGenerator:
 
         self.profile = parse_traffic_profile(self.project_root / profile_path)
         self.seed = seed if seed is not None else self.profile.seed
+
+        # V2 Phase 2.1 PART 3: a memory/mixed profile's own declared safety
+        # ceiling (if any) NEVER raises the general `--max-in-flight`
+        # concurrency bound -- it can only tighten it, and only for THIS
+        # profile. A CPU-only profile (memory_safe_max_in_flight=None, the
+        # default) is completely unaffected: effective_max_in_flight ==
+        # max_in_flight exactly, byte-for-byte the pre-V2 behavior.
+        if (
+            self.profile.resource_mode in ("memory", "mixed")
+            and self.profile.memory_safe_max_in_flight is not None
+        ):
+            self.effective_max_in_flight = min(self.max_in_flight, self.profile.memory_safe_max_in_flight)
+        else:
+            self.effective_max_in_flight = self.max_in_flight
 
         self.output_dir = self.project_root / output_base_dir / self.experiment_id
         self.schedule_path = self.output_dir / "traffic_schedule.csv"
@@ -736,7 +823,25 @@ class TrafficGenerator:
         actual_dispatch_elapsed = round(actual_dispatch_mono - start_mono, 6)
         dispatch_lag = round(actual_dispatch_elapsed - req.planned_elapsed_seconds, 6)
 
+        # V2 Phase 1.1 CORRECTION: resource_mode/memory_mb/memory_hold_ms are
+        # whole-profile settings (self.profile), not per-request
+        # (PlannedRequest/the persisted schedule CSV are intentionally
+        # untouched -- see module-level note near SCHEDULE_CSV_FIELDNAMES).
+        # Phase 1 always appended these three query params, reasoning that
+        # an unmodified V1 profile would send request semantics IDENTICAL to
+        # before (since the server's own defaults match). That is numerically
+        # true but was found to be an unacceptable regression against the
+        # stricter Phase 1.1 legacy-compatibility requirement: a legacy
+        # profile's dispatched URL must remain byte-identical to V1
+        # (`?intensity=N` only), with no V2-only query parameters appended
+        # at all unless the profile is genuinely non-default. Appending is
+        # now conditional on the profile actually requesting V2 behavior.
         url = f"{self.target_url}{req.endpoint}?intensity={req.configured_intensity}"
+        if self.profile.resource_mode != "cpu" or self.profile.memory_mb > 0:
+            url += (
+                f"&resource_mode={self.profile.resource_mode}&memory_mb={self.profile.memory_mb}"
+                f"&memory_hold_ms={self.profile.memory_hold_ms}"
+            )
 
         outcome = "unknown"
         status_code: Optional[int] = None
@@ -947,6 +1052,7 @@ class TrafficGenerator:
             },
             "timeout_seconds": self.timeout_seconds,
             "max_in_flight": self.max_in_flight,
+            "effective_max_in_flight": self.effective_max_in_flight,
             "connection_mode": self.connection_mode,
             "total_offered": len(self.planned_schedule),
             "total_sent": sum(1 for r in self.completed_requests if r.outcome != "dropped_overload"),
@@ -988,7 +1094,7 @@ class TrafficGenerator:
         print(f"Profile: {self.profile.profile_name} | Seed: {self.seed} | Process: {self.arrival_process}")
         print(f"Target: {self.target_url}{self.profile.endpoint}?intensity={self.profile.intensity}")
         print(f"Total planned requests: {len(self.planned_schedule)} | Duration: {self.profile.total_duration}s")
-        print(f"Max in-flight concurrency bound: {self.max_in_flight}")
+        print(f"Max in-flight concurrency bound: {self.effective_max_in_flight} (general cap: {self.max_in_flight})")
 
         requests_file = open(self.requests_path, "w", encoding="utf-8", newline="")
         writer = csv.DictWriter(requests_file, fieldnames=REQUESTS_CSV_FIELDNAMES)
@@ -1067,8 +1173,10 @@ class TrafficGenerator:
                     if self.stop_requested:
                         break
 
-                    # Check bounded concurrency
-                    if self.in_flight_count >= self.max_in_flight:
+                    # Check bounded concurrency (V2 Phase 2.1: the profile's
+                    # own effective_max_in_flight, never looser than the
+                    # general --max-in-flight bound -- see __init__).
+                    if self.in_flight_count >= self.effective_max_in_flight:
                         # Concurrency limit reached: drop overload at generator side
                         self._record_dropped_overload(req, self.start_mono, requests_file)
                     else:

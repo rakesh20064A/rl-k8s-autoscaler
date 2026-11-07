@@ -12,6 +12,7 @@ import signal
 import sys
 import time
 from contextlib import asynccontextmanager
+from typing import Literal
 
 
 from fastapi import FastAPI, Query, Response
@@ -26,7 +27,7 @@ try:
         REQUEST_LATENCY,
         REQUESTS_IN_PROGRESS,
     )
-    from workload import perform_cpu_work
+    from workload import DEFAULT_MEMORY_HOLD_MS, MAX_MEMORY_HOLD_MS, MAX_WORK_MEMORY_MB, perform_work
 except ImportError:
     from app.src.metrics import (
         LAST_WORK_INTENSITY,
@@ -34,7 +35,7 @@ except ImportError:
         REQUEST_LATENCY,
         REQUESTS_IN_PROGRESS,
     )
-    from app.src.workload import perform_cpu_work
+    from app.src.workload import DEFAULT_MEMORY_HOLD_MS, MAX_MEMORY_HOLD_MS, MAX_WORK_MEMORY_MB, perform_work
 
 # Logging setup: structured single-line format, level from environment variable.
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -91,12 +92,27 @@ async def health():
 
 @app.get("/work")
 def work(
-    intensity: int = Query(default=3, ge=1, le=10, description="CPU work level 1-10")
+    intensity: int = Query(default=3, ge=1, le=10, description="CPU work level 1-10"),
+    resource_mode: Literal["cpu", "memory", "mixed"] = Query(
+        default="cpu", description="Resource dimension to exercise: cpu (V1-compatible default), memory, or mixed",
+    ),
+    memory_mb: int = Query(
+        default=0, ge=0, le=MAX_WORK_MEMORY_MB,
+        description=f"Memory to allocate+touch for this request, MB (0 = no memory work; max {MAX_WORK_MEMORY_MB})",
+    ),
+    memory_hold_ms: int = Query(
+        default=DEFAULT_MEMORY_HOLD_MS, ge=0, le=MAX_MEMORY_HOLD_MS,
+        description=f"How long to hold touched memory resident, ms (ignored if memory_mb=0; max {MAX_MEMORY_HOLD_MS})",
+    ),
 ):
-    """Performs controlled CPU work and returns timing results.
+    """Performs controlled CPU and/or memory work and returns timing results.
 
-    The intensity parameter drives how much CPU is consumed.
-    Traffic generators should vary this to simulate different workload types.
+    `resource_mode="cpu"` with `memory_mb=0` (the defaults) is byte-for-byte
+    the original V1 CPU-only behavior -- `intensity` alone still drives how
+    much CPU is consumed, exactly as before. V2 traffic generators can
+    additionally request `resource_mode=memory` or `resource_mode=mixed`
+    with `memory_mb` to exercise bounded, released-after-the-request memory
+    pressure (see workload.py).
     """
     route = "/work"
     REQUESTS_IN_PROGRESS.labels(route=route).inc()
@@ -104,11 +120,14 @@ def work(
     status_code = "200"
 
     try:
-        result = perform_cpu_work(intensity)
+        result = perform_work(intensity, resource_mode=resource_mode, memory_mb=memory_mb, memory_hold_ms=memory_hold_ms)
         LAST_WORK_INTENSITY.set(intensity)
         logger.debug(
             "work request completed",
-            extra={"intensity": intensity, "elapsed_ms": result["elapsed_ms"]},
+            extra={
+                "intensity": intensity, "resource_mode": resource_mode, "memory_mb": memory_mb,
+                "elapsed_ms": result["elapsed_ms"],
+            },
         )
         return result
     except Exception:

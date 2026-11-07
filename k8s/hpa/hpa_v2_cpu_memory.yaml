@@ -1,0 +1,120 @@
+# k8s/hpa/hpa_v2_cpu_memory.yaml
+# V2 Phase 2 -- a NEW manifest, not an edit of the frozen k8s/hpa/hpa.yaml.
+# The frozen hpa.yaml (Phase 11C.4P, CPU-only, 260% target) remains the V1
+# scientific baseline and is never applied alongside this one (see
+# CONTROLLER EXCLUSIVITY below and
+# autoscaler/src/rl_env/controller_exclusivity.py) -- Kubernetes allows two
+# HPA objects to independently target the same Deployment, which would be a
+# genuine double-controller hazard, not merely a style concern.
+#
+# This object uses its OWN name ("demo-app-hpa-v2", not "demo-app-hpa") so
+# applying it does NOT silently overwrite/replace the frozen hpa.yaml's
+# object -- the two must be explicitly, mutually exclusively managed (never
+# relying on same-name replacement as the only safety mechanism).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: demo-app-hpa-v2
+  namespace: autoscaler-app
+  labels:
+    app: demo-app
+    project: rl-k8s-autoscaler
+    controller-generation: v2
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: demo-app
+
+  minReplicas: 1
+  maxReplicas: 8
+
+  # Kubernetes autoscaling/v2 semantics (documented here, not re-implemented,
+  # per the task's explicit instruction): when an HPA declares MULTIPLE
+  # Resource metrics, the HPA controller computes an independent desired-
+  # replica-count RECOMMENDATION from EACH metric, then uses the LARGEST
+  # recommendation across all metrics as the actual desired replica count
+  # (https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#algorithm-details,
+  # "if multiple metrics are specified... the largest of the number of
+  # replicas is used"). Concretely here: whichever of {cpu_target=260%,
+  # memory_target=120%} is CLOSER to being exceeded (relative to its own
+  # headroom) drives scaling at any given moment -- a CPU-bound workload
+  # scales on the CPU metric, a memory-bound workload scales on the memory
+  # metric, and a genuinely mixed workload scales on whichever is currently
+  # more constrained. See tests/unit/test_hpa_v2_manifest.py::
+  # TestLargestRecommendationSemantics for a worked numeric illustration of
+  # this rule (a small pure-function reproduction of the documented
+  # algorithm, not a reimplementation of the real HPA controller).
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          # UNCHANGED from the frozen hpa.yaml's CPU target. No V2-specific
+          # evidence was gathered in this phase to justify deviating from
+          # the Phase 11C.4P empirically-selected 260% baseline (CORR-26) --
+          # live multi-resource smoke validation (V2 Phase 1.1 PART 3 /
+          # this phase's PART 1) could not be executed in this session
+          # (Docker/Minikube unavailable), so there is no new evidence to
+          # act on. Reusing the existing value is a deliberate "do not
+          # invent a change without evidence" decision, not an oversight.
+          averageUtilization: 260
+
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          # CALIBRATED_LIVE (V2 Phase 2.1 PART 4) -- replaces the earlier
+          # analytical 300% (V2 Phase 2's provisional placeholder, derived
+          # without any live measurement) with a value chosen from REAL
+          # measurements taken against a live Minikube cluster running the
+          # current V2 workload code (MAX_WORK_MEMORY_MB=16,
+          # memory_hold_ms=2000), single replica, low/safe calibration
+          # concurrency (3 concurrent requesters, 1 dispatch/sec):
+          #
+          #   idle    (no traffic):                         ~35-38Mi  -> ~55-59% of the 64Mi request
+          #   memory  (resource_mode=memory, memory_mb=16):  ~89-90Mi  -> ~139-141% of request
+          #   mixed   (resource_mode=mixed,  memory_mb=16):  ~121-122Mi -> ~189-191% of request
+          #
+          # (CPU showed the expected inverse pattern over the same runs:
+          # cpu-mode CPU 388-438m vs memory-mode CPU only 20-22m -- confirms
+          # memory-mode genuinely isolates memory pressure from CPU, not
+          # just a coincidentally-correlated reading.)
+          #
+          # Chosen target: 120% (76.8Mi). Reasoning:
+          #   - Comfortably ABOVE every idle reading (~55-59%), ~61-65
+          #     points of headroom -- no permanent scaling at idle.
+          #   - Comfortably BELOW the weakest memory-heavy reading (139%,
+          #     the memory-only scenario, which is the one that most
+          #     directly exercises this metric) -- a real memory-heavy
+          #     workload DOES cross this target, not merely the more
+          #     aggressive mixed scenario.
+          #   - 280 percentage points of headroom remain below the hard
+          #     400%/256Mi OOM limit (400-120=280) -- very generous, since
+          #     this calibration run deliberately used LOW/SAFE
+          #     concurrency (3, not the load generator's 50-way
+          #     theoretical max; see PART 3's memory_safe_max_in_flight=10
+          #     cap for V2 memory/mixed profiles) and a real higher-
+          #     concurrency burst could push materially higher.
+          #   - NOT chosen to make either PPO or HPA "look better" -- it is
+          #     a direct function of the measured idle/loaded readings
+          #     above, with no reference to any PPO/HPA comparison.
+          averageUtilization: 120
+
+  # UNCHANGED from the frozen hpa.yaml's scaling behavior -- no evidence
+  # gathered this phase to justify a V2-specific change.
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60

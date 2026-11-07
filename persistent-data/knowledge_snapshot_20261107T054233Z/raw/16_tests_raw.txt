@@ -1,0 +1,4 @@
+=== pytest --collect-only -q ===
+(eval):5: no such file or directory: .venv/bin/python
+=== full offline suite run ===
+(eval):7: no such file or directory: .venv/bin/python
