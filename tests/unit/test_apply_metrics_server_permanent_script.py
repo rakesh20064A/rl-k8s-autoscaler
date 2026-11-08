@@ -48,14 +48,18 @@ class TestManifestParsesAndHasExpectedArgs:
         args = deployment["spec"]["template"]["spec"]["containers"][0]["args"]
         assert "--kubelet-insecure-tls" in args
 
-    def test_image_is_a_marked_placeholder_pending_live_verification(self):
-        """V2 Phase 5A: the image tag could not be determined offline (no
-        kubectl/docker access this phase, no prior recorded image/digest) --
-        this must be a clearly marked placeholder, never a guessed version."""
+    def test_image_is_a_real_pinned_image_not_a_placeholder(self):
+        """V2 Phase 5B PART D: the image tag was resolved via the one
+        permitted read-only cluster query
+        (`kubectl get deployment metrics-server -n kube-system -o
+        jsonpath='{.spec.template.spec.containers[0].image}'`) and must now
+        be a real, digest-pinned image -- never the Phase 5A placeholder."""
         docs = _load_all(MANIFEST_PATH)
         deployment = next(d for d in docs if d.get("kind") == "Deployment")
         image = deployment["spec"]["template"]["spec"]["containers"][0]["image"]
-        assert "PLACEHOLDER" in image
+        assert "PLACEHOLDER" not in image
+        assert image.startswith("registry.k8s.io/metrics-server/metrics-server:")
+        assert "@sha256:" in image  # pinned by digest, not just a mutable tag
 
 
 class TestScriptStaticGuards:
