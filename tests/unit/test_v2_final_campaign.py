@@ -189,6 +189,83 @@ class TestCampaignLoopControlFlow:
         assert result["campaign_state"]["cumulative_updates"] == 20
         assert len(result["campaign_state"]["sessions_completed"]) == 20
 
+    def test_max_sessions_default_runs_all_sessions_unchanged(self, tmp_path, monkeypatch):
+        """V2 Phase 4E: omitting max_sessions (the default, None) must be
+        byte-for-byte the same as before this option existed."""
+        self._patch_cluster_plumbing(monkeypatch, tmp_path)
+        calls = []
+
+        def fake_session(session_index, campaign_state, seed=42):
+            calls.append(session_index)
+            cumulative = (session_index + 1) * final_mod.FINAL_N_STEPS
+            return {
+                "ok": True, "session_index": session_index, "cumulative_timesteps": cumulative,
+                "cumulative_updates": session_index + 1,
+                "next_global_schedule_episode_index": session_index + 1,
+                "model_path": str(tmp_path / "sessions" / f"session_{session_index:03d}" / "ppo_model.zip"),
+                "model_sha256": f"hash{session_index}", "rng_state_path": "rng.pkl",
+            }
+
+        monkeypatch.setattr(final_mod, "run_one_final_session", fake_session)
+        result = final_mod.run_final_training_campaign(seed=42)
+        assert calls == list(range(20))
+        assert result["status"] == "completed"
+
+    def test_max_sessions_one_runs_exactly_one_session_then_stops_cleanly(self, tmp_path, monkeypatch):
+        """V2 Phase 4E: with max_sessions=1, the campaign must run exactly
+        one session (session_000) and stop -- HPA/replica/lock cleanup
+        still runs (same finally block, proven the same way the existing
+        failure-path test proves it: release_controller is still called),
+        and campaign_metadata.json is left resumable (cumulative_updates=1,
+        status reflects the pause, not "completed")."""
+        self._patch_cluster_plumbing(monkeypatch, tmp_path)
+        calls = []
+        released = {"n": 0}
+        monkeypatch.setattr(final_mod, "release_controller", lambda *a, **k: released.__setitem__("n", released["n"] + 1))
+
+        def fake_session(session_index, campaign_state, seed=42):
+            calls.append(session_index)
+            cumulative = (session_index + 1) * final_mod.FINAL_N_STEPS
+            return {
+                "ok": True, "session_index": session_index, "cumulative_timesteps": cumulative,
+                "cumulative_updates": session_index + 1,
+                "next_global_schedule_episode_index": session_index + 1,
+                "model_path": str(tmp_path / "sessions" / f"session_{session_index:03d}" / "ppo_model.zip"),
+                "model_sha256": f"hash{session_index}", "rng_state_path": "rng.pkl",
+            }
+
+        monkeypatch.setattr(final_mod, "run_one_final_session", fake_session)
+        result = final_mod.run_final_training_campaign(seed=42, max_sessions=1)
+        assert calls == [0]
+        assert result["ok"] is True
+        assert result["status"] == "paused_after_max_sessions"
+        assert result["campaign_state"]["cumulative_updates"] == 1
+        assert result["campaign_state"]["cumulative_timesteps"] == final_mod.FINAL_N_STEPS
+        assert result["campaign_state"]["status"] == "in_progress"  # not "completed" -- budget not reached
+        assert released["n"] == 1  # cleanup still ran
+
+    def test_resuming_after_max_sessions_one_continues_from_session_one(self, tmp_path, monkeypatch):
+        """A second, separate invocation (no max_sessions this time) must
+        resume from session_001, not restart from session_000."""
+        self._patch_cluster_plumbing(monkeypatch, tmp_path)
+        calls = []
+
+        def fake_session(session_index, campaign_state, seed=42):
+            calls.append(session_index)
+            cumulative = (session_index + 1) * final_mod.FINAL_N_STEPS
+            return {
+                "ok": True, "session_index": session_index, "cumulative_timesteps": cumulative,
+                "cumulative_updates": session_index + 1,
+                "next_global_schedule_episode_index": session_index + 1,
+                "model_path": str(tmp_path / "sessions" / f"session_{session_index:03d}" / "ppo_model.zip"),
+                "model_sha256": f"hash{session_index}", "rng_state_path": "rng.pkl",
+            }
+
+        monkeypatch.setattr(final_mod, "run_one_final_session", fake_session)
+        final_mod.run_final_training_campaign(seed=42, max_sessions=1)
+        final_mod.run_final_training_campaign(seed=42, max_sessions=1)
+        assert calls == [0, 1]
+
     def test_failed_session_stops_campaign_immediately_no_retry(self, tmp_path, monkeypatch):
         self._patch_cluster_plumbing(monkeypatch, tmp_path)
         calls = []
