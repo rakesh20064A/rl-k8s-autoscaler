@@ -53,7 +53,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -835,14 +835,24 @@ def run_one_final_session(
 
 # -- the campaign loop --
 
-def run_final_training_campaign(seed: int = FINAL_TRAINING_SEED) -> Dict[str, Any]:
+def run_final_training_campaign(seed: int = FINAL_TRAINING_SEED, max_sessions: Optional[int] = None) -> Dict[str, Any]:
     """Frames the ENTIRE multi-session campaign with ONE HPA removal /
     controller-exclusivity acquisition (restored/released exactly once, in
     this function's own `finally`) -- individual sessions never touch the
     HPA/controller lock themselves. Loops session-by-session; stops
     immediately (no retry) on the first session that fails (exception OR a
     tripped safety condition), after which `campaign_metadata.json` is left
-    exactly as of the last VERIFIED successful session."""
+    exactly as of the last VERIFIED successful session.
+
+    V2 Phase 4E: `max_sessions` (default `None`, UNCHANGED default
+    behaviour -- runs every remaining session toward the budget in one
+    call) caps how many sessions THIS invocation runs before stopping
+    cleanly (same `finally` cleanup as any other exit path: HPA restored,
+    replicas restored, lock released). `campaign_metadata.json` is left
+    exactly as of the last completed session either way, so a later,
+    separate invocation (with or without its own `max_sessions`) resumes
+    normally from there -- this is a per-invocation governor, not a new
+    campaign-wide limit."""
     from autoscaler.src.rl_env.live_backend import LiveKubernetesBackend
     from scripts.v2_pilot_safety import PROMETHEUS_URL, verify_prometheus_internal_paths
 
@@ -890,7 +900,11 @@ def run_final_training_campaign(seed: int = FINAL_TRAINING_SEED) -> Dict[str, An
         acquire_controller(CONTROLLER_PPO, backend._kubectl)
 
         starting_session_index = campaign_state["cumulative_updates"]
+        sessions_run_this_call = 0
         for session_index in range(starting_session_index, FINAL_PLANNED_SESSIONS):
+            if max_sessions is not None and sessions_run_this_call >= max_sessions:
+                result.update({"ok": True, "status": "paused_after_max_sessions", "campaign_state": campaign_state})
+                return result
             session_result = run_one_final_session(session_index, campaign_state, seed=seed)
             if not session_result.get("ok"):
                 # V2 Phase 4B-R PART 5: this early-return path previously
@@ -919,6 +933,7 @@ def run_final_training_campaign(seed: int = FINAL_TRAINING_SEED) -> Dict[str, An
             if campaign_state["cumulative_timesteps"] >= FINAL_TOTAL_TIMESTEPS_BUDGET:
                 campaign_state["status"] = "completed"
             save_campaign_metadata(campaign_state)
+            sessions_run_this_call += 1
 
         result.update({"ok": True, "status": campaign_state["status"], "campaign_state": campaign_state})
     except Exception as exc:
@@ -956,6 +971,11 @@ def main(argv=None) -> int:
     parser.add_argument("--i-confirm-live-cluster-interaction", action="store_true")
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--seed", type=int, default=FINAL_TRAINING_SEED)
+    parser.add_argument(
+        "--max-sessions", type=int, default=None,
+        help="Run at most this many sessions in this invocation, then stop cleanly "
+             "(default: unlimited -- runs every remaining session toward the budget).",
+    )
     args = parser.parse_args(argv)
 
     if args.preflight_only:
@@ -971,7 +991,7 @@ def main(argv=None) -> int:
         if not preflight["all_ok"]:
             print(json.dumps({"ok": False, "preflight": preflight}, indent=2, default=str))
             return 3
-        result = run_final_training_campaign(args.seed)
+        result = run_final_training_campaign(args.seed, max_sessions=args.max_sessions)
         print(json.dumps(result, indent=2, default=str))
         return 0 if result.get("ok") else 1
 
