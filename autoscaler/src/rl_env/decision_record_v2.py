@@ -13,7 +13,7 @@ demo script, never by the frozen V1 one.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 CONTROLLER_IDENTIFIER_PPO_V2 = "ppo_v2_safe_inference"
 
@@ -60,6 +60,17 @@ class DecisionRecordV2:
     # Additive -- no existing field's meaning or value changes.
     raw_argmax_action_index: Optional[int] = None
     raw_argmax_action_name: Optional[str] = None
+
+    # V2 Phase 4D-E / CORR-58 (additive): the safety-aware tie-break's own
+    # reasoning for this decision. `tie_set`/`tie_rule_applied` are None
+    # only on a hard inference failure where no probability vector ever
+    # existed to tie-break (`tie_rule_applied` is then populated with "R6"
+    # by safe_inference.py itself, matching the task's own R6 definition
+    # covering both a genuine tie-break fallback AND an inference failure).
+    tie_set: Optional[Tuple[str, ...]] = None
+    tie_rule_applied: Optional[str] = None
+    stressed: Optional[bool] = None
+    stress_reasons: Tuple[str, ...] = ()
 
     controller_identifier: str = CONTROLLER_IDENTIFIER_PPO_V2
     extra: Dict[str, Any] = field(default_factory=dict)
@@ -128,6 +139,10 @@ def build_decision_record_v2(
         model_identifier=model_identifier,
         raw_argmax_action_index=raw_argmax_action_index,
         raw_argmax_action_name=raw_argmax_action_name,
+        tie_set=getattr(inference_result, "tie_set", None),
+        tie_rule_applied=getattr(inference_result, "tie_rule_applied", None),
+        stressed=getattr(inference_result, "stressed", None),
+        stress_reasons=getattr(inference_result, "stress_reasons", ()),
         controller_identifier=controller_identifier,
         extra=extra or {},
     )

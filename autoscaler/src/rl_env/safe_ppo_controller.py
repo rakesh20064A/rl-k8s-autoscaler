@@ -22,12 +22,13 @@ to HOLD via `safe_inference.infer_safe_action`).
 
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 
 from .decision_record_v2 import DecisionRecordV2, build_decision_record_v2
 from .environment_v2 import KubernetesAutoscalerEnvV2
+from .reward_v2 import RewardConfigV2
 from .safe_inference import SafeInferenceResult, infer_safe_action
 from .types import OVERRIDE_POLICY_INFERENCE_FAILURE
 
@@ -39,6 +40,8 @@ def run_safe_ppo_step(
     model_identifier: str,
     epsilon: float,
     timestamp_utc_fn=None,
+    decision_time_raw_observation: Optional[Dict[str, Any]] = None,
+    reward_config: Optional[RewardConfigV2] = None,
 ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any], DecisionRecordV2]:
     """Runs exactly one V2-safe decision step. Returns the same 5-tuple
     `env.step()` returns (obs, reward, terminated, truncated, info) PLUS the
@@ -57,12 +60,27 @@ def run_safe_ppo_step(
     (taking priority over the environment's own `none` gating outcome,
     since a requested-delta-of-zero HOLD is gating's correct response to
     EITHER a genuine HOLD action OR a safety fallback -- the record
-    preserves which one actually happened)."""
+    preserves which one actually happened).
+
+    V2 Phase 4D-E / CORR-58: `decision_time_raw_observation` is the RAW
+    state that produced `observation` (the normalized vector this step is
+    about to act on) -- i.e. the CALLER's own previous step's (or
+    `env.reset()`'s) `info["raw_observation"]`, NOT this step's own
+    post-action raw observation (which only becomes known after
+    `env.step()` returns, below, and is still used unchanged for the
+    decision record's own `raw_*` fields). Expected keys:
+    `p95_latency_ms` (mapped from `raw_observation["p95_latency_norm"]`),
+    `error_rate`, `cpu_per_replica`, `memory_per_replica`. Omitting it (or
+    passing one where all four are missing) makes the safety-aware
+    selector fall back to R6 (HOLD) for an otherwise-R3-eligible tie."""
     from datetime import datetime, timezone
 
     _now = timestamp_utc_fn or (lambda: datetime.now(timezone.utc).isoformat())
 
-    inference_result: SafeInferenceResult = infer_safe_action(model, observation, epsilon=epsilon)
+    inference_result: SafeInferenceResult = infer_safe_action(
+        model, observation, epsilon=epsilon,
+        decision_time_raw_observation=decision_time_raw_observation, reward_config=reward_config,
+    )
     action_index = inference_result.effective_action_index
 
     next_obs, reward, terminated, truncated, info = env.step(action_index)

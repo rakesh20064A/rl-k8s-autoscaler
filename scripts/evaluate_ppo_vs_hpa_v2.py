@@ -66,6 +66,23 @@ from autoscaler.src.rl_env.safe_ppo_controller import run_safe_ppo_step  # noqa:
 V2_RESULTS_ROOT = PROJECT_ROOT / "results" / "evaluation_v2" / "raw"
 
 
+def _map_raw_observation_to_stress_keys(raw_observation: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """V2 Phase 4D-E / CORR-58: `environment_v2.py`'s own `info["raw_observation"]`
+    uses `p95_latency_norm` (the observation-pipeline's own feature name);
+    `safe_inference.infer_safe_action()`'s `decision_time_raw_observation`
+    expects `p95_latency_ms` (the physical unit name, matching
+    `RewardConfigV2.sla_p95_target_ms`'s own units). This is the ONE place
+    that mapping happens -- a pure, defensive function (returns an
+    all-missing dict, never raises, if `raw_observation` is None)."""
+    raw = raw_observation or {}
+    return {
+        "p95_latency_ms": raw.get("p95_latency_norm"),
+        "error_rate": raw.get("error_rate"),
+        "cpu_per_replica": raw.get("cpu_per_replica"),
+        "memory_per_replica": raw.get("memory_per_replica"),
+    }
+
+
 def run_dry_run_validation(epsilon: Optional[float] = None) -> Dict[str, Any]:
     """Offline-safe: no Kubernetes/Prometheus access, no traffic generated.
     Confirms the V2 safe-inference wiring is importable/constructible and
@@ -138,10 +155,22 @@ def run_live_v2_episode(
         n_steps = int(round(episode_duration_s / env_config.decision_interval_s))
         decisions: List[Dict[str, Any]] = []
 
+        # V2 Phase 4D-E / CORR-58: the safety-aware tie-break's STRESSED
+        # determination needs the RAW state that produced `obs` -- i.e.
+        # the PREVIOUS step's (or reset()'s) own `info["raw_observation"]`,
+        # never this step's own post-action raw observation (which isn't
+        # known until AFTER this step runs). Carried forward across
+        # iterations; `reward_config` loaded once, outside the loop, so
+        # every step reuses the same instance instead of re-reading YAML.
+        decision_time_raw_observation = _map_raw_observation_to_stress_keys(_info.get("raw_observation"))
+        reward_config = env_config.reward
+
         for _ in range(n_steps):
             obs, _reward, terminated, truncated, _info, decision_record = run_safe_ppo_step(
                 env, model, obs, model_identifier=str(model_path), epsilon=epsilon,
+                decision_time_raw_observation=decision_time_raw_observation, reward_config=reward_config,
             )
+            decision_time_raw_observation = _map_raw_observation_to_stress_keys(_info.get("raw_observation"))
             decisions.append(decision_record.to_dict())
             if terminated or truncated:
                 break
