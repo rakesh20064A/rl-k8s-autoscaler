@@ -2212,3 +2212,40 @@ Prospective only -- no historical telemetry, ledger, or evaluation result is rec
 
 **Applies to phases**: 4D-E (this correction). See `persistent-data/traffic/v2_phase4de_tie_break_report.md`.
 
+## CORR-59 — Pre-Registered Budget Amendment 5,120 → 12,288 Timesteps (Phase 4H-A)
+
+### Problem
+
+The frozen `final_min2` campaign contract (`FREEZE_MANIFEST.json`, Phase 4E) fixed the final training campaign at 5,120 total timesteps (20 sessions x 256 steps, 20 PPO updates). With the live campaign (PID 26490, `--max-sessions 19`) running toward that original budget, mid `session_001-019` at decision time, it was decided that 20 PPO updates may be too few for a stable converged policy given the project's remaining ~10-day window, and that the campaign should continue to 48 sessions (12,288 timesteps, 48 updates) once the currently-running process finishes its own bounded 19-session invocation.
+
+### Decision
+
+Raised `FINAL_TOTAL_TIMESTEPS_BUDGET` from 5,120 to 12,288 and `FINAL_PLANNED_SESSIONS` from 20 to 48 in `scripts/train_ppo_final_v2.py`. `FINAL_N_STEPS` (256), `FINAL_TRAINING_SEED` (42), and every hyperparameter, reward term, observation feature, and governing file (`configs/rl_v2.yaml`, `configs/reward_v2.yaml`, `autoscaler/src/rl_env/environment_v2.py`, `autoscaler/src/rl_env/observation.py`, `autoscaler/src/rl_env/reward_v2.py`) are UNCHANGED -- confirmed byte-identical by SHA-256 re-verification against `FREEZE_MANIFEST.json`.
+
+**This decision was made and recorded BEFORE any training result from session_020 onward existed** -- the then-running campaign was bounded by `--max-sessions 19` to stop exactly at the original 5,120-step budget, and no session beyond `session_000` (reviewed in Phase 4F, prior to this decision) had been inspected. This preserves the project's own no-outcome-aware-change discipline, the same discipline already applied to V1's PPO1/PPO2 evaluation repeats.
+
+**Rationale**:
+- More PPO updates (48 instead of 20) give the policy more opportunity to converge to a stable behaviour within the project's remaining window.
+- No hyperparameter, reward, or observation change is justified by any evidence -- this amendment changes ONLY the number of sessions/timesteps.
+- The learning rate is constant and the training schedule (`training_schedule_v2.build_training_profile_rotation`) is fully deterministic given the same seed, so the first 5,120 steps of a 12,288-step run are schedule-identical to the already-completed/already-running 5,120-step run -- verified directly: `build_training_profile_rotation(42, 193) == build_training_profile_rotation(42, 470)[:193]`.
+
+No new "continuation handling" code was required beyond the two constants: `run_final_training_campaign()`'s own `already_complete` early-return is keyed to the LIVE `FINAL_TOTAL_TIMESTEPS_BUDGET` constant (not a stored value), so it automatically un-blocks once the constant is raised; and `campaign_state["status"] = "in_progress"` is set unconditionally on every campaign start, so a stale `"completed"` value from the old 5,120-timestep run is overwritten via the existing, normal code path with no hand-editing of any JSON file. Separately confirmed (by direct `grep`) that no code anywhere exports a model to `V2_MODEL_PATH`/`FINAL_MODEL_PATH_MIN2` -- these are reserved-path guards only -- so the task's "preserve the 5,120 export" contingency is moot; no new preservation code was added.
+
+### Scope
+
+`scripts/train_ppo_final_v2.py` (budget constants and docstring only) and its tests (`tests/unit/test_v2_final_campaign.py`, `tests/unit/test_v2_final_campaign_resume.py` -- updated to reference the live budget constants dynamically instead of hardcoding 5,120/20). No change to learning, rewards, observations, actions, safety, or schedule logic. The running process (PID 26490) was never signaled, read-modified-written, or otherwise interacted with; no file under `persistent-data/rl_training_v2/final_min2/` was touched except the new `FREEZE_MANIFEST_AMENDMENT_001.json`.
+
+### Scientific Impact
+
+None to sessions 000-019 (schedule-identical, proven above) or to any already-recorded evidence. The campaign will now continue to session_047 (12,288 timesteps) instead of stopping at session_019, under the Tuesday continuation command `.venv/bin/python scripts/train_ppo_final_v2.py --execute-campaign --i-confirm-live-cluster-interaction --max-sessions 28`.
+
+### Preserved Invariants
+
+`FINAL_N_STEPS`, `FINAL_TRAINING_SEED`, all 5 governing files, the resume/provenance-verification path, and the `already_complete`/status-transition code paths are unchanged in behavior (only the constant each is keyed against changed).
+
+### Non-Retroactivity
+
+Prospective only -- no historical telemetry, ledger, or session result is reclassified. `active_correction_reference` is updated globally to `"CORR-59"` (`prior_correction_reference: "CORR-58"`).
+
+**Applies to phases**: 4H-A (this correction). See `persistent-data/rl_training_v2/final_min2/FREEZE_MANIFEST_AMENDMENT_001.json` and `persistent-data/traffic/v2_phase4ha_budget_amendment_report.md`.
+
