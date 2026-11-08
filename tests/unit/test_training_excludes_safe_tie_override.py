@@ -1,15 +1,17 @@
 """tests/unit/test_training_excludes_safe_tie_override.py
 
-V2 Phase 2.1 PART 8: explicitly verifies that the safe near-tie-HOLD
-override (autoscaler/src/rl_env/action_selection.py,
+V2 Phase 2.1 PART 8 (extended V2 Phase 4D-E / CORR-58): explicitly
+verifies that the safe near-tie-HOLD override AND its safety-aware
+successor (autoscaler/src/rl_env/action_selection.py,
 autoscaler/src/rl_env/safe_inference.py,
-autoscaler/src/rl_env/safe_ppo_controller.py) is NEVER imported by any PPO
-TRAINING script. PPO's own on-policy training requires genuinely stochastic
-action sampling (SB3's `model.learn()` samples from the policy's own
-categorical distribution internally) -- inserting the safe selector's
-deterministic argmax-with-tie-break logic into that path would corrupt the
-training signal (the advantage estimator assumes actions were drawn from
-the policy's actual sampling distribution, not silently overridden).
+autoscaler/src/rl_env/safe_ppo_controller.py) are NEVER imported by any PPO
+TRAINING script -- V1 or V2. PPO's own on-policy training requires
+genuinely stochastic action sampling (SB3's `model.learn()` samples from
+the policy's own categorical distribution internally) -- inserting either
+selector's deterministic argmax-with-tie-break logic into that path would
+corrupt the training signal (the advantage estimator assumes actions were
+drawn from the policy's actual sampling distribution, not silently
+overridden).
 
 This is a structural/import-graph guard, not a runtime behavioral test --
 `model.learn()` itself is Stable-Baselines3 library code (not reimplemented
@@ -23,9 +25,16 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
+
 TRAINING_SCRIPTS = [
     Path("scripts/train_ppo_live.py"),
     Path("scripts/train_ppo_live_session.py"),
+    # V2 Phase 4D-E / CORR-58: extended to also guard the V2 trainers --
+    # the only ones actually used going forward -- which this guard
+    # previously did not cover at all.
+    Path("scripts/train_ppo_final_v2.py"),
+    Path("scripts/train_ppo_live_v2.py"),
 ]
 
 SAFE_TIE_MODULES = {
@@ -48,27 +57,24 @@ def _imported_modules(path: Path) -> set:
 
 
 class TestTrainingScriptsNeverImportSafeSelector:
-    def test_train_ppo_live_does_not_import_safe_tie_modules(self):
-        imports = _imported_modules(TRAINING_SCRIPTS[0])
-        assert imports.isdisjoint(SAFE_TIE_MODULES)
-
-    def test_train_ppo_live_session_does_not_import_safe_tie_modules(self):
-        imports = _imported_modules(TRAINING_SCRIPTS[1])
+    @pytest.mark.parametrize("path", TRAINING_SCRIPTS, ids=[str(p) for p in TRAINING_SCRIPTS])
+    def test_training_script_does_not_import_safe_tie_modules(self, path):
+        imports = _imported_modules(path)
         assert imports.isdisjoint(SAFE_TIE_MODULES)
 
     def test_training_wrapper_does_not_import_safe_tie_modules(self):
         imports = _imported_modules(Path("autoscaler/src/rl_env/training_wrapper.py"))
         assert imports.isdisjoint(SAFE_TIE_MODULES)
 
-    def test_training_scripts_call_learn_not_deterministic_predict(self):
+    @pytest.mark.parametrize("path", TRAINING_SCRIPTS, ids=[str(p) for p in TRAINING_SCRIPTS])
+    def test_training_script_calls_learn_not_deterministic_predict(self, path):
         """Positive confirmation that training genuinely goes through
         SB3's stochastic `model.learn()` (library-internal sampling),
         rather than looping `model.predict(..., deterministic=True)` the
         way the frozen EVALUATION script does."""
-        for path in TRAINING_SCRIPTS:
-            source = path.read_text(encoding="utf-8")
-            assert ".learn(" in source
-            assert "deterministic=True" not in source
+        source = path.read_text(encoding="utf-8")
+        assert ".learn(" in source
+        assert "deterministic=True" not in source
 
 
 class TestSafeTieModulesOnlyUsedByInferencePaths:

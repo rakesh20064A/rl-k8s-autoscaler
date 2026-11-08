@@ -20,7 +20,7 @@ validation alike.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence
+from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -30,6 +30,8 @@ from .types import ACTION_MAP, ACTION_NAMES
 # index assignment ever changed (it must not), this still finds whichever
 # index represents "no change" rather than silently assuming 1.
 HOLD_ACTION_INDEX: int = next(idx for idx, delta in ACTION_MAP.items() if delta == 0)
+DOWN_ACTION_INDEX: int = next(idx for idx, delta in ACTION_MAP.items() if delta < 0)
+UP_ACTION_INDEX: int = next(idx for idx, delta in ACTION_MAP.items() if delta > 0)
 
 EXPECTED_NUM_ACTIONS = len(ACTION_MAP)
 
@@ -93,6 +95,149 @@ def select_safe_deterministic_action(
         is_tie=is_tie,
         probabilities=tuple(probs.tolist()),
         epsilon=epsilon,
+    )
+
+
+# -- V2 Phase 4D-E / CORR-58: safety-aware asymmetric tie-breaking -----------
+#
+# INFERENCE ONLY -- never used by training (see
+# tests/unit/test_training_excludes_safe_tie_override.py). Replaces the
+# plain near-tie-HOLD rule above (`select_safe_deterministic_action`, left
+# completely UNCHANGED for any existing caller/test that still wants the
+# simpler rule) with an asymmetric policy: SCALE_DOWN must never WIN a tie,
+# and a HOLD/SCALE_UP tie resolves toward SCALE_UP only when the decision-
+# time state is observably STRESSED -- "scale up fast, scale down slow",
+# mirroring conventional HPA behavior (fast scale-up, conservative
+# scale-down) rather than a blind coin flip.
+
+TIE_RULE_CLEAR_WINNER = "R1"
+TIE_RULE_HOLD_UP_STRESS_DEPENDENT = "R3"
+TIE_RULE_DOWN_INVOLVES_UP = "R4"
+TIE_RULE_DOWN_HOLD = "R5"
+TIE_RULE_UNKNOWN_STRESS_FALLBACK = "R6"
+
+
+@dataclass(frozen=True)
+class SafetyAwareActionResult:
+    """Richer sibling of `SafeActionResult`, additive -- used only by the
+    V2 safety-aware selector below, never replaces `SafeActionResult`
+    itself (which stays exactly as-is for any existing caller)."""
+
+    action_index: int
+    action_name: str
+    is_tie: bool
+    probabilities: tuple
+    epsilon: float
+    tie_set: Tuple[str, ...]  # action NAMES within epsilon of the max, in ACTION_MAP index order
+    tie_rule_applied: str  # one of TIE_RULE_* above
+    stressed: Optional[bool]  # None when stress could not be determined (R6) or irrelevant (R1)
+    stress_reasons: Tuple[str, ...]  # empty unless stressed is True
+
+
+def determine_decision_time_stress(
+    *,
+    p95_latency_ms: Optional[float],
+    error_rate: Optional[float],
+    cpu_per_replica: Optional[float],
+    memory_per_replica: Optional[float],
+    sla_p95_target_ms: float,
+    cpu_safe_high: float,
+    memory_safe_high: float,
+) -> Tuple[Optional[bool], Tuple[str, ...]]:
+    """STRESSED (V2 Phase 4D-E): the decision-time raw state is stressed if
+    ANY of p95_latency_ms >= sla_p95_target_ms, error_rate > 0,
+    cpu_per_replica > cpu_safe_high, or memory_per_replica > memory_safe_high
+    holds. A missing (None) individual value counts as NOT stressed for
+    that term alone -- but if ALL FOUR values are missing, stress cannot be
+    determined at all, and this returns `(None, ())` so the caller falls
+    back to R6 (HOLD) rather than guessing "not stressed" by default.
+    Thresholds are ALWAYS passed in by the caller (read from the live
+    `configs/reward_v2.yaml` via `RewardConfigV2`), never hardcoded here."""
+    if p95_latency_ms is None and error_rate is None and cpu_per_replica is None and memory_per_replica is None:
+        return None, ()
+
+    reasons: List[str] = []
+    if p95_latency_ms is not None and p95_latency_ms >= sla_p95_target_ms:
+        reasons.append("p95_latency_ms>=sla_p95_target_ms")
+    if error_rate is not None and error_rate > 0:
+        reasons.append("error_rate>0")
+    if cpu_per_replica is not None and cpu_per_replica > cpu_safe_high:
+        reasons.append("cpu_per_replica>cpu_safe_high")
+    if memory_per_replica is not None and memory_per_replica > memory_safe_high:
+        reasons.append("memory_per_replica>memory_safe_high")
+    return bool(reasons), tuple(reasons)
+
+
+def select_safety_aware_action(
+    probabilities: Sequence[float],
+    epsilon: float = DEFAULT_NEAR_TIE_EPSILON,
+    stressed: Optional[bool] = None,
+    stress_reasons: Tuple[str, ...] = (),
+) -> SafetyAwareActionResult:
+    """V2 Phase 4D-E / CORR-58: the asymmetric safety-aware tie-break rule.
+    `stressed` is the caller's own `determine_decision_time_stress()`
+    result (None if it could not be determined, e.g. all four raw inputs
+    were missing). Same input validation as
+    `select_safe_deterministic_action` (raises ValueError on malformed
+    input -- never silently coerces).
+
+    Rule (within-epsilon tie set, by ACTION_MAP index order [DOWN, HOLD, UP]):
+      R1 exactly one action within epsilon of the max -> that action.
+      R3 tie set == {HOLD, UP} -> UP if stressed else HOLD; if `stressed`
+         is None (could not be determined), falls back to R6 instead of
+         guessing.
+      R4 tie set == {DOWN, UP} or {DOWN, HOLD, UP} -> HOLD.
+      R5 tie set == {DOWN, HOLD} -> HOLD.
+      R6 `stressed` could not be determined for an otherwise-R3-eligible
+         tie -> HOLD (the same fail-safe default as an invalid/missing
+         observation elsewhere in the V2 safe-inference path).
+    DOWN never wins any tie (R2) -- structurally guaranteed: every tie set
+    that includes DOWN resolves via R4/R5, both HOLD, never DOWN itself."""
+    if epsilon < 0:
+        raise ValueError(f"epsilon must be >= 0, got {epsilon}")
+
+    probs = np.asarray(probabilities, dtype=float)
+    if probs.shape != (EXPECTED_NUM_ACTIONS,):
+        raise ValueError(f"expected exactly {EXPECTED_NUM_ACTIONS} probabilities, got shape {probs.shape}")
+    if not np.all(np.isfinite(probs)):
+        raise ValueError(f"probabilities must all be finite, got {probs.tolist()}")
+    if np.any(probs < 0):
+        raise ValueError(f"probabilities must be non-negative, got {probs.tolist()}")
+
+    max_p = float(probs.max())
+    within_epsilon = set(np.flatnonzero(probs >= max_p - epsilon).tolist())
+    tie_set_names = tuple(ACTION_NAMES[i] for i in sorted(within_epsilon))
+
+    if len(within_epsilon) == 1:
+        chosen = next(iter(within_epsilon))
+        return SafetyAwareActionResult(
+            action_index=chosen, action_name=ACTION_NAMES[chosen], is_tie=False,
+            probabilities=tuple(probs.tolist()), epsilon=epsilon, tie_set=tie_set_names,
+            tie_rule_applied=TIE_RULE_CLEAR_WINNER, stressed=None, stress_reasons=(),
+        )
+
+    if DOWN_ACTION_INDEX in within_epsilon:
+        rule = TIE_RULE_DOWN_INVOLVES_UP if UP_ACTION_INDEX in within_epsilon else TIE_RULE_DOWN_HOLD
+        return SafetyAwareActionResult(
+            action_index=HOLD_ACTION_INDEX, action_name=ACTION_NAMES[HOLD_ACTION_INDEX], is_tie=True,
+            probabilities=tuple(probs.tolist()), epsilon=epsilon, tie_set=tie_set_names,
+            tie_rule_applied=rule, stressed=None, stress_reasons=(),
+        )
+
+    # Only {HOLD, UP} remains (the only other possible 2-way tie with 3 actions).
+    if stressed is None:
+        return SafetyAwareActionResult(
+            action_index=HOLD_ACTION_INDEX, action_name=ACTION_NAMES[HOLD_ACTION_INDEX], is_tie=True,
+            probabilities=tuple(probs.tolist()), epsilon=epsilon, tie_set=tie_set_names,
+            tie_rule_applied=TIE_RULE_UNKNOWN_STRESS_FALLBACK, stressed=None, stress_reasons=(),
+        )
+
+    chosen = UP_ACTION_INDEX if stressed else HOLD_ACTION_INDEX
+    return SafetyAwareActionResult(
+        action_index=chosen, action_name=ACTION_NAMES[chosen], is_tie=True,
+        probabilities=tuple(probs.tolist()), epsilon=epsilon, tie_set=tie_set_names,
+        tie_rule_applied=TIE_RULE_HOLD_UP_STRESS_DEPENDENT, stressed=stressed,
+        stress_reasons=stress_reasons if stressed else (),
     )
 
 

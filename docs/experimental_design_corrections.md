@@ -2171,3 +2171,44 @@ No historical telemetry or evaluation result is recomputed or reclassified; this
 
 **Applies to phases**: 4D-D2 (discovered the SLA/waste defect and produced the counterfactual evidence base), 4D-D3 (this correction, gate evaluation and application). See `persistent-data/traffic/v2_phase4dd3_prefreeze_fixes_report.md`.
 
+## CORR-58 — Safety-Aware Asymmetric Tie-Breaking for V2 Deterministic Inference (Phase 4D-E)
+
+### Problem
+
+The existing V2 near-tie-safe selector (`action_selection.select_safe_deterministic_action()`) resolves EVERY tie (two or more actions within `epsilon` of the maximum probability) to HOLD, regardless of which actions are tied. This is a reasonable default against `model.predict(obs, deterministic=True)`'s own index-0-biased tie-break (plain `argmax` silently favors SCALE_DOWN purely because of its index), but it is scientifically uninformative about WHICH kind of tie occurred and treats a HOLD/SCALE_UP tie identically to a SCALE_DOWN-involving tie -- there is no reason an uncertain policy should default to inaction with EQUAL conservatism in both directions when the live system is already observably under stress.
+
+### Decision
+
+Added `action_selection.select_safety_aware_action()` (and its `determine_decision_time_stress()` helper), used ONLY by the V2 deterministic-inference path (`safe_inference.py` -> `safe_ppo_controller.py` -> `scripts/evaluate_ppo_vs_hpa_v2.py`) -- the original `select_safe_deterministic_action()` is left completely UNCHANGED and remains available for any existing caller/test. Rule (tie set = the within-epsilon actions, by `ACTION_MAP` index order [SCALE_DOWN_ONE, HOLD, SCALE_UP_ONE]):
+
+- **R1** exactly one action within epsilon of the max -> that action (a clear winner).
+- **R2** SCALE_DOWN_ONE never wins any tie -- structurally guaranteed: every tie set containing SCALE_DOWN_ONE resolves via R4/R5 below, both HOLD, never SCALE_DOWN_ONE itself.
+- **R3** tie set == `{HOLD, SCALE_UP_ONE}` -> SCALE_UP_ONE if the decision-time state is STRESSED, else HOLD.
+- **R4** tie set == `{SCALE_DOWN_ONE, SCALE_UP_ONE}` or the full `{SCALE_DOWN_ONE, HOLD, SCALE_UP_ONE}` -> HOLD.
+- **R5** tie set == `{SCALE_DOWN_ONE, HOLD}` -> HOLD.
+- **R6** STRESSED could not be determined (all four raw stress inputs missing) for an otherwise-R3-eligible tie, OR any policy-inference failure (model None, invalid observation, probability-extraction failure, malformed probabilities) -> HOLD -- the same fail-safe default `safe_inference.py` already used, unchanged in spirit.
+
+STRESSED (decision-time RAW state -- the observation that PRODUCED the current decision, carried forward from the previous step's/`env.reset()`'s own `info["raw_observation"]`, never the post-action state): `p95_latency_ms >= sla.p95_target_ms` OR `error_rate > 0` OR `cpu_per_replica > pressure.cpu_safe_high` OR `memory_per_replica > pressure.memory_safe_high`. All four thresholds are read from the LIVE, loaded `configs/reward_v2.yaml` (`RewardConfigV2`, via `load_reward_config_v2_from_yaml()` or a caller-supplied instance) -- never hardcoded. A missing individual value counts as not-stressed for that term alone; all four missing makes stress undeterminable (R6).
+
+**Rationale**: availability first -- scale up fast under genuine stress (mirroring conventional HPA behavior, which reacts quickly to exceeded targets), scale down only on a clear signal, never as a coin-flip resolution of policy uncertainty. SCALE_DOWN must never be the "accidental" outcome of an uncertain policy.
+
+### Scope
+
+**V2 deterministic inference ONLY.** Training is completely unaffected: `model.learn()` samples stochastically from the policy's own categorical distribution (SB3 library internals), never through `action_selection.py`/`safe_inference.py`/`safe_ppo_controller.py` at all -- verified by `tests/unit/test_training_excludes_safe_tie_override.py`'s structural import-graph guard, extended this phase to also cover `scripts/train_ppo_final_v2.py`/`scripts/train_ppo_live_v2.py` (previously only the V1 trainers were guarded). V1's own evaluation/demo path (`scripts/evaluate_ppo_vs_hpa.py`, `scripts/run_demo_episode.py`) is completely untouched -- both files are confirmed byte-identical by hash. `action_selection.py`'s frozen `ACTION_MAP`/`types.py`'s `ACTION_NAMES` (action IDs 0=SCALE_DOWN_ONE, 1=HOLD, 2=SCALE_UP_ONE) are unchanged.
+
+`near_tie_epsilon` remains at its existing PROVISIONAL value (0.05, `epsilon_status: provisional_unvalidated` in `configs/rl_v2.yaml`'s `safe_action` block) -- this correction changes WHAT HAPPENS when a tie occurs, not the epsilon threshold that defines a tie, which still awaits post-training calibration (R4F's own finding: 91% of real session_002 decisions would be forced into the tie band at this epsilon) exactly as before.
+
+### Scientific Impact
+
+None to any already-recorded evidence or trained model (`--execute` has never been invoked against this path). Additive decision-record fields (`tie_set`, `tie_rule_applied`, `stressed`, `stress_reasons`) let a future V2 evaluation run audit exactly which rule fired on every tied decision -- no existing field's meaning or value changes.
+
+### Preserved Invariants
+
+`select_safe_deterministic_action()`, `compute_margin_stats()`, `extract_action_probabilities()`, the 11-feature observation contract, the reward formula/weights, and every V1 behavior are unchanged.
+
+### Non-Retroactivity
+
+Prospective only -- no historical telemetry, ledger, or evaluation result is reclassified. `active_correction_reference` is updated globally to `"CORR-58"` (`prior_correction_reference: "CORR-57"`).
+
+**Applies to phases**: 4D-E (this correction). See `persistent-data/traffic/v2_phase4de_tie_break_report.md`.
+
