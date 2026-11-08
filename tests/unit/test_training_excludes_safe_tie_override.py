@@ -82,6 +82,11 @@ class TestSafeTieModulesOnlyUsedByInferencePaths:
     inference path only, never training."""
 
     def test_safe_ppo_controller_used_only_by_v2_eval_script(self):
+        """V2 Phase 5C-A: scripts/eval_v2_episodes.py is a NEW evaluation-only
+        file (the unified per-arm episode recorder used by
+        scripts/evaluate_v2_campaign.py's ppo_v2 arm) -- same inference-only
+        category as evaluate_ppo_vs_hpa_v2.py, never training. Added to the
+        allowed-users set; nothing else changes."""
         import subprocess
 
         result = subprocess.run(
@@ -89,4 +94,7 @@ class TestSafeTieModulesOnlyUsedByInferencePaths:
             capture_output=True, text=True, check=False,
         )
         users = {line for line in result.stdout.splitlines() if line}
-        assert users == {"scripts/evaluate_ppo_vs_hpa_v2.py", "autoscaler/src/rl_env/safe_ppo_controller.py"}
+        assert users == {
+            "scripts/evaluate_ppo_vs_hpa_v2.py", "scripts/eval_v2_episodes.py",
+            "autoscaler/src/rl_env/safe_ppo_controller.py",
+        }

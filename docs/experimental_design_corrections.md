@@ -2285,3 +2285,39 @@ Prospective only. `active_correction_reference` is updated globally to `"CORR-60
 
 **Applies to phases**: 5A (this correction). See `persistent-data/rl_training_v2/final_min2/EVALUATION_PREREGISTRATION.json`, `docs/evaluation_v2_preregistration.md`, and `persistent-data/traffic/v2_phase5a_eval_prep_report.md`.
 
+## CORR-61 — Evaluation Safety/Termination Clarification (Phase 5C-A)
+
+### Problem
+
+`EVALUATION_PREREGISTRATION.json` (CORR-60) states a `validity_rules` policy (tooling failure -> one retry; safety termination -> counted, never retried) but did not specify WHICH live-cluster conditions count as a safety termination for the evaluation's real per-arm episode functions (`scripts/eval_v2_episodes.py`, built this phase) -- an omission that, left unresolved until evaluation results existed, could have invited an outcome-aware choice of thresholds.
+
+### Decision
+
+Stated here, BEFORE any evaluation run and before any further training result beyond what already existed at Phase 5B's close: the evaluation's safety-termination thresholds are the SAME ones training already uses, applied identically to EVERY arm (PPO and both HPA arms):
+
+- **Per-pod memory >= 230Mi (`scripts.v2_pilot_safety.MEMORY_SAFETY_THRESHOLD_MIB`) for >= 2 consecutive samples (`SUSTAINED_BREACH_SAMPLES`)** -> `SafetyTerminationError`, for ANY arm.
+- **A pod restart, or sustained zero-ready replicas** (the same two conditions `scripts.v2_pilot_safety.PilotSafetyCallback` already checks during training) -> `SafetyTerminationError`, for ANY arm.
+- **The ppo_v2 arm additionally** ends on its own environment's existing 4-consecutive-invalid-step termination (`EnvConfigV2.max_consecutive_invalid_steps`, unchanged, already enforced by `KubernetesAutoscalerEnvV2`/`KubernetesAutoscalerEnv` -- this arm alone can reach a state where it has no valid observation to act on; the HPA arms do not depend on PPO's own observation pipeline to keep scaling).
+- Any other failure (route/Prometheus/generator/Kubernetes-API error) -> `ToolingFailureError` (one retry, per the pre-registration).
+- Invalid-sample counts and pod-restart counts are recorded identically in every arm's own per-decision `EpisodeSample`, regardless of whether that arm's run subsequently terminates.
+
+No new threshold was invented; this correction only makes explicit, before evaluation, that the ALREADY-FROZEN training-time thresholds also govern evaluation-time termination, applied uniformly across arms (an HPA arm is not held to a looser safety standard than PPO, nor the reverse).
+
+### Scope
+
+`scripts/eval_v2_episodes.py` only (a new file). No training file, no `FREEZE_MANIFEST.json` file, and no governing-hash-tracked module is touched. `scripts/v2_pilot_safety.py`'s `MEMORY_SAFETY_THRESHOLD_MIB`/`SUSTAINED_BREACH_SAMPLES`/`get_pod_health`/`get_max_per_pod_memory_mib` are imported and reused, never modified.
+
+### Scientific Impact
+
+None to training. Fixes, before any evaluation result exists, exactly which live conditions terminate an evaluation run and how they are classified (safety vs. tooling) -- a prerequisite the pre-registration (CORR-60) left implicit.
+
+### Preserved Invariants
+
+The training-time safety thresholds themselves are unchanged (230Mi / 2 samples, pod-restart/zero-ready detection, 4-consecutive-invalid-step cap) -- this correction only extends their application to the evaluation's own, separate episode functions.
+
+### Non-Retroactivity
+
+Prospective only. `active_correction_reference` is updated globally to `"CORR-61"` (`prior_correction_reference: "CORR-60"`).
+
+**Applies to phases**: 5C-A (this correction). See `persistent-data/traffic/v2_phase5ca_episode_recorders_report.md`.
+

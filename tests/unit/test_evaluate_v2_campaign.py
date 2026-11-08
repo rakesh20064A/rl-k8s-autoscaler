@@ -223,3 +223,45 @@ class TestPreflightFailureIsToolingFailure:
         assert result["ok"] is False
         ledger = campaign_mod.load_ledger(tmp_path / "dr11" / "ledger.jsonl")
         assert ledger[0]["status"] == "TOOLING_FAILURE"
+
+
+class TestEndToEndDryCampaignToAnalysis:
+    """V2 Phase 5C-A: the full runner -> analysis pipeline, entirely
+    offline. A 27-run dry campaign (with the fake episodes now emitting the
+    real EpisodeSample/RunSeries shape) feeds its `normalized_series.json`
+    files directly into analyze_v2_evaluation.py with no manual conversion
+    step, producing tables, figures, and pre-registered comparison
+    verdicts."""
+
+    def test_full_pipeline_produces_tables_figures_and_verdicts(self, tmp_path):
+        import scripts.analyze_v2_evaluation as av
+
+        ctx = campaign_mod.build_dry_run_context("e2e")
+        result = campaign_mod.run_campaign("e2e", ctx, output_root=tmp_path)
+        assert result["ok"] is True
+
+        campaign_dir = tmp_path / "e2e"
+        run_metrics = av.analyze_evaluation_campaign(campaign_dir)
+        # 18 VALID runs (ppo_v2 + hpa_v2_cpu_memory); the 9 hpa_v2_cpu_only
+        # runs are FAILED_CLOSED and carry no normalized_series.json.
+        assert len(run_metrics) == 18
+        assert {m["arm_id"] for m in run_metrics} == {"ppo_v2", "hpa_v2_cpu_memory"}
+
+        aggregated = av.aggregate_per_profile_arm(run_metrics)
+        assert len(aggregated) == 6  # 3 profiles x 2 arms with data
+
+        output_dir = tmp_path / "analysis"
+        tables = av.write_evaluation_tables(aggregated, output_dir)
+        assert tables["csv"].exists()
+        assert tables["md"].exists()
+        figures = av.plot_evaluation_figures(aggregated, output_dir)
+        assert len(figures) == len(av.PRIMARY_METRICS)
+        assert all(p.exists() for p in figures)
+
+        comparison = av.compare_arms_per_profile(run_metrics, "ppo_v2", "hpa_v2_cpu_memory")
+        for profile in {m["profile"] for m in run_metrics}:
+            # The fake ppo_v2 episode is deterministically lower-latency
+            # than the fake hpa_v2_cpu_memory episode on EVERY repeat --
+            # the pre-registered "better in all 3 repeats" rule must find
+            # ppo_v2 the decidable winner on mean_p95_latency_ms.
+            assert comparison[profile]["mean_p95_latency_ms"] == "ppo_v2_better"

@@ -61,6 +61,24 @@ from autoscaler.src.rl_env.controller_exclusivity import (  # noqa: E402
 )
 from loadgen.traffic_generator import parse_traffic_profile  # noqa: E402
 
+# V2 Phase 5C-A: the error classes and the real per-arm episode functions
+# now live in scripts/eval_v2_episodes.py (a new file) -- re-exported here
+# unchanged so every existing caller/test of this module (`campaign_mod.
+# ToolingFailureError`, etc.) keeps working without modification. This
+# module's own OWN responsibility stays campaign orchestration (plan,
+# ledger, resume, retry, cleanup); scripts/eval_v2_episodes.py owns what
+# one arm's one episode actually does against a live cluster.
+from scripts.eval_v2_episodes import (  # noqa: E402
+    CpuOnlyArmNotYetSupportedError,
+    SafetyTerminationError,
+    ToolingFailureError,
+    episode_result_to_run_series_dict,
+    resolve_cpu_only_controller_identity,
+    run_hpa_v2_cpu_memory_eval_episode,
+    run_hpa_v2_cpu_only_eval_episode,
+    run_ppo_v2_eval_episode,
+)
+
 # -- firewall: the 3 held-out evaluation profiles ONLY, never the training
 # profiles in configs/traffic_profiles/v2/ (V2_TRAINING_PROFILE_ALLOWLIST) --
 EVAL_PROFILE_DIR = PROJECT_ROOT / "configs" / "traffic_profiles" / "v2_eval"
@@ -74,35 +92,8 @@ EVAL_OUTPUT_ROOT = PROJECT_ROOT / "persistent-data" / "evaluation_v2"
 ARM_ID_MAP = {"PPO_V2": "ppo_v2", "HPA_V2_CPU_MEMORY": "hpa_v2_cpu_memory", "HPA_CPU_ONLY": "hpa_v2_cpu_only"}
 ARM_IDS = ("ppo_v2", "hpa_v2_cpu_memory", "hpa_v2_cpu_only")
 
-# Phase 5C's exact, one-line fix (see CpuOnlyArmNotYetSupportedError below).
-CPU_ONLY_ARM_PHASE5C_CHANGE = (
-    "autoscaler/src/rl_env/controller_exclusivity.py: add "
-    "CONTROLLER_CPU_ONLY_HPA_V2 = 'cpu_only_hpa_v2' to ALL_CONTROLLERS and "
-    "HPA_NAME_BY_CONTROLLER[CONTROLLER_CPU_ONLY_HPA_V2] = 'demo-app-hpa-v2-cpu' "
-    "(mirroring the existing CONTROLLER_CPU_MEMORY_HPA entry), then give "
-    "scripts/evaluate_v2_campaign.py's hpa_v2_cpu_only arm a real episode "
-    "function mirroring run_hpa_v2_episode() but using that controller and "
-    "k8s/hpa/hpa_v2_cpu_only_min2.yaml."
-)
-
 
 class EvalProfileFirewallViolation(RuntimeError):
-    pass
-
-
-class CpuOnlyArmNotYetSupportedError(RuntimeError):
-    def __init__(self) -> None:
-        super().__init__(
-            f"hpa_v2_cpu_only arm requires a Phase 5C controller_exclusivity.py "
-            f"amendment before it can run against a live cluster: {CPU_ONLY_ARM_PHASE5C_CHANGE}"
-        )
-
-
-class ToolingFailureError(RuntimeError):
-    pass
-
-
-class SafetyTerminationError(RuntimeError):
     pass
 
 
@@ -288,6 +279,7 @@ class CampaignContext:
     settle_fn: Callable[[float], None]
     settle_seconds: float = 120.0
     runs_dir: Path = field(default_factory=lambda: EVAL_OUTPUT_ROOT / "_unset" / "runs")
+    cpu_only_episode_fn: Optional[Callable[["to.ProfileMetadata", str], Dict[str, Any]]] = None
 
 
 def run_one_attempt(run_record: RunRecord, ctx: CampaignContext, attempt_number: int) -> Dict[str, Any]:
@@ -306,13 +298,21 @@ def run_one_attempt(run_record: RunRecord, ctx: CampaignContext, attempt_number:
             raise ToolingFailureError(f"preflight failed: {preflight}")
 
         if run_record.arm_id == "hpa_v2_cpu_only":
-            raise CpuOnlyArmNotYetSupportedError()
+            # V2 Phase 5C-A: the REAL, getattr-based readiness check --
+            # never cluster-touching -- checked BEFORE any profile
+            # resolution or traffic start. Raises CpuOnlyArmNotYetSupportedError
+            # (fails closed) until controller_exclusivity.py gains
+            # CONTROLLER_CPU_ONLY_HPA_V2 (Phase 5C); a test that monkeypatches
+            # that constant in makes this call succeed with NO code change.
+            resolve_cpu_only_controller_identity()
 
         profile_meta = resolve_eval_profile_metadata(run_record.profile)
         handle = ctx.orchestrator.start_episode_traffic(run_record.profile, episode_id)
         try:
             if run_record.arm_id == "ppo_v2":
                 result = ctx.ppo_episode_fn(profile_meta, episode_id)
+            elif run_record.arm_id == "hpa_v2_cpu_only":
+                result = ctx.cpu_only_episode_fn(profile_meta, episode_id)
             else:
                 result = ctx.hpa_episode_fn(profile_meta, episode_id)
         finally:
@@ -342,6 +342,16 @@ def run_one_attempt(run_record: RunRecord, ctx: CampaignContext, attempt_number:
     run_dir.mkdir(parents=True, exist_ok=True)
     with open(run_dir / "attempt.json", "w", encoding="utf-8") as f:
         json.dump(entry, f, indent=2, default=str)
+
+    # V2 Phase 5C-A: a VALID run whose result carries the real per-decision
+    # `samples` shape (the unified eval_v2_episodes.EpisodeSample schema --
+    # dry-run fakes do not produce this) is normalized into
+    # analyze_v2_evaluation's RunSeries schema immediately, so a later
+    # analysis pass needs no manual conversion step.
+    if entry["status"] == "VALID" and isinstance(entry.get("result"), dict) and "samples" in entry["result"]:
+        series_dict = episode_result_to_run_series_dict(entry["result"], run_record.run_id, run_record.repeat_index)
+        with open(run_dir / "normalized_series.json", "w", encoding="utf-8") as f:
+            json.dump(series_dict, f, indent=2, default=str)
 
     return entry
 
@@ -432,6 +442,28 @@ class _FakeOrchestrator:
         return 0.0
 
 
+def _fake_episode_samples(arm_id: str, profile_name: str, n_decisions: int, base_latency_ms: float) -> List[Dict[str, Any]]:
+    """V2 Phase 5C-A: synthetic samples in the SAME shape
+    `eval_v2_episodes.EpisodeSample.to_dict()` produces -- lets a dry-run
+    campaign's ledger feed directly into `analyze_v2_evaluation.py` (via
+    `eval_v2_episodes.episode_result_to_run_series_dict()`) without a real
+    cluster, proving the runner-to-analysis pipeline end-to-end offline."""
+    samples = []
+    for i in range(n_decisions):
+        ppo_decision = None
+        if arm_id == "ppo_v2":
+            ppo_decision = {"effective_action_name": "HOLD" if i % 3 else "SCALE_UP", "extra": {"is_reversal": False}}
+        samples.append({
+            "decision_index": i, "t_s": i * 30.0, "timestamp_utc": "fake", "profile": profile_name, "arm_id": arm_id,
+            "normalized_observation": [0.5] * 11, "raw_observation": {}, "sample_valid": True,
+            "p95_latency_ms": base_latency_ms + i, "error_rate": 0.0, "request_rate_rps": 10.0,
+            "desired_replicas": 2, "ready_replicas": 2, "max_per_pod_memory_mib": 80.0,
+            "pod_restart_counts": {}, "hpa_status": None if arm_id == "ppo_v2" else {"hpa_name": arm_id, "applied": True},
+            "ppo_decision": ppo_decision,
+        })
+    return samples
+
+
 def build_dry_run_context(campaign_id: str) -> CampaignContext:
     """Every cluster-touching dependency is a fake: no subprocess, no real
     HTTP, no real sleep, no Kubernetes/Prometheus access -- proves the
@@ -441,16 +473,39 @@ def build_dry_run_context(campaign_id: str) -> CampaignContext:
     orchestrator = _FakeOrchestrator()
 
     def fake_ppo_episode(profile_meta: "to.ProfileMetadata", episode_id: str) -> Dict[str, Any]:
-        return {"episode_id": episode_id, "n_decisions": int(profile_meta.duration_seconds // 30), "arm": "ppo_v2", "fake": True}
+        n = int(profile_meta.duration_seconds // 30)
+        # Deterministically the lowest latency of the 3 arms, every decision,
+        # every repeat -- so the "better in all 3 repeats" comparison has a
+        # decidable winner to prove end-to-end (see
+        # TestEndToEndDryCampaignToAnalysis in tests/unit/test_evaluate_v2_campaign.py).
+        return {
+            "episode_id": episode_id, "arm_id": "ppo_v2", "profile": profile_meta.name, "pod_restarts_total": 0,
+            "samples": _fake_episode_samples("ppo_v2", profile_meta.name, n, base_latency_ms=200.0),
+        }
 
     def fake_hpa_episode(profile_meta: "to.ProfileMetadata", episode_id: str) -> Dict[str, Any]:
-        return {"episode_id": episode_id, "n_samples": int(profile_meta.duration_seconds // 30) + 1, "arm": "hpa_v2_cpu_memory", "fake": True}
+        n = int(profile_meta.duration_seconds // 30)
+        return {
+            "episode_id": episode_id, "arm_id": "hpa_v2_cpu_memory", "profile": profile_meta.name, "pod_restarts_total": 0,
+            "samples": _fake_episode_samples("hpa_v2_cpu_memory", profile_meta.name, n, base_latency_ms=600.0),
+        }
+
+    def fake_cpu_only_episode(profile_meta: "to.ProfileMetadata", episode_id: str) -> Dict[str, Any]:
+        # Only ever reached once resolve_cpu_only_controller_identity() (called
+        # by run_one_attempt BEFORE this fn) has already succeeded -- i.e. a
+        # test has monkeypatched the future Phase 5C constant in.
+        n = int(profile_meta.duration_seconds // 30)
+        return {
+            "episode_id": episode_id, "arm_id": "hpa_v2_cpu_only", "profile": profile_meta.name, "pod_restarts_total": 0,
+            "samples": _fake_episode_samples("hpa_v2_cpu_only", profile_meta.name, n, base_latency_ms=650.0),
+        }
 
     return CampaignContext(
         orchestrator=orchestrator,
         preflight_fn=lambda: {"ok": True, "fake": True},
         ppo_episode_fn=fake_ppo_episode,
         hpa_episode_fn=fake_hpa_episode,
+        cpu_only_episode_fn=fake_cpu_only_episode,
         cleanup_fn=lambda: {"restored": True, "fake": True},
         settle_fn=sleep_recorder,
         settle_seconds=120.0,
@@ -497,23 +552,25 @@ def live_preflight_check() -> Dict[str, Any]:
 
 
 def build_live_context(model_path: Path, epsilon: float, settle_seconds: float = 120.0) -> CampaignContext:
-    """V2 Phase 5B: wires the SAME control flow to the real, already-tested
-    building blocks. NOT invoked by this phase (training is live) -- see
-    the module docstring."""
-    import scripts.evaluate_ppo_vs_hpa_v2 as eval_v2
-
+    """V2 Phase 5C-A: wires the SAME control flow to the REAL, unified
+    per-arm episode functions in scripts/eval_v2_episodes.py (all three
+    arms now measured identically). NOT invoked by this phase (training is
+    live) -- see the module docstring."""
     orchestrator = V2EvalTrafficOrchestrator()
 
     def ppo_episode(profile_meta: "to.ProfileMetadata", episode_id: str) -> Dict[str, Any]:
-        return eval_v2.run_live_v2_episode(model_path, profile_meta.duration_seconds, episode_id, epsilon)
+        return run_ppo_v2_eval_episode(model_path, epsilon, profile_meta.name, profile_meta.duration_seconds, episode_id)
 
     def hpa_episode(profile_meta: "to.ProfileMetadata", episode_id: str) -> Dict[str, Any]:
-        return eval_v2.run_hpa_v2_episode(profile_meta.duration_seconds, episode_id)
+        return run_hpa_v2_cpu_memory_eval_episode(profile_meta.name, profile_meta.duration_seconds, episode_id)
+
+    def cpu_only_episode(profile_meta: "to.ProfileMetadata", episode_id: str) -> Dict[str, Any]:
+        return run_hpa_v2_cpu_only_eval_episode(profile_meta.name, profile_meta.duration_seconds, episode_id)
 
     return CampaignContext(
         orchestrator=orchestrator, preflight_fn=live_preflight_check, ppo_episode_fn=ppo_episode,
-        hpa_episode_fn=hpa_episode, cleanup_fn=restore_canonical_idle_state, settle_fn=__import__("time").sleep,
-        settle_seconds=settle_seconds,
+        hpa_episode_fn=hpa_episode, cpu_only_episode_fn=cpu_only_episode, cleanup_fn=restore_canonical_idle_state,
+        settle_fn=__import__("time").sleep, settle_seconds=settle_seconds,
     )
 
 
