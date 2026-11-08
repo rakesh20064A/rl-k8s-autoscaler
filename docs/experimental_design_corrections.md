@@ -2249,3 +2249,39 @@ Prospective only -- no historical telemetry, ledger, or session result is reclas
 
 **Applies to phases**: 4H-A (this correction). See `persistent-data/rl_training_v2/final_min2/FREEZE_MANIFEST_AMENDMENT_001.json` and `persistent-data/traffic/v2_phase4ha_budget_amendment_report.md`.
 
+## CORR-60 — V2 Evaluation Pre-Registration (Phase 5A)
+
+### Problem
+
+No pre-registered record existed yet for how the final V2 evaluation (PPO-V2 vs. HPA baselines) will be designed and judged. Fixing the design only after a trained model and its results exist risks (even unintentionally) choosing workloads, thresholds, or a decision rule that happen to favor whichever arm looks better in a first look -- the same outcome-aware-design risk this project's other pre-registration decisions (the budget amendment, CORR-59; the tie-break rule, CORR-58) are built to avoid.
+
+### Decision
+
+Created `persistent-data/rl_training_v2/final_min2/EVALUATION_PREREGISTRATION.json` (machine-readable) and `docs/evaluation_v2_preregistration.md` (readable copy), **before** any evaluation run and before `session_047` (the final, 48-update checkpoint under the amended CORR-59 budget) exists:
+
+- **Model under test**: the 48-update final checkpoint (session_047) only; intermediate checkpoints are for training-curve analysis only.
+- **Three arms**: PPO-V2 (deterministic + safety-aware tie rule R1-R6, CORR-58), HPA-V2 CPU+memory (`demo-app-hpa-v2`), and a new third arm, HPA-CPU-only with the V2 replica floor (`demo-app-hpa-v2-cpu`, `k8s/hpa/hpa_v2_cpu_only_min2.yaml`, manifest-only this phase) -- isolating "does the memory metric matter" from "does the higher replica floor matter." All arms: bounds 2-8, same image, Metrics Server 15s verified live before every HPA run, Grafana 0.
+- **Workloads**: 3 new held-out profiles (`configs/traffic_profiles/v2_eval/`: `eval_cpu_step`, `eval_memory_ramp`, `eval_mixed_burst`), seeds 9101-9103 (none used in training), none a member of `V2_TRAINING_PROFILE_ALLOWLIST` -- 3 repeats each, order rotated per repeat via a Latin square over the 3 arms.
+- **Epsilon rule**: 10th percentile of the final model's top1-top2 probability margin over the last 5 training sessions' telemetry, capped at 0.05, floored at 0.0, computed once before evaluation (value not yet knowable -- training is still live).
+- **Primary metrics**: SLA-violation rate at 1000ms (CORR-57's target) and replica-minutes; a full secondary list plus a 300ms reference-only SLA figure for historical comparability.
+- **Validity**: tooling failure -> one retry, no scientific outcome; safety termination -> a counted outcome, never retried; every attempt preserved.
+- **Decision rule**: mean +/- sd over 3 repeats; "better" requires winning all 3 repeats, not merely on average; no aggregate winner across conflicting metrics -- trade-offs are reported as such.
+
+### Scope
+
+Offline preparation only. No file under `persistent-data/rl_training_v2/` was touched except this new pre-registration record. `scripts/evaluate_ppo_vs_hpa_v2.py` and every `autoscaler/src/rl_env/` module are UNCHANGED this phase (that is Phase 5B's scope). Also prepared this phase, also unapplied/unrun: `k8s/hpa/hpa_v2_cpu_only_min2.yaml` (the third arm's manifest) and `k8s/metrics-server/metrics-server.yaml` + `scripts/apply_metrics_server_permanent.sh` (a prepared, not-yet-applied self-managed replacement for the Minikube metrics-server addon, which otherwise resets to its own 60s packaged default on every cluster recreation) -- the manifest's container image is a clearly marked placeholder (`PLACEHOLDER_IMAGE_TAG_UNVERIFIED_OFFLINE`), since the live addon's exact image tag could not be determined offline this phase.
+
+### Scientific Impact
+
+None to training (unaffected; all 43 `FREEZE_MANIFEST.json` files plus the AMENDMENT_001 trainer hash re-verified unchanged this phase). Establishes the fixed, pre-registered terms under which Phase 5B's evaluation-code implementation and the eventual live evaluation run will be judged.
+
+### Preserved Invariants
+
+The training contract (governing files, budget, schedule, safety) is completely untouched. `demo-app-hpa-v2`'s own manifest is untouched; the new CPU-only manifest is a separate, additional file.
+
+### Non-Retroactivity
+
+Prospective only. `active_correction_reference` is updated globally to `"CORR-60"` (`prior_correction_reference: "CORR-59"`).
+
+**Applies to phases**: 5A (this correction). See `persistent-data/rl_training_v2/final_min2/EVALUATION_PREREGISTRATION.json`, `docs/evaluation_v2_preregistration.md`, and `persistent-data/traffic/v2_phase5a_eval_prep_report.md`.
+
