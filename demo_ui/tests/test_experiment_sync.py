@@ -54,6 +54,10 @@ def mocked_subprocess(tmp_path, monkeypatch):
 
 def _drive_start(at, controller_label: str, profile_label: str):
     at.sidebar.radio[0].set_value("Experiment").run()
+    # V2 Phase 5E: Generation defaults to "V2" -- this file exercises V1's
+    # own start/sync behaviour, whose code path is otherwise completely
+    # unchanged by this phase.
+    at.segmented_control(key="du_generation_widget").set_value("V1").run()
     at.segmented_control(key="du_data_source_widget").set_value("LIVE").run()
     at.radio(key="du_controller_widget").set_value(controller_label).run()
     at.selectbox(key="du_profile_widget").set_value(profile_label).run()

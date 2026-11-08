@@ -146,12 +146,18 @@ class TestFreshStoreRendering:
         assert "No experiment events yet." in html
 
     def test_fixture_content_confined_to_one_expander(self):
+        """V2 Phase 5E: a second, clearly V2-labeled expander was added
+        alongside V1's own (unchanged) one -- both are fixture-only,
+        collapsed by default, never shown as primary content."""
         at = AppTest.from_file(APP_PATH, default_timeout=30)
         at.run()
         at.sidebar.radio[0].set_value("Live Details").run()
         assert not at.exception, at.exception
         labels = [e.label for e in at.expander]
-        assert labels == ["Demo fixture data (simulated, not real LIVE results)"]
+        assert labels == [
+            "Demo fixture data (simulated, not real LIVE results)",
+            "V2 demo fixture data (simulated, not evaluation evidence)",
+        ]
 
     def test_navigation_preserves_same_active_run(self):
         run_id = experiment_store.start_run("HPA", "demo_smoke_test", path=self.store_path)

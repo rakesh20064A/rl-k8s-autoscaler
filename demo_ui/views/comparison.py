@@ -23,8 +23,10 @@ from demo_ui.comparison_engine import compare
 from demo_ui.components.charts import overlay_line_chart
 from demo_ui.components.layout import render_topbar
 from demo_ui.conclusion_engine import generate_conclusion
+from demo_ui.config_v2 import load_config_v2_safe
 from demo_ui.fixtures import build_fixture_pair
 from demo_ui.models import TrafficProfile
+from demo_ui.views import comparison_v2
 
 _METRIC_LABELS = [
     ("mean_replicas", "Mean replicas"),
@@ -177,6 +179,13 @@ def render() -> None:
             st.session_state["du_show_comparison_fixture"] = True
         if st.session_state.get("du_show_comparison_fixture", False):
             _render_fixture_comparison()
+
+    st.markdown('<div class="du-section-label" style="margin-top:1rem;">V2 Evaluation (CORR-60/61 pre-registered campaign)</div>', unsafe_allow_html=True)
+    cfg, error = load_config_v2_safe()
+    if error is not None:
+        st.caption(error)
+    else:
+        comparison_v2.render(cfg.evaluation_campaign_dir)
 
 
 def _render_fixture_comparison() -> None:

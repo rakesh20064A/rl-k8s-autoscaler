@@ -1,0 +1,36 @@
+# configs/traffic_profiles/v2_demo/demo_memory_short.yaml
+# V2 Phase 5E: a SHORT (~8 min) DEMO-ONLY profile -- NOT in
+# V2_TRAINING_PROFILE_ALLOWLIST, NOT in the v2_eval EVAL_PROFILE_ALLOWLIST
+# (see demo_cpu_short.yaml's header for the full firewall rationale). A
+# demo run using this profile is NOT scientific evidence.
+#
+# Seed 7002 is used by no training or evaluation profile. memory_mb=16 /
+# memory_safe_max_in_flight=8 reuse the same validated safety ceiling
+# every other V2 memory/mixed profile uses.
+
+profile: demo_memory_short
+description: "V2 Phase 5E DEMO ONLY (not evaluation evidence): memory-only, gradual ramp, ~8 min"
+seed: 7002
+
+intensity: 3
+endpoint: /work
+
+resource_mode: memory
+memory_mb: 16
+memory_safe_max_in_flight: 8
+
+phases:
+  - type: ramp
+    name: ramp_up
+    duration_seconds: 200
+    start_rps: 3
+    end_rps: 18
+  - type: constant
+    name: hold
+    duration_seconds: 80
+    target_rps: 18
+  - type: ramp
+    name: ramp_down
+    duration_seconds: 200
+    start_rps: 18
+    end_rps: 3

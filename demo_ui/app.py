@@ -15,7 +15,7 @@ from __future__ import annotations
 import streamlit as st
 
 from demo_ui import theme
-from demo_ui.views import comparison, experiment, history, live_details
+from demo_ui.views import comparison, experiment, history, live_details, training_v2
 
 st.set_page_config(page_title="RL Autoscaler Lab", layout="wide")
 
@@ -23,6 +23,7 @@ PAGES = {
     "Experiment": experiment,
     "Live Details": live_details,
     "Comparison": comparison,
+    "Training": training_v2,
     "History": history,
 }
 
