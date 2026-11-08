@@ -111,7 +111,7 @@ class TestMarkCampaignFailed:
         state["cumulative_timesteps"] = 768
         final_mod._mark_campaign_failed(state, {"session_index": 3, "physical_attempt_number": 1, "termination_reason": "x"})
         on_disk = final_mod.load_campaign_metadata()
-        assert on_disk["remaining_timesteps"] == 5120 - 768
+        assert on_disk["remaining_timesteps"] == final_mod.FINAL_TOTAL_TIMESTEPS_BUDGET - 768
 
 
 # -- Exact V2 Phase 4B-R scenario: resume from verified 768/3/session_002,
@@ -212,8 +212,8 @@ class TestExactPhase4BRScenario:
         # with the VERIFIED 42 -- never the failed attempt's 49.
         assert seen_campaign_states[0] == (3, 42)
         assert result["ok"] is True
-        # Reached exactly the remaining budget: 768 + 17*256 = 5120.
-        assert result["campaign_state"]["cumulative_timesteps"] == 5120
+        # Reached exactly the remaining budget.
+        assert result["campaign_state"]["cumulative_timesteps"] == final_mod.FINAL_TOTAL_TIMESTEPS_BUDGET
 
     def test_bookkeeping_bug_reproduced_then_fixed(self, tmp_path, monkeypatch):
         """Directly reproduces the disclosed bug scenario: stdout-level

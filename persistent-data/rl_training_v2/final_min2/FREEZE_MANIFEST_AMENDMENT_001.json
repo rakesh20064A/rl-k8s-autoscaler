@@ -1,0 +1,46 @@
+{
+  "amendment_id": "FREEZE_MANIFEST_AMENDMENT_001",
+  "corr_id": "CORR-59",
+  "phase": "V2 Phase 4H-A",
+  "created_utc": "2026-11-08T09:59:47Z",
+  "decided_utc": "2026-11-08 ~09:30 UTC (15:00 IST), before any training results beyond session_000 existed",
+  "change": {
+    "field": "total campaign budget / session count",
+    "old_total_timesteps": 5120,
+    "new_total_timesteps": 12288,
+    "old_planned_sessions": 20,
+    "new_planned_sessions": 48,
+    "n_steps_per_session_unchanged": 256,
+    "n_ppo_updates_old": 20,
+    "n_ppo_updates_new": 48
+  },
+  "rationale": [
+    "More PPO updates (48 instead of 20) give the policy more opportunity to converge to a stable behaviour within the project's remaining 10-day window.",
+    "No hyperparameter, reward, observation, or schedule change is justified by any evidence -- this amendment changes ONLY the number of sessions/timesteps, nothing about what is learned or how.",
+    "The decision was made and recorded BEFORE any training result from session_020 onward existed (the then-running campaign, PID 26490, was mid-session_001-019 at decision time, --max-sessions 19, bounded to stop exactly at the original 5,120 budget) -- this preserves the project's own no-outcome-aware-change discipline.",
+    "Because the learning rate is constant and the training schedule (training_schedule_v2.build_training_profile_rotation) is fully deterministic given the same seed, the first 5,120 steps of a 12,288-step run are byte-for-byte identical in schedule content to the already-completed/already-running 5,120-step run -- verified directly: build_training_profile_rotation(42, 193) == build_training_profile_rotation(42, 470)[:193]. This amendment does not retroactively alter anything about sessions 000-019."
+  ],
+  "protection_during_amendment": {
+    "running_process_pid": 26490,
+    "running_process_untouched": true,
+    "running_process_args": "--execute-campaign --i-confirm-live-cluster-interaction --max-sessions 19",
+    "running_process_will_stop_at_original_5120_budget_as_configured": true,
+    "persistent_data_final_min2_sessions_and_metadata_untouched": true,
+    "only_new_file_created_under_final_min2": "FREEZE_MANIFEST_AMENDMENT_001.json"
+  },
+  "trainer_file": "scripts/train_ppo_final_v2.py",
+  "trainer_sha256_old": "717f4495fbebd929a4ce349ba446f013f91e0a94bdebd6e1cc3c72f46829ff6d",
+  "trainer_sha256_new": "6c6f00c096c4932540e11baa94d961658b850cbc917e7068ba085ea7805a69ac",
+  "governing_files_hashes_unchanged": {
+    "configs/rl_v2.yaml": "848b8863",
+    "configs/reward_v2.yaml": "1708e1ec",
+    "autoscaler/src/rl_env/environment_v2.py": "bfe29422",
+    "autoscaler/src/rl_env/observation.py": "a7db261f",
+    "autoscaler/src/rl_env/reward_v2.py": "76428e56",
+    "note": "prefixes shown as recorded in FREEZE_MANIFEST.json at Phase 4E; all 5 re-verified byte-identical this phase"
+  },
+  "other_42_manifest_files_unchanged": true,
+  "manifest_diff_summary": "Of the 43 files listed in FREEZE_MANIFEST.json's file_hashes_sha256, exactly 1 (scripts/train_ppo_final_v2.py) now differs from its recorded hash; the remaining 42 (including all 5 governing files) are byte-identical to the values FREEZE_MANIFEST.json already records.",
+  "rule": "The original FREEZE_MANIFEST remains authoritative except for the trainer hash and budget recorded here.",
+  "resume_command_for_continuation": ".venv/bin/python scripts/train_ppo_final_v2.py --execute-campaign --i-confirm-live-cluster-interaction --max-sessions 28"
+}

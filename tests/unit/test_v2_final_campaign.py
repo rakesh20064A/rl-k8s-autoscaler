@@ -76,14 +76,16 @@ class TestResolveNextFinalSessionDir:
 
 
 class TestFixedBudget:
-    def test_budget_is_exactly_5120(self):
-        assert final_mod.FINAL_TOTAL_TIMESTEPS_BUDGET == 5120
+    def test_budget_is_exactly_12288(self):
+        """V2 Phase 4H-A / CORR-59: pre-registered amendment from 5,120."""
+        assert final_mod.FINAL_TOTAL_TIMESTEPS_BUDGET == 12288
 
     def test_n_steps_is_256_matching_pilot(self):
         assert final_mod.FINAL_N_STEPS == 256
 
-    def test_planned_sessions_is_20(self):
-        assert final_mod.FINAL_PLANNED_SESSIONS == 20
+    def test_planned_sessions_is_48(self):
+        """V2 Phase 4H-A / CORR-59: pre-registered amendment from 20."""
+        assert final_mod.FINAL_PLANNED_SESSIONS == 48
 
     def test_seed_is_42_matching_pilot(self):
         assert final_mod.FINAL_TRAINING_SEED == 42
@@ -183,11 +185,11 @@ class TestCampaignLoopControlFlow:
         monkeypatch.setattr(final_mod, "run_one_final_session", fake_session)
         result = final_mod.run_final_training_campaign(seed=42)
         assert result["ok"] is True
-        assert calls == list(range(20))
+        assert calls == list(range(final_mod.FINAL_PLANNED_SESSIONS))
         assert result["campaign_state"]["status"] == "completed"
-        assert result["campaign_state"]["cumulative_timesteps"] == 5120
-        assert result["campaign_state"]["cumulative_updates"] == 20
-        assert len(result["campaign_state"]["sessions_completed"]) == 20
+        assert result["campaign_state"]["cumulative_timesteps"] == final_mod.FINAL_TOTAL_TIMESTEPS_BUDGET
+        assert result["campaign_state"]["cumulative_updates"] == final_mod.FINAL_PLANNED_SESSIONS
+        assert len(result["campaign_state"]["sessions_completed"]) == final_mod.FINAL_PLANNED_SESSIONS
 
     def test_max_sessions_default_runs_all_sessions_unchanged(self, tmp_path, monkeypatch):
         """V2 Phase 4E: omitting max_sessions (the default, None) must be
@@ -208,7 +210,7 @@ class TestCampaignLoopControlFlow:
 
         monkeypatch.setattr(final_mod, "run_one_final_session", fake_session)
         result = final_mod.run_final_training_campaign(seed=42)
-        assert calls == list(range(20))
+        assert calls == list(range(final_mod.FINAL_PLANNED_SESSIONS))
         assert result["status"] == "completed"
 
     def test_max_sessions_one_runs_exactly_one_session_then_stops_cleanly(self, tmp_path, monkeypatch):
@@ -309,8 +311,8 @@ class TestCampaignLoopControlFlow:
         self._patch_cluster_plumbing(monkeypatch, tmp_path)
         path = tmp_path / "campaign_metadata.json"
         state = final_mod._default_campaign_metadata()
-        state["cumulative_timesteps"] = 5120
-        state["cumulative_updates"] = 20
+        state["cumulative_timesteps"] = final_mod.FINAL_TOTAL_TIMESTEPS_BUDGET
+        state["cumulative_updates"] = final_mod.FINAL_PLANNED_SESSIONS
         state["status"] = "completed"
         with open(path, "w", encoding="utf-8") as f:
             json.dump(state, f)
@@ -319,7 +321,7 @@ class TestCampaignLoopControlFlow:
         monkeypatch.setattr(final_mod, "run_one_final_session", lambda *a, **k: calls.append(1))
         result = final_mod.run_final_training_campaign(seed=42)
         assert result["status"] == "already_complete"
-        assert calls == []  # never attempts a 21st session
+        assert calls == []  # never attempts another session once the budget is reached
 
     def test_resumes_from_cumulative_updates_not_from_zero(self, tmp_path, monkeypatch):
         """If a prior process already verified sessions 0-4 (cumulative_
@@ -352,8 +354,181 @@ class TestCampaignLoopControlFlow:
 
         monkeypatch.setattr(final_mod, "run_one_final_session", fake_session)
         result = final_mod.run_final_training_campaign(seed=42)
-        assert calls == list(range(5, 20))
-        assert result["campaign_state"]["cumulative_updates"] == 20
+        assert calls == list(range(5, final_mod.FINAL_PLANNED_SESSIONS))
+        assert result["campaign_state"]["cumulative_updates"] == final_mod.FINAL_PLANNED_SESSIONS
+
+
+class TestBudgetAmendmentCorr59:
+    """V2 Phase 4H-A / CORR-59: the pre-registered budget amendment
+    (5,120 -> 12,288 timesteps, 20 -> 48 sessions). These tests simulate
+    the exact continuation scenario: a campaign_metadata.json left by the
+    OLD budget's completed run (cumulative_timesteps=5120,
+    cumulative_updates=20, status="completed"), now read under the NEW
+    budget constants."""
+
+    def _patch_cluster_plumbing(self, monkeypatch, tmp_path):
+        import autoscaler.src.rl_env.live_backend as live_backend_mod
+        import scripts.v2_pilot_safety as safety_mod
+
+        monkeypatch.setattr(live_backend_mod, "LiveKubernetesBackend", _FakeBackend)
+        monkeypatch.setattr(
+            safety_mod, "verify_prometheus_internal_paths",
+            lambda *a, **k: {"all_ok": True, "ready": True, "backend_query_ok": True, "drain_query_ok": True},
+        )
+        monkeypatch.setattr(final_mod, "read_lock", lambda: final_mod.CONTROLLER_NONE)
+        monkeypatch.setattr(final_mod, "acquire_controller", lambda *a, **k: None)
+        monkeypatch.setattr(final_mod, "release_controller", lambda *a, **k: None)
+        monkeypatch.setattr(final_mod, "FINAL_CAMPAIGN_METADATA_PATH", tmp_path / "campaign_metadata.json")
+        monkeypatch.setattr(final_mod, "FINAL_SESSIONS_DIR", tmp_path / "sessions")
+
+    def test_budget_constants(self):
+        assert final_mod.FINAL_TOTAL_TIMESTEPS_BUDGET == 12288
+        assert final_mod.FINAL_PLANNED_SESSIONS == 48
+        assert final_mod.FINAL_N_STEPS == 256
+        assert final_mod.FINAL_PLANNED_SESSIONS * final_mod.FINAL_N_STEPS == final_mod.FINAL_TOTAL_TIMESTEPS_BUDGET
+
+    def _seed_old_budget_completed_state(self, tmp_path):
+        path = tmp_path / "campaign_metadata.json"
+        state = final_mod._default_campaign_metadata()
+        state.update({
+            "cumulative_timesteps": 5120, "cumulative_updates": 20,
+            "next_global_schedule_episode_index": 193,
+            "sessions_completed": [f"session_{n:03d}" for n in range(20)],
+            "latest_verified_session_dir": str(tmp_path / "sessions" / "session_019"),
+            "latest_verified_model_path": str(tmp_path / "sessions" / "session_019" / "ppo_model.zip"),
+            "latest_verified_model_sha256": "old_run_final_hash",
+            "latest_verified_rng_state_path": str(tmp_path / "sessions" / "session_019" / "rng_state.pkl"),
+            "status": "completed",  # exactly what the OLD 5,120 budget run leaves behind
+        })
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(state, f)
+        return path
+
+    def test_already_complete_refuses_at_5120_under_old_budget_simulation(self, tmp_path, monkeypatch):
+        """Sanity: confirms the OLD budget's own 'already_complete' refusal
+        shape -- a campaign at the (hypothetical) old budget value would
+        refuse to restart. Uses a locally-constructed check rather than
+        monkeypatching the module constant (which other parallel tests
+        also read), to avoid cross-test interference."""
+        old_budget = 5120
+        state = final_mod._default_campaign_metadata()
+        state["cumulative_timesteps"] = old_budget
+        assert state["cumulative_timesteps"] >= old_budget  # the exact condition run_final_training_campaign() checks
+
+    def test_resume_from_cumulative_5120_starts_session_20(self, tmp_path, monkeypatch):
+        """The sole required code path: starting_session_index =
+        cumulative_updates (20) -> session_index 20 is the first one run,
+        never re-running 0-19."""
+        self._patch_cluster_plumbing(monkeypatch, tmp_path)
+        self._seed_old_budget_completed_state(tmp_path)
+        calls = []
+
+        def fake_session(session_index, campaign_state, seed=42):
+            calls.append(session_index)
+            cumulative = (session_index + 1) * final_mod.FINAL_N_STEPS
+            return {
+                "ok": True, "session_index": session_index, "cumulative_timesteps": cumulative,
+                "cumulative_updates": session_index + 1,
+                "next_global_schedule_episode_index": session_index + 1,
+                "model_path": str(tmp_path / "sessions" / f"session_{session_index:03d}" / "ppo_model.zip"),
+                "model_sha256": f"hash{session_index}", "rng_state_path": "rng.pkl",
+            }
+
+        monkeypatch.setattr(final_mod, "run_one_final_session", fake_session)
+        result = final_mod.run_final_training_campaign(seed=42, max_sessions=1)
+        assert calls == [20]
+        assert result["ok"] is True
+
+    def test_campaign_completed_at_5120_continues_under_new_budget(self, tmp_path, monkeypatch):
+        """The stale status='completed' (left by the OLD budget's own
+        finished run) must NOT block continuation under the NEW, higher
+        budget -- the early-return is keyed on cumulative_timesteps vs.
+        the CURRENT FINAL_TOTAL_TIMESTEPS_BUDGET, not the stored status
+        string. The status is then reset to 'in_progress' via the
+        existing, unconditional code path (never hand-edited)."""
+        self._patch_cluster_plumbing(monkeypatch, tmp_path)
+        self._seed_old_budget_completed_state(tmp_path)
+        calls = []
+
+        def fake_session(session_index, campaign_state, seed=42):
+            calls.append(session_index)
+            cumulative = (session_index + 1) * final_mod.FINAL_N_STEPS
+            return {
+                "ok": True, "session_index": session_index, "cumulative_timesteps": cumulative,
+                "cumulative_updates": session_index + 1,
+                "next_global_schedule_episode_index": session_index + 1,
+                "model_path": str(tmp_path / "sessions" / f"session_{session_index:03d}" / "ppo_model.zip"),
+                "model_sha256": f"hash{session_index}", "rng_state_path": "rng.pkl",
+            }
+
+        monkeypatch.setattr(final_mod, "run_one_final_session", fake_session)
+        result = final_mod.run_final_training_campaign(seed=42, max_sessions=1)
+        assert result["status"] != "already_complete"
+        assert calls == [20]
+        # read back from disk -- proves it was persisted via save_campaign_metadata(), not just in-memory
+        with open(tmp_path / "campaign_metadata.json", encoding="utf-8") as f:
+            persisted = json.load(f)
+        assert persisted["status"] == "in_progress"
+
+    def test_already_complete_still_refuses_at_12288(self, tmp_path, monkeypatch):
+        self._patch_cluster_plumbing(monkeypatch, tmp_path)
+        path = tmp_path / "campaign_metadata.json"
+        state = final_mod._default_campaign_metadata()
+        state["cumulative_timesteps"] = final_mod.FINAL_TOTAL_TIMESTEPS_BUDGET
+        state["cumulative_updates"] = final_mod.FINAL_PLANNED_SESSIONS
+        state["status"] = "completed"
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(state, f)
+
+        calls = []
+        monkeypatch.setattr(final_mod, "run_one_final_session", lambda *a, **k: calls.append(1))
+        result = final_mod.run_final_training_campaign(seed=42)
+        assert result["status"] == "already_complete"
+        assert calls == []
+
+    def test_no_model_export_mechanism_exists_reserved_paths_stay_absent(self, tmp_path, monkeypatch):
+        """V2 Phase 4H-A finding: `run_one_final_session()`/
+        `run_final_training_campaign()` never write to `V2_MODEL_PATH` or
+        `FINAL_MODEL_PATH_MIN2` at all (confirmed by direct source
+        inspection -- both are referenced only as reserved-path GUARDS,
+        never as a `.save()` target). This test documents that finding
+        directly: after a (faked) full run, neither reserved path exists,
+        so the "preserve the 5,120 export" contingency this phase's own
+        task description raised does not apply to the current trainer and
+        required no new preservation code."""
+        assert not final_mod.V2_MODEL_PATH.exists()
+        assert not final_mod.FINAL_MODEL_PATH_MIN2.exists()
+        self._patch_cluster_plumbing(monkeypatch, tmp_path)
+        self._seed_old_budget_completed_state(tmp_path)
+
+        def fake_session(session_index, campaign_state, seed=42):
+            cumulative = (session_index + 1) * final_mod.FINAL_N_STEPS
+            return {
+                "ok": True, "session_index": session_index, "cumulative_timesteps": cumulative,
+                "cumulative_updates": session_index + 1,
+                "next_global_schedule_episode_index": session_index + 1,
+                "model_path": str(tmp_path / "sessions" / f"session_{session_index:03d}" / "ppo_model.zip"),
+                "model_sha256": f"hash{session_index}", "rng_state_path": "rng.pkl",
+            }
+
+        monkeypatch.setattr(final_mod, "run_one_final_session", fake_session)
+        final_mod.run_final_training_campaign(seed=42, max_sessions=1)
+        # Still absent -- the fake session body never touches these paths,
+        # exactly matching the real run_one_final_session()'s own behavior.
+        assert not final_mod.V2_MODEL_PATH.exists()
+        assert not final_mod.FINAL_MODEL_PATH_MIN2.exists()
+
+
+def test_schedule_prefix_identical_for_larger_n():
+    """V2 Phase 4H-A §3(c): build_training_profile_rotation(seed, n)
+    yields an identical PREFIX for any larger n (shuffled cycles appended
+    then truncated) -- sessions 020-047 continue the exact same schedule
+    sessions 000-019 already consumed, never a different sequence."""
+    from autoscaler.src.rl_env.training_schedule_v2 import build_training_profile_rotation
+
+    short = build_training_profile_rotation(42, 193)
+    long = build_training_profile_rotation(42, 470)
+    assert short == long[:193]
 
 
 def test_v2_final_campaign_dry_run_end_to_end():

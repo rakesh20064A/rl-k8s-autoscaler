@@ -6,10 +6,14 @@ from `scripts/train_ppo_live_v2.py`'s one-rollout PILOT path in every way
 that matters:
 
     pilot (train_ppo_live_v2.py)           final campaign (this script)
-    persistent-data/rl_training_v2/pilot/  persistent-data/rl_training_v2/final/
-    PILOT_TOTAL_TIMESTEPS = 256 (1 update) FINAL_TOTAL_TIMESTEPS_BUDGET = 5120 (20 updates)
-    one `model.learn()` call               20 CHECKPOINTED sessions, each one `model.learn()`
-    fresh policy only                      session 0 fresh; sessions 1-19 RESUME from the
+    persistent-data/rl_training_v2/pilot/  persistent-data/rl_training_v2/final_min2/
+    PILOT_TOTAL_TIMESTEPS = 256 (1 update) FINAL_TOTAL_TIMESTEPS_BUDGET = 12288 (48 updates)
+                                            (V2 Phase 4H-A / CORR-59: pre-registered amendment
+                                            from the original 5,120/20, decided BEFORE any
+                                            training result, before session_020 ever ran --
+                                            see FREEZE_MANIFEST_AMENDMENT_001.json)
+    one `model.learn()` call               48 CHECKPOINTED sessions, each one `model.learn()`
+    fresh policy only                      session 0 fresh; sessions 1-47 RESUME from the
                                             prior session's verified checkpoint
 
 Shares, unmodified, every piece of the validated V2 Phase 3D pilot
@@ -132,9 +136,22 @@ SESSION_FAILURE_MARKER_NAME = "SESSION_FAILED.json"
 # Pre-registered, FIXED budget (task PART 4) -- never extended based on
 # results. n_steps/timesteps/seed/hyperparameters are identical to the
 # validated V2 Phase 3D pilot contract; only the NUMBER of sessions is new.
+#
+# V2 Phase 4H-A / CORR-59: amended 5,120 -> 12,288 (20 -> 48 sessions) on
+# 2026-11-08, decided BEFORE any training result existed for session_020
+# onward (the then-running campaign was mid-session_001-019 at decision
+# time) -- see FREEZE_MANIFEST_AMENDMENT_001.json and CORR-59 for the full
+# rationale and the original/amended trainer hashes. n_steps, seed, and
+# every hyperparameter/reward/observation/governing file are UNCHANGED;
+# only the total session count grows. Because the schedule
+# (training_schedule_v2.build_training_profile_rotation) and the PPO
+# hyperparameters are both fully deterministic given the same seed, the
+# first 5,120 steps of a 12,288-step run are byte-for-byte identical to
+# the already-completed 5,120-step run -- this amendment does not
+# retroactively alter anything about sessions 000-019.
 FINAL_N_STEPS = 256
-FINAL_TOTAL_TIMESTEPS_BUDGET = 5120
-FINAL_PLANNED_SESSIONS = FINAL_TOTAL_TIMESTEPS_BUDGET // FINAL_N_STEPS  # 20
+FINAL_TOTAL_TIMESTEPS_BUDGET = 12288
+FINAL_PLANNED_SESSIONS = FINAL_TOTAL_TIMESTEPS_BUDGET // FINAL_N_STEPS  # 48
 FINAL_TRAINING_SEED = 42
 
 assert FINAL_PLANNED_SESSIONS * FINAL_N_STEPS == FINAL_TOTAL_TIMESTEPS_BUDGET
