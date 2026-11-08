@@ -25,17 +25,14 @@
 #                              docs/experimental_design_corrections.md;
 #                              the addon's own packaged default is 60s)
 #
-# IMAGE TAG: PLACEHOLDER_IMAGE_TAG_UNVERIFIED_OFFLINE -- this session could
-# not determine the exact image/tag the Minikube `metrics-server` addon is
-# currently running (no `kubectl`/`docker` access permitted this phase, and
-# no prior report/snapshot in this repo recorded the image digest/tag,
-# only the container ARGS). Before this manifest is ever applied, the
-# image reference MUST be read live from the cluster
-# (`kubectl get deployment metrics-server -n kube-system -o
-# jsonpath='{.spec.template.spec.containers[0].image}'`) and substituted
-# here, so the self-managed Deployment runs the IDENTICAL image the addon
-# was already running -- never a different upstream version chosen without
-# evidence. See this phase's report for this exact, disclosed gap.
+# IMAGE TAG: resolved V2 Phase 5B PART D via the ONE permitted read-only
+# cluster query for this phase:
+#   kubectl get deployment metrics-server -n kube-system -o \
+#     jsonpath='{.spec.template.spec.containers[0].image}'
+# -> registry.k8s.io/metrics-server/metrics-server:v0.8.1@sha256:b2d2efaf5ac3b366ed0f839d2412a2c4279d4fc2a2a733f12c52133faed36c41
+# Pinned by digest (not just tag), so this manifest can never silently
+# drift to a different build of v0.8.1 even if the tag is later
+# re-pushed. Not applied -- preparation only.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -103,10 +100,8 @@ spec:
       serviceAccountName: metrics-server
       containers:
         - name: metrics-server
-          # PLACEHOLDER -- see header comment above. Must be replaced with
-          # the exact live image/tag read from the existing addon
-          # Deployment before this manifest is applied.
-          image: "PLACEHOLDER_IMAGE_TAG_UNVERIFIED_OFFLINE"
+          # Resolved live, V2 Phase 5B PART D -- see header comment above.
+          image: "registry.k8s.io/metrics-server/metrics-server:v0.8.1@sha256:b2d2efaf5ac3b366ed0f839d2412a2c4279d4fc2a2a733f12c52133faed36c41"
           args:
             - --cert-dir=/tmp
             - --secure-port=4443
