@@ -23,8 +23,10 @@ from demo_ui.components.layout import render_metric_strip, render_topbar
 from demo_ui.components.logs import render_log_viewer
 from demo_ui.components.pods import render_pod_panel
 from demo_ui.fixtures import build_all_fixture_summaries
+from demo_ui.fixtures_v2 import ARMS_V2, PROFILES_V2, build_fixture_v2_run
 from demo_ui.live_providers import KubernetesClusterProvider, NOT_AVAILABLE, PrometheusMetricsProvider
 from demo_ui.models import Controller, TrafficProfile
+from demo_ui.views import live_details_v2
 
 # Presentation-only axis ranges for an EMPTY chart (never measured data) --
 # keeps a stable, sensible frame instead of Plotly's arbitrary auto-range
@@ -219,6 +221,18 @@ def _render_fixture_dashboard() -> None:
     render_log_viewer(run.logs)
 
 
+def _render_v2_fixture_dashboard() -> None:
+    col1, col2 = st.columns(2)
+    profile_choice = col1.selectbox(
+        "Demo traffic profile", [p.replace("_", " ").title() for p in PROFILES_V2], key="du_live_v2_profile",
+    )
+    arm_choice = col2.selectbox("Arm", [a.replace("_", " ").upper() for a in ARMS_V2], key="du_live_v2_arm")
+    profile_name = profile_choice.lower().replace(" ", "_")
+    arm = arm_choice.lower().replace(" ", "_")
+    rec = build_fixture_v2_run(arm, profile_name)
+    live_details_v2.render(rec, is_active=False)
+
+
 def render() -> None:
     render_topbar(mode_label="LIVE", is_live=True)
 
@@ -227,9 +241,17 @@ def render() -> None:
     if rec is None:
         rec = experiment_store.latest_run()
 
-    _render_run_banner(rec, is_active)
-    _render_run_telemetry(rec)
-    _render_experiment_events(rec)
+    if rec is not None and rec.get("generation") == "v2":
+        # V2 Phase 5E: a V2 run (LIVE or DEMO-fixture-originated) is the
+        # most recent/active one -- delegate entirely to the V2 renderer.
+        # V1's own rendering path below is completely unchanged for any
+        # V1-only history.
+        live_details_v2.render(rec, is_active)
+    else:
+        _render_run_banner(rec, is_active)
+        _render_run_telemetry(rec)
+        _render_experiment_events(rec)
+
     _render_current_cluster_state()
 
     with st.expander("Demo fixture data (simulated, not real LIVE results)"):
@@ -238,3 +260,10 @@ def render() -> None:
             st.session_state["du_show_live_fixture"] = True
         if st.session_state.get("du_show_live_fixture", False):
             _render_fixture_dashboard()
+
+    with st.expander("V2 demo fixture data (simulated, not evaluation evidence)"):
+        st.caption("Optional simulated V2 reference data -- not generated until you load it.")
+        if st.button("Load V2 demo fixture data", key="du_load_live_fixture_v2"):
+            st.session_state["du_show_live_fixture_v2"] = True
+        if st.session_state.get("du_show_live_fixture_v2", False):
+            _render_v2_fixture_dashboard()

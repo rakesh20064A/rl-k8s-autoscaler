@@ -1,0 +1,31 @@
+# configs/traffic_profiles/v2_demo/demo_mixed_short.yaml
+# V2 Phase 5E: a SHORT (~8 min) DEMO-ONLY profile -- NOT in
+# V2_TRAINING_PROFILE_ALLOWLIST, NOT in the v2_eval EVAL_PROFILE_ALLOWLIST
+# (see demo_cpu_short.yaml's header for the full firewall rationale). A
+# demo run using this profile is NOT scientific evidence.
+#
+# Seed 7003 is used by no training or evaluation profile. Bursts at yet
+# another timing/size than both training's burst_mixed (baseline 5 / peak
+# 70 / 30s / 120s) and evaluation's eval_mixed_burst (baseline 4 / peak 20
+# / 45s / 150s) -- a third, distinct parameterization, kept short for a
+# live demo's attention span rather than for scientific coverage.
+
+profile: demo_mixed_short
+description: "V2 Phase 5E DEMO ONLY (not evaluation evidence): mixed CPU+memory, short bursts, ~8 min"
+seed: 7003
+
+intensity: 3
+endpoint: /work
+
+resource_mode: mixed
+memory_mb: 16
+memory_safe_max_in_flight: 8
+
+phases:
+  - type: burst
+    name: burst
+    duration_seconds: 480
+    baseline_rps: 4
+    burst_rps: 18
+    burst_duration_seconds: 30
+    inter_burst_interval_seconds: 90

@@ -192,6 +192,7 @@ def run_ppo_v2_eval_episode(
     backend_factory: Optional[Callable[..., Any]] = None,
     pod_health_fn: Callable[..., Any] = pilot_safety.get_pod_health,
     max_pod_memory_fn: Callable[..., Any] = None,
+    on_sample: Optional[Callable[["EpisodeSample"], None]] = None,
 ) -> Dict[str, Any]:
     """The ppo_v2 arm: `KubernetesAutoscalerEnvV2` + `run_safe_ppo_step`
     per decision, requires BOTH HPAs absent (enforced by
@@ -200,7 +201,14 @@ def run_ppo_v2_eval_episode(
     `SafetyTerminationError` on a memory/restart/zero-ready breach or on
     the env's own 4-consecutive-invalid-step termination; raises
     `ToolingFailureError` on any other exception (route/Prometheus/K8s API
-    failure)."""
+    failure).
+
+    `on_sample` (V2 Phase 5E, additive, default None -> no behavior change
+    for any existing caller): invoked with each `EpisodeSample` the moment
+    it is built, BEFORE any safety check for that decision -- lets a
+    streaming caller (e.g. `scripts/run_demo_episode_v2.py`) write/display
+    a sample even on the decision that ultimately trips a safety
+    termination."""
     env_config = load_env_config_v2_from_yaml()
     if prometheus_url is None:
         from scripts.v2_pilot_safety import PROMETHEUS_URL
@@ -287,6 +295,8 @@ def run_ppo_v2_eval_episode(
                 ppo_decision=decision_record.to_dict(),
             )
             samples.append(sample)
+            if on_sample is not None:
+                on_sample(sample)
 
             if restart_reason is not None:
                 raise SafetyTerminationError(restart_reason)
@@ -326,6 +336,7 @@ def run_hpa_v2_eval_episode(
     backend_factory: Optional[Callable[..., Any]] = None,
     pod_health_fn: Callable[..., Any] = pilot_safety.get_pod_health,
     max_pod_memory_fn: Callable[..., Any] = None,
+    on_sample: Optional[Callable[["EpisodeSample"], None]] = None,
 ) -> Dict[str, Any]:
     """Shared implementation for BOTH HPA arms -- the only per-arm
     difference is the HPA identity (`hpa_name`/`hpa_manifest_path`/
@@ -415,6 +426,8 @@ def run_hpa_v2_eval_episode(
                 hpa_status={"hpa_name": hpa_name, "applied": True},
             )
             samples.append(sample)
+            if on_sample is not None:
+                on_sample(sample)
 
             if restart_reason is not None:
                 raise SafetyTerminationError(restart_reason)

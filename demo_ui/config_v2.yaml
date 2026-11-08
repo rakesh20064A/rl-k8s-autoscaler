@@ -1,0 +1,20 @@
+# demo_ui/config_v2.yaml
+# V2 Phase 5E: settings for the demo UI's V2 (multi-metric autoscaler)
+# support. Read by demo_ui/config_v2.py. Paths are relative to the repo
+# root unless absolute.
+#
+# model_path: the FINAL trained V2 model checkpoint. PLACEHOLDER until the
+# live training campaign (persistent-data/rl_training_v2/final_min2/)
+# finishes at session_047 -- see the Phase 5E report's "Friday switch"
+# steps for the exact value to substitute once it exists.
+model_path: "persistent-data/rl_training_v2/final_min2/sessions/session_047/ppo_model.zip"
+
+# epsilon_calibration_path: the OFFICIAL epsilon calibration record
+# (scripts/calibrate_epsilon_v2.py --official), computed once session_047
+# exists. PLACEHOLDER until then.
+epsilon_calibration_path: "persistent-data/rl_training_v2/final_min2/EPSILON_CALIBRATION.json"
+
+# evaluation_campaign_dir: the completed evaluation campaign folder the
+# Comparison (V2) view reads from. PLACEHOLDER until
+# scripts/evaluate_v2_campaign.py --execute has actually run.
+evaluation_campaign_dir: "persistent-data/evaluation_v2/eval_v1"

@@ -336,6 +336,45 @@ class TestEpisodeResultToRunSeriesAdapter:
         assert series_dict["samples"][0]["reversal"] is False
 
 
+class TestOnSampleStreamingHook:
+    def test_hpa_arm_invokes_on_sample_once_per_decision(self):
+        cfg = load_env_config_v2_from_yaml()
+        timeline = _timeline(cfg, 4)
+        backend = _FakeBackendWithKubectl(
+            timeline=timeline, initial_replicas=cfg.initial_replicas, min_replicas=cfg.gating.min_replicas,
+            max_replicas=cfg.gating.max_replicas, hpa_name="demo-app-hpa-v2",
+        )
+        streamed = []
+        result = ep.run_hpa_v2_eval_episode(
+            "hpa_v2_cpu_memory", "demo-app-hpa-v2", "k8s/hpa/hpa_v2_cpu_memory.yaml", "cpu_memory_hpa",
+            "eval_cpu_step", cfg.decision_interval_s * 4, "e1",
+            backend_factory=lambda **kwargs: backend, pod_health_fn=_fake_pod_health, max_pod_memory_fn=_fake_max_pod_memory,
+            on_sample=streamed.append,
+        )
+        assert len(streamed) == 4
+        assert len(result["samples"]) == 4
+        assert streamed[0].decision_index == 0
+
+    def test_on_sample_still_invoked_for_the_decision_that_trips_a_safety_termination(self):
+        cfg = load_env_config_v2_from_yaml()
+        timeline = _timeline(cfg, 4)
+        backend = _FakeBackendWithKubectl(
+            timeline=timeline, initial_replicas=cfg.initial_replicas, min_replicas=cfg.gating.min_replicas,
+            max_replicas=cfg.gating.max_replicas, hpa_name="demo-app-hpa-v2",
+        )
+        streamed = []
+        with pytest.raises(ep.SafetyTerminationError):
+            ep.run_hpa_v2_eval_episode(
+                "hpa_v2_cpu_memory", "demo-app-hpa-v2", "k8s/hpa/hpa_v2_cpu_memory.yaml", "cpu_memory_hpa",
+                "eval_cpu_step", cfg.decision_interval_s * 4, "e1",
+                backend_factory=lambda **kwargs: backend, pod_health_fn=_fake_pod_health,
+                max_pod_memory_fn=lambda *a, **k: 300.0, on_sample=streamed.append,
+            )
+        # Sustained breach needs SUSTAINED_BREACH_SAMPLES consecutive samples
+        # -- the triggering decision's own sample must still have streamed.
+        assert len(streamed) >= 1
+
+
 class TestIdenticalSampleSchemaAcrossArms:
     def test_ppo_and_hpa_samples_have_the_same_field_set(self):
         cfg = load_env_config_v2_from_yaml()
