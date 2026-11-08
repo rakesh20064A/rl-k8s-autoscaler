@@ -1,0 +1,146 @@
+{
+  "created_utc": "2026-11-08T03:00:18.820852+00:00",
+  "git_head": "bfedda18b845d43553c334e0d3122bdfc5e6fe90",
+  "git_branch": "v2-multimetric",
+  "file_hashes_sha256": {
+    "configs/rl_v2.yaml": "848b8863c9e58babe521640c397066c1163be42e5a212544322cb4817e96d443",
+    "configs/reward_v2.yaml": "1708e1ecff6c43dc139355c47f7f7cdbff7163987a8bf6d4fb6543aa3cafab76",
+    "autoscaler/src/rl_env/environment_v2.py": "bfe29422a289f7c66415303d4e08e65082eff00b44696a901ed2be0bc18d836f",
+    "autoscaler/src/rl_env/observation.py": "a7db261f7c1880e50c3cd398d78e46da0c3195e2ea8ad446e1f55af142a464a7",
+    "autoscaler/src/rl_env/reward_v2.py": "76428e561281656c4d5308dfff133d3ee2fe8d2cbc1acb7ba3302e404e16b573",
+    "autoscaler/src/rl_env/types.py": "8e3767b5cb5ebe68c044425f8b31f5d1ed0adabf5affd91bfd908e28d7d8ad24",
+    "autoscaler/src/rl_env/live_backend.py": "4dd60154d6cd76364eb6798386e3889658ef856675f92d71bc772f435c41d8eb",
+    "autoscaler/src/rl_env/config.py": "7a4439e0bc61c741b9c859c607d55cd800013cc3ad7f3eb3949efc46e215dcd4",
+    "autoscaler/src/rl_env/config_v2.py": "f5cccb8ae47226223a219cc5458d8f7a74e312f23c004b3d5fec889d9c0ce381",
+    "autoscaler/src/rl_env/gating.py": "6a6d043ce611dc229c5b1784a5af04d89c0ac053441b50d5bb09f544e7b027b9",
+    "autoscaler/src/rl_env/environment.py": "04984142aceeec0637bb202eeee66b5c28da059f3af9a9e0107661a9ff1d8d75",
+    "autoscaler/src/rl_env/training_wrapper.py": "7f525d7724fc6117256762ed0f5cec80e5c19e843d153bbc7e6b6fda8b3e2b27",
+    "autoscaler/src/rl_env/checkpoint_state.py": "08d246802f5d23cb36de4092b938ed4a53b95cee292357cf538138fccd2ab7ef",
+    "autoscaler/src/rl_env/episode_ledger.py": "d483a88d64b9f7963be2226ff5385e197048fd71bb965f11f1b24996171ff27a",
+    "autoscaler/src/rl_env/training_contract_v2.py": "bc2b0dc2e31bb24b64032c4a2aa78791f7fba29a46c5428e91a5a4d6a4e1c59f",
+    "autoscaler/src/rl_env/training_schedule_v2.py": "ae50f5aa7877e50bee7a6d3a2508212e6cc23967dd29cecd8c6c9436d50105b6",
+    "autoscaler/src/rl_env/controller_exclusivity.py": "6b995a1be5588820a5be31c3af2a37c2770aeaf677cf58c0eabd824fc552516b",
+    "autoscaler/src/rl_env/ppo_config.py": "3df402e323a34f355939b87195cde391358e8efba88acf65eedbbee13396140d",
+    "autoscaler/src/rl_env/action_selection.py": "4980003b218a633a2343bfc37017b11d80690011af103190fe0badededd459e7",
+    "autoscaler/src/rl_env/safe_inference.py": "066c7c0f89faea7149bb5847c7c15f6a7aff561ab7ae11ac78d43dc58cc1aecd",
+    "autoscaler/src/rl_env/safe_ppo_controller.py": "216b45f094b264b7989fb48dd667891e68c106bc9e1cdd73c87a67d43a69b07d",
+    "autoscaler/src/rl_env/decision_record_v2.py": "a45aaf633611de2a7ab55085944a57e44d9abe21887aefef1a215600bc82253f",
+    "scripts/train_ppo_final_v2.py": "717f4495fbebd929a4ce349ba446f013f91e0a94bdebd6e1cc3c72f46829ff6d",
+    "scripts/train_ppo_live_v2.py": "e66d810624a0abbed2501f1b31b63f6e4f7d12ef0439e288fb777ade5f301baf",
+    "scripts/v2_traffic_orchestrator.py": "09f9325bb149c212320839bd14800f2894947ae4745ec93025ca8a3b3e5d2ca9",
+    "scripts/traffic_orchestrator.py": "e26507e6139d5d5355f9a4487dece84cea3f20272a8cbb80db66ec5dbd29e4a7",
+    "scripts/v2_pilot_safety.py": "fd96af2366989129ec14356ac0566c9a519db6afeefc2d8bfc51e5d01d8c1805",
+    "scripts/v2_training_instrumentation.py": "d5c1c98041274ce6670e7bf1adca3da5e840f355a8a459ce8df1ea128db61a3c",
+    "scripts/evaluate_ppo_vs_hpa_v2.py": "9c534600b43f8b97e97487663434dc0fda3800cfbaae702259fdba722795fd5f",
+    "loadgen/traffic_generator.py": "79ca6cfa93ae36529a09254e2216206349fdc7495b389b02694ff1a411748e2f",
+    "collectors/metrics_collector.py": "bad708d2e17c0d407cf79c8d05e5cfcf8e858daf1e44b8bbdb471cad5b4bbadf",
+    "configs/experiment.yaml": "646af6d930fc883fec4a4365ef55745bd90cfaa760a5aba7660acf11a5b8b6aa",
+    "k8s/hpa/hpa_v2_cpu_memory.yaml": "e4a5e39905695a7c0bcb81ac461b9f89d468845d5d3f9182273f53146e912905",
+    "k8s/app/deployment.yaml": "bca1e8af2febebaf3272399a63b1ad4a2aeb3440994009528d14f57de4fd92d8",
+    "app/src/main.py": "547314ee1d85a90a0765c54aa333755be922fa3eaed94ad5da19ba9c86b03efb",
+    "app/src/workload.py": "727ea674a794535b8a390a52e04259847f037fc545ee2819d1cbe390bcd07fa4",
+    "app/src/metrics.py": "5cd313252a32103d139b7af1d038a3c7ab02b1b4f270a47b9150fa64d8bd95c2",
+    "configs/traffic_profiles/v2/burst_mixed.yaml": "edbd0a3a318714fcffffeec553389e23af042a965f18839f9ba236e6ce2215ac",
+    "configs/traffic_profiles/v2/constant_cpu.yaml": "c547c8783e624904e8f31aeb496e9de8c1d7270473efde458d2f2548ca77e3a4",
+    "configs/traffic_profiles/v2/constant_memory.yaml": "6e5929d3609244896bc1faeaafa403d3c68e564874816091c012f624e021ebda",
+    "configs/traffic_profiles/v2/constant_mixed.yaml": "3289b134447a651a08eb6b873ee760a747b40fd263d5d6d8cff9d6d2e88114e4",
+    "configs/traffic_profiles/v2/memory_cap_smoke_test.yaml": "c20ce3c458bcc9cf706e900eeb9b113a72007d24aef317524ec72a2516aa06bc",
+    "configs/traffic_profiles/v2/ramp_mixed.yaml": "599ba9ea482e1618826f8f6d981748a7e397cd92db29f3966460fce1cd7f4d67"
+  },
+  "governing_files": [
+    "configs/rl_v2.yaml",
+    "configs/reward_v2.yaml",
+    "autoscaler/src/rl_env/environment_v2.py",
+    "autoscaler/src/rl_env/observation.py",
+    "autoscaler/src/rl_env/reward_v2.py"
+  ],
+  "live_cluster_state_at_freeze": {
+    "running_app_image": "rl-autoscaler-demo-app:local",
+    "running_app_imageID": "sha256:da89cdff88c9075ab7a6421eeb4036138408257e7a1984880fc9b61f00173101",
+    "prometheus_cr_resources": {
+      "limits": {
+        "cpu": "500m",
+        "memory": "768Mi"
+      },
+      "requests": {
+        "cpu": "100m",
+        "memory": "256Mi"
+      }
+    },
+    "metrics_server_args": [
+      "--cert-dir=/tmp",
+      "--secure-port=4443",
+      "--kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname",
+      "--kubelet-use-node-status-port",
+      "--metric-resolution=15s",
+      "--kubelet-insecure-tls"
+    ],
+    "docker_desktop_minikube_allocation": {
+      "minikube_container_cpu_limit": "2 CPU (NanoCpus=2000000000)",
+      "minikube_container_memory_limit": "3GiB",
+      "note": "Minikube's own Docker cgroup hard limit (CORR-1), independent of the k8s node's own reported ~4 CPU/~4GB allocatable."
+    }
+  },
+  "ppo_hyperparameters": {
+    "learning_rate": 0.0003,
+    "n_steps": 256,
+    "batch_size": 64,
+    "n_epochs": 10,
+    "gamma": 0.99,
+    "gae_lambda": 0.95,
+    "clip_range": 0.2,
+    "ent_coef": 0.01,
+    "vf_coef": 0.5,
+    "max_grad_norm": 0.5,
+    "net_arch": [
+      128,
+      128
+    ],
+    "policy": "MlpPolicy",
+    "seed": 42,
+    "note": "n_steps=256 is the trainer's own explicit per-session override (scripts/train_ppo_final_v2.py, FINAL_N_STEPS) applied on top of configs/rl_v2.yaml's own ppo.n_steps=2048 base value -- every other field above is read directly from configs/rl_v2.yaml's ppo: block, unmodified."
+  },
+  "campaign_budget": {
+    "total_timesteps": 5120,
+    "n_steps_per_session": 256,
+    "planned_sessions": 20,
+    "namespace": "persistent-data/rl_training_v2/final_min2/",
+    "legacy_namespace_preserved_as_evidence": "persistent-data/rl_training_v2/final/ (floor=1 contract, abandoned, CORR-55)"
+  },
+  "v2_contract": {
+    "min_replicas": 2,
+    "max_replicas": 8,
+    "initial_replicas": 2,
+    "sla_p95_target_ms": 1000.0,
+    "cpu_waste_threshold": 1.0,
+    "memory_waste_threshold": 1.0,
+    "cpu_safe_high": 3.0,
+    "memory_safe_high": 1.2,
+    "corr_refs_for_contract_values": [
+      "CORR-55 (floor 1->2)",
+      "CORR-57 (SLA/waste recalibration)"
+    ]
+  },
+  "tie_break_rule_inference_only": {
+    "rules": {
+      "R1": "clear winner (only one action within epsilon of max) -> that action",
+      "R2": "SCALE_DOWN_ONE never wins a tie (structural, via R4/R5)",
+      "R3": "tie set == {HOLD, SCALE_UP_ONE} -> SCALE_UP_ONE if STRESSED else HOLD",
+      "R4": "tie set == {SCALE_DOWN_ONE, SCALE_UP_ONE} or the full 3-way tie -> HOLD",
+      "R5": "tie set == {SCALE_DOWN_ONE, HOLD} -> HOLD",
+      "R6": "stress undeterminable for an R3-eligible tie, OR any inference failure -> HOLD"
+    },
+    "near_tie_epsilon": 0.05,
+    "epsilon_status": "provisional_unvalidated",
+    "scope": "V2 deterministic inference ONLY (scripts/evaluate_ppo_vs_hpa_v2.py). Training samples stochastically via SB3 model.learn() and never imports action_selection/safe_inference/safe_ppo_controller -- verified by tests/unit/test_training_excludes_safe_tie_override.py.",
+    "corr_ref": "CORR-58"
+  },
+  "safety_thresholds": {
+    "memory_safety_threshold_mib": 230.0,
+    "memory_safety_sustained_samples": 2,
+    "restart_detected_stops_session": true,
+    "zero_ready_replicas_sustained_stops_session": true,
+    "max_consecutive_invalid_steps": 4
+  },
+  "rule": "Any change to a file listed in file_hashes_sha256 above, after this manifest's created_utc, invalidates the final_min2 campaign -- a NEW namespace is required to resume or restart training under different code/config. EXCEPTION: the post-training near_tie_epsilon calibration (action_selection.py's DEFAULT_NEAR_TIE_EPSILON / configs/rl_v2.yaml's safe_action.near_tie_epsilon), which affects V2 deterministic INFERENCE only, never training itself, and may be revisited after this campaign completes without invalidating it."
+}
