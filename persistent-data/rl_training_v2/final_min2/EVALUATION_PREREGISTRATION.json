@@ -1,0 +1,101 @@
+{
+  "preregistration_id": "EVALUATION_PREREGISTRATION",
+  "corr_id": "CORR-60",
+  "phase": "V2 Phase 5A",
+  "created_utc": "2026-11-08T10:07:46Z",
+  "created_before_any_evaluation_run": true,
+  "model_under_test": {
+    "rule": "The 48-update final checkpoint (session_047) only.",
+    "note": "Intermediate checkpoints (session_000..session_046) are used only for training-curve analysis -- never as a candidate for the formal comparison itself."
+  },
+  "arms": [
+    {
+      "arm_id": "PPO_V2",
+      "description": "PPO-V2, deterministic inference with the safety-aware tie rule R1-R6 (CORR-58).",
+      "controller": "ppo",
+      "min_replicas": 2,
+      "max_replicas": 8
+    },
+    {
+      "arm_id": "HPA_V2_CPU_MEMORY",
+      "description": "HPA-V2, CPU+memory metrics (demo-app-hpa-v2).",
+      "controller": "cpu_memory_hpa",
+      "hpa_name": "demo-app-hpa-v2",
+      "manifest": "k8s/hpa/hpa_v2_cpu_memory.yaml",
+      "min_replicas": 2,
+      "max_replicas": 8
+    },
+    {
+      "arm_id": "HPA_CPU_ONLY",
+      "description": "HPA-V2, CPU-only metric, V2 replica floor (demo-app-hpa-v2-cpu).",
+      "controller": "cpu_only_hpa_v2 (not yet defined -- Phase 5B gap, see report)",
+      "hpa_name": "demo-app-hpa-v2-cpu",
+      "manifest": "k8s/hpa/hpa_v2_cpu_only_min2.yaml",
+      "min_replicas": 2,
+      "max_replicas": 8
+    }
+  ],
+  "common_arm_conditions": {
+    "replica_bounds": "2-8 for all three arms",
+    "image": "same demo-app image for all three arms (no per-arm rebuild)",
+    "metrics_server_resolution_verified_before_every_hpa_run": "15s, verified live immediately before each HPA-arm run, never assumed",
+    "grafana_replicas": 0
+  },
+  "workloads": {
+    "profiles": [
+      "configs/traffic_profiles/v2_eval/eval_cpu_step.yaml",
+      "configs/traffic_profiles/v2_eval/eval_memory_ramp.yaml",
+      "configs/traffic_profiles/v2_eval/eval_mixed_burst.yaml"
+    ],
+    "repeats_per_profile_per_arm": 3,
+    "order": "Rotated per repeat using a Latin square over the 3 arms (so no arm is always first/last within a repeat); the exact realized order for every (profile, repeat) cell must be recorded in the evaluation run's own output before any result is read."
+  },
+  "epsilon_rule": {
+    "definition": "epsilon = 10th percentile of the final model's (session_047) top1-top2 action-probability margin (action_selection.compute_margin_stats().margin), computed over observations drawn from the LAST 5 TRAINING sessions' own step_telemetry.jsonl (sessions 043-047 under the amended 48-session budget).",
+    "cap": 0.05,
+    "floor": 0.0,
+    "when_computed": "Once, before evaluation begins -- never re-tuned after seeing any evaluation result.",
+    "value": "TO BE COMPUTED in Phase 5B once session_047 exists -- not computable now (training is live, session_047 does not yet exist). This record reserves the field; the computed value must be appended here (not silently overwritten elsewhere) before the first evaluation run.",
+    "current_provisional_epsilon_in_configs_rl_v2_yaml": "0.05 (near_tie_epsilon, status: provisional_unvalidated -- this pre-registration's own computed value supersedes it for evaluation purposes only; training itself is unaffected, CORR-58 scope note)"
+  },
+  "metrics": {
+    "primary": [
+      "sla_violation_rate_at_1000ms (share of decisions with p95_latency_ms >= 1000ms, the current CORR-57 SLA target)",
+      "replica_minutes (cost: integral of replica count over time)"
+    ],
+    "secondary": [
+      "mean_p95_latency_ms",
+      "median_p95_latency_ms",
+      "error_rate",
+      "max_per_pod_memory_mib",
+      "scaling_actions_count",
+      "reversals_count",
+      "reaction_time_seconds_after_load_change",
+      "pod_restarts_count",
+      "invalid_samples_count"
+    ],
+    "reference_only": [
+      "sla_violation_rate_at_300ms (the pre-CORR-57 target, reported for historical comparability only -- NOT the primary SLA definition for this evaluation)"
+    ]
+  },
+  "validity_rules": {
+    "tooling_failure": "A run invalidated by a tooling/infrastructure failure (route unreachable, Prometheus unavailable, cluster/network fault) has NO scientific outcome -- it is retried exactly once. The failed attempt's evidence is preserved, never deleted.",
+    "safety_termination": "A run that ends via a safety termination (e.g. memory threshold breach, zero ready replicas) IS a scientific outcome for that arm/profile/repeat cell -- it is counted as-is and is NEVER retried.",
+    "every_attempt_preserved": "Every attempt (successful, tooling-failed, or safety-terminated), including the single tooling-failure retry, is preserved on disk under its own directory -- no attempt's evidence is ever overwritten or deleted."
+  },
+  "decision_rule": {
+    "reporting": "Per profile, per arm: report mean +/- standard deviation over the 3 repeats for every metric.",
+    "claiming_better": "An arm may be claimed 'better' than another on a given metric for a given profile ONLY if it is better in ALL 3 of the 3 repeats (not merely on average) -- a single repeat going the other way blocks the claim for that metric/profile pair.",
+    "no_aggregate_winner": "No single aggregate 'winner' is declared across metrics that disagree (e.g. one arm has a lower SLA-violation rate but higher replica-minutes) -- such cases are reported explicitly as a trade-off, not resolved into a single ranking."
+  },
+  "scope": {
+    "statement": "Evaluation-only code changes made after this record (V2 Phase 5B: implementing scripts/evaluate_ppo_vs_hpa_v2.py changes, the CPU-only-HPA controller_exclusivity extension, etc.) do not affect training in any way -- training's own governing files and FREEZE_MANIFEST.json (plus AMENDMENT_001) remain the sole authority for what was learned. Every evaluation-code file's SHA-256 hash will be recorded in a dedicated evaluation-code manifest BEFORE the first evaluation run executes, so the exact code version that produced each result is always reconstructable."
+  },
+  "training_contract_reference": {
+    "freeze_manifest": "persistent-data/rl_training_v2/final_min2/FREEZE_MANIFEST.json",
+    "amendment": "persistent-data/rl_training_v2/final_min2/FREEZE_MANIFEST_AMENDMENT_001.json",
+    "trainer_hash_at_this_preregistration": "6c6f00c096c4932540e11baa94d961658b850cbc917e7068ba085ea7805a69ac",
+    "total_timesteps_budget": 12288,
+    "total_planned_sessions": 48
+  }
+}

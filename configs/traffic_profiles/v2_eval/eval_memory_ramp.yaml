@@ -1,0 +1,50 @@
+# configs/traffic_profiles/v2_eval/eval_memory_ramp.yaml
+# V2 Phase 5A / CORR-60: held-out EVALUATION profile. NOT a member of
+# autoscaler.src.rl_env.training_contract_v2.V2_TRAINING_PROFILE_ALLOWLIST
+# -- see tests/unit/test_v2_eval_profiles.py::TestTrainingFirewall for the
+# construction-level proof that the training schedule can never select it.
+#
+# Seed 9102 is not used by any V2 training profile (seed: 42).
+#
+# Shape: memory-only resource mode, a gradual ramp up to a hold plateau
+# then a gradual ramp down -- unlike the unified-schema `phases:` list
+# used here (three explicit phases summing EXACTLY to 1200s), the
+# existing training profile ramp_mixed.yaml uses the legacy flat ramp
+# schema whose three sub-durations sum to only 1000s against its own
+# declared 1200s (a pre-existing, disclosed inconsistency -- see
+# docs/experimental_design_corrections.md / CORR notes on ramp_mixed).
+# This eval profile deliberately avoids repeating that inconsistency.
+#
+# memory_mb=16 / memory_safe_max_in_flight=8 reuse the same safety
+# ceiling already validated live for every V2 memory/mixed profile (see
+# loadgen/traffic_generator.py's TrafficGenerator.effective_max_in_flight
+# and the V2 Phase 2.1/2.2 PART 3 calibration). Peak RPS (18) and
+# intensity (3) stay within what training's memory profile already
+# covers (constant_memory, target_rps=20, intensity=3).
+
+profile: eval_memory_ramp
+description: "V2 Phase 5A held-out eval: memory-only, gradual ramp up then down"
+seed: 9102
+
+intensity: 3
+endpoint: /work
+
+resource_mode: memory
+memory_mb: 16
+memory_safe_max_in_flight: 8
+
+phases:
+  - type: ramp
+    name: ramp_up
+    duration_seconds: 500
+    start_rps: 3
+    end_rps: 18
+  - type: constant
+    name: hold
+    duration_seconds: 200
+    target_rps: 18
+  - type: ramp
+    name: ramp_down
+    duration_seconds: 500
+    start_rps: 18
+    end_rps: 3

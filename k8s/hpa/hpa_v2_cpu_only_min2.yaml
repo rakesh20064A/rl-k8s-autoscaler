@@ -1,0 +1,67 @@
+# k8s/hpa/hpa_v2_cpu_only_min2.yaml
+# V2 Phase 5A / CORR-60: a THIRD evaluation arm -- CPU-only HPA, V2 replica
+# floor (min 2, same as demo-app-hpa-v2's CORR-55 floor), used to isolate
+# "does the multi-resource (CPU+memory) HPA metric matter" from "does the
+# higher replica floor matter" when comparing against PPO-V2 and
+# demo-app-hpa-v2 in Phase 5B's evaluation. A NEW manifest -- does not edit
+# the frozen k8s/hpa/hpa.yaml (V1, minReplicas=1) or k8s/hpa/
+# hpa_v2_cpu_memory.yaml (CPU+memory, minReplicas=2). NOT applied by this
+# phase -- manifest-only preparation; Phase 5B decides when/whether to
+# apply it, and must extend controller_exclusivity.py first (see this
+# phase's report for the exact gap).
+#
+# Uses its OWN object name ("demo-app-hpa-v2-cpu") so it can never silently
+# replace either of the other two HPA objects by same-name overwrite.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: demo-app-hpa-v2-cpu
+  namespace: autoscaler-app
+  labels:
+    app: demo-app
+    project: rl-k8s-autoscaler
+    controller-generation: v2-cpu-only
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: demo-app
+
+  # Same V2 replica floor as demo-app-hpa-v2 (CORR-55) -- isolates the
+  # metric-set difference (CPU-only vs. CPU+memory) as the only variable
+  # between this arm and demo-app-hpa-v2; the replica bounds are identical
+  # on purpose.
+  minReplicas: 2
+  maxReplicas: 8
+
+  # CPU-only, same target as both the frozen V1 hpa.yaml and
+  # hpa_v2_cpu_memory.yaml's own CPU metric (260%) -- no new evidence
+  # gathered this phase to justify a different CPU target for this arm;
+  # reusing the existing, already-justified value (CORR-26) rather than
+  # inventing a new one.
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 260
+
+  # Identical scaling behaviour to demo-app-hpa-v2 -- the only intended
+  # difference between this manifest and hpa_v2_cpu_memory.yaml is the
+  # metrics list (CPU-only vs. CPU+memory) and the object name; replica
+  # bounds and behavior policies are otherwise held constant so the
+  # evaluation isolates the metric-set variable alone.
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60

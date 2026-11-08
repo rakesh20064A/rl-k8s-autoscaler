@@ -1,0 +1,41 @@
+# configs/traffic_profiles/v2_eval/eval_cpu_step.yaml
+# V2 Phase 5A / CORR-60: held-out EVALUATION profile. NOT a member of
+# autoscaler.src.rl_env.training_contract_v2.V2_TRAINING_PROFILE_ALLOWLIST
+# (constant_cpu, constant_memory, constant_mixed, ramp_mixed, burst_mixed)
+# -- training_schedule_v2.build_training_profile_rotation() can only ever
+# draw from that allowlist, so this profile can never be selected by the
+# live training campaign, by construction (see
+# tests/unit/test_v2_eval_profiles.py::TestTrainingFirewall).
+#
+# Seed 9101 is not used by any V2 training profile (all of which use
+# seed: 42) -- chosen fresh for the held-out evaluation set.
+#
+# Shape: CPU-only resource mode, a single step change mid-episode (low
+# baseline for the first half, a higher plateau for the second half) --
+# deliberately simpler/flatter than any training profile's own dynamics
+# (training never saw an isolated single step), so this exercises
+# generalisation to an unseen transition shape, not a harder regime.
+# Peak RPS (18) and intensity (3) are both within what the CPU-only
+# training profile (constant_cpu, target_rps=20, intensity=3) already
+# covers -- per the Phase 5A task's explicit instruction, evaluation
+# tests generalisation, not overload beyond the training safety envelope.
+
+profile: eval_cpu_step
+description: "V2 Phase 5A held-out eval: CPU-only, low->high step change mid-episode"
+seed: 9101
+
+intensity: 3
+endpoint: /work
+
+resource_mode: cpu
+memory_mb: 0
+
+phases:
+  - type: constant
+    name: low
+    duration_seconds: 600
+    target_rps: 5
+  - type: constant
+    name: high
+    duration_seconds: 600
+    target_rps: 18

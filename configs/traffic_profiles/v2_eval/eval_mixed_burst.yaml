@@ -1,0 +1,40 @@
+# configs/traffic_profiles/v2_eval/eval_mixed_burst.yaml
+# V2 Phase 5A / CORR-60: held-out EVALUATION profile. NOT a member of
+# autoscaler.src.rl_env.training_contract_v2.V2_TRAINING_PROFILE_ALLOWLIST
+# -- see tests/unit/test_v2_eval_profiles.py::TestTrainingFirewall for the
+# construction-level proof that the training schedule can never select it.
+#
+# Seed 9103 is not used by any V2 training profile (seed: 42).
+#
+# Shape: mixed CPU+memory resource mode, repeated bursts -- deliberately
+# DIFFERENT timing and size from training's own burst_mixed.yaml
+# (baseline_rps=5, burst_rps=70, burst_duration_seconds=30,
+# inter_burst_interval_seconds=120, num_bursts=7): here baseline=4,
+# burst peak=20 (vs. 70), burst duration=45s (vs. 30s), inter-burst
+# interval=150s (vs. 120s). The burst PEAK (20 RPS) is deliberately kept
+# well below training's own burst_mixed peak (70 RPS), per the Phase 5A
+# task's explicit instruction to keep the held-out evaluation workloads'
+# peak load within what training's CONSTANT-scale profiles already
+# covered (~21 RPS) -- this profile tests whether the policy generalises
+# its bursty-regime behaviour to a gentler burst shape it never saw the
+# exact parameters of, not whether it survives a harder one.
+
+profile: eval_mixed_burst
+description: "V2 Phase 5A held-out eval: mixed CPU+memory, bursts at different timing/size than training"
+seed: 9103
+
+intensity: 3
+endpoint: /work
+
+resource_mode: mixed
+memory_mb: 16
+memory_safe_max_in_flight: 8
+
+phases:
+  - type: burst
+    name: burst
+    duration_seconds: 1200
+    baseline_rps: 4
+    burst_rps: 20
+    burst_duration_seconds: 45
+    inter_burst_interval_seconds: 150

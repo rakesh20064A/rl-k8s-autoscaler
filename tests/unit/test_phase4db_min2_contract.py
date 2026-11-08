@@ -203,10 +203,18 @@ class TestFreshCampaignNamespace:
         assert (LEGACY_SESSION_002_DIR / "ppo_model.zip").is_file()
         assert (LEGACY_SESSION_002_DIR / "metadata.json").is_file()
 
-    def test_fresh_namespace_not_yet_created_on_disk(self):
-        """No session/ledger/metadata file for the new namespace should
-        exist yet -- this phase prepares code/config only, starts nothing."""
+    def test_fresh_namespace_not_yet_created_on_disk(self, tmp_path, monkeypatch):
+        """No session/ledger/metadata file for a NOT-YET-STARTED namespace
+        should exist -- exercised against a tmp path (monkeypatched onto
+        FINAL_CAMPAIGN_METADATA_PATH/FINAL_SESSIONS_DIR), never the real
+        repo path, which (as of V2 Phase 4E onward) legitimately holds the
+        live training campaign's own on-disk state and is therefore not a
+        valid proxy for "freshly prepared, not yet started" (V2 Phase 5A /
+        CORR-60)."""
         import scripts.train_ppo_final_v2 as final_mod
+
+        monkeypatch.setattr(final_mod, "FINAL_CAMPAIGN_METADATA_PATH", tmp_path / "campaign_metadata.json")
+        monkeypatch.setattr(final_mod, "FINAL_SESSIONS_DIR", tmp_path / "sessions")
 
         assert not final_mod.FINAL_CAMPAIGN_METADATA_PATH.exists()
         assert not (final_mod.FINAL_SESSIONS_DIR / "session_000").exists()
@@ -262,12 +270,17 @@ class TestOldCampaignResumeRefused:
                 current_governing_hashes=current_hashes,
             )
 
-    def test_fresh_namespace_has_no_inherited_state(self):
-        """A fresh campaign under final_min2/ has no metadata file to load
-        counters/schedule-index from -- `load_campaign_metadata()` must
-        return the default (session_000, zero cumulative counters), never
-        anything derived from the old final/ campaign's own state."""
+    def test_fresh_namespace_has_no_inherited_state(self, tmp_path, monkeypatch):
+        """A fresh campaign namespace with no metadata file yet must make
+        `load_campaign_metadata()` return the default (session_000, zero
+        cumulative counters), never anything derived from the old final/
+        campaign's own state. Exercised against a tmp path (V2 Phase 5A /
+        CORR-60 -- see test_fresh_namespace_not_yet_created_on_disk above
+        for why the real repo path is no longer a valid proxy for this)."""
         import scripts.train_ppo_final_v2 as final_mod
+
+        monkeypatch.setattr(final_mod, "FINAL_CAMPAIGN_METADATA_PATH", tmp_path / "campaign_metadata.json")
+        monkeypatch.setattr(final_mod, "FINAL_SESSIONS_DIR", tmp_path / "sessions")
 
         assert not final_mod.FINAL_CAMPAIGN_METADATA_PATH.exists()
         state = final_mod.load_campaign_metadata()
