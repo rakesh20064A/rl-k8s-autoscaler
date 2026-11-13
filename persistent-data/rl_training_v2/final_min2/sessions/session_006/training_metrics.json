@@ -1,0 +1,32 @@
+{
+  "n_steps_seen": 256,
+  "profile_counts": {
+    "constant_cpu": 59,
+    "constant_memory": 60,
+    "burst_mixed": 40,
+    "constant_mixed": 40,
+    "ramp_mixed": 57
+  },
+  "action_counts": {
+    "0": 56,
+    "1": 131,
+    "2": 69
+  },
+  "effective_action_counts": {
+    "0": 56,
+    "1": 131,
+    "2": 69
+  },
+  "override_counts": {
+    "none": 219,
+    "replica_bound_clamp": 23,
+    "scale_down_cooldown": 14
+  },
+  "invalid_step_count": 0,
+  "invalid_step_rate": 0.0,
+  "max_per_pod_memory_mib": 120.0,
+  "max_aggregate_memory_mib": 474.33203125,
+  "termination_reason": null,
+  "num_timesteps": 1792,
+  "session_timesteps": 256
+}

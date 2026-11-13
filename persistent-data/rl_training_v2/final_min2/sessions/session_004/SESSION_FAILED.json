@@ -1,0 +1,7 @@
+{
+  "reason": "zero_ready_replicas",
+  "session_timesteps_completed": 126,
+  "expected_session_timesteps": 256,
+  "scientific_session_index": 4,
+  "physical_attempt_number": 1
+}

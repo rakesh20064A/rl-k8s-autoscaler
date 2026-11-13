@@ -1,0 +1,18 @@
+{
+  "created_utc": "2026-11-08T08:15:06.478883+00:00",
+  "cumulative_episodes_completed": 26,
+  "cumulative_ppo_updates": 2,
+  "cumulative_timesteps": 512,
+  "governing_hashes_snapshot": {
+    "autoscaler/src/rl_env/environment_v2.py": "bfe29422a289f7c66415303d4e08e65082eff00b44696a901ed2be0bc18d836f",
+    "autoscaler/src/rl_env/observation.py": "a7db261f7c1880e50c3cd398d78e46da0c3195e2ea8ad446e1f55af142a464a7",
+    "autoscaler/src/rl_env/reward_v2.py": "76428e561281656c4d5308dfff133d3ee2fe8d2cbc1acb7ba3302e404e16b573",
+    "configs/reward_v2.yaml": "1708e1ecff6c43dc139355c47f7f7cdbff7163987a8bf6d4fb6543aa3cafab76",
+    "configs/rl_v2.yaml": "848b8863c9e58babe521640c397066c1163be42e5a212544322cb4817e96d443"
+  },
+  "n_steps": 256,
+  "rng_state_sha256": "b38ea2fe436813ddb93a3438b451f6aad1be09c12aa761259d38207af868feb8",
+  "sb3_checkpoint_sha256": "9f614e84c24ff0aea35a07d9893bb164052a65fa12242acb6e9b8763fb154660",
+  "session_index": 1,
+  "training_seed": 42
+}

@@ -1,0 +1,45 @@
+{
+  "controller_generation": "v2",
+  "observation_contract_hash": "848b8863c9e58babe521640c397066c1163be42e5a212544322cb4817e96d443",
+  "reward_contract_hash": "1708e1ecff6c43dc139355c47f7f7cdbff7163987a8bf6d4fb6543aa3cafab76",
+  "workload_contract": "multi_resource_v2",
+  "training_seed": 42,
+  "ppo_hyperparameters": {
+    "policy": "MlpPolicy",
+    "learning_rate": 0.0003,
+    "n_steps": 256,
+    "batch_size": 64,
+    "n_epochs": 10,
+    "gamma": 0.99,
+    "gae_lambda": 0.95,
+    "clip_range": 0.2,
+    "ent_coef": 0.01,
+    "vf_coef": 0.5,
+    "max_grad_norm": 0.5,
+    "policy_kwargs": {
+      "net_arch": [
+        128,
+        128
+      ]
+    },
+    "seed": 42
+  },
+  "safe_inference_epsilon_status": "provisional_unvalidated",
+  "training_profiles": [
+    "constant_cpu",
+    "constant_memory",
+    "constant_mixed",
+    "ramp_mixed",
+    "burst_mixed"
+  ],
+  "git_commit": "179f4caef883d8dbc48c8b74cd82bf2d1b4addf1",
+  "transfer_learning_justification": null,
+  "extra": {},
+  "classification": "V2_FINAL_TRAINING_CANDIDATE",
+  "model_sha256": "712c94b8721901db2c7d5512be88363d4654c5e40bf87270a8cb37400d5d521a",
+  "start_utc": "2026-11-08T08:15:08Z",
+  "end_utc": "2026-11-08T10:40:51Z",
+  "session_index": 2,
+  "cumulative_timesteps": 768,
+  "cumulative_ppo_updates": 3
+}
