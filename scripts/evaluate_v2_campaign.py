@@ -282,6 +282,25 @@ class CampaignContext:
     cpu_only_episode_fn: Optional[Callable[["to.ProfileMetadata", str], Dict[str, Any]]] = None
 
 
+def _safe_cleanup(ctx: CampaignContext) -> Dict[str, Any]:
+    """V2 Phase 5D: a cleanup failure must never crash the whole campaign
+    loop (discovered live: an earlier bug in `restore_canonical_idle_state()`
+    did exactly that, taking down the entire process mid-run). Catches and
+    records any exception from either the orchestrator's own route
+    teardown or the cluster-state cleanup, rather than letting it
+    propagate out of `run_one_attempt()`."""
+    result: Dict[str, Any] = {}
+    try:
+        ctx.orchestrator.force_cleanup()
+    except Exception as exc:  # noqa: BLE001
+        result["orchestrator_force_cleanup_error"] = str(exc)
+    try:
+        result.update(ctx.cleanup_fn())
+    except Exception as exc:  # noqa: BLE001
+        result["cleanup_fn_error"] = str(exc)
+    return result
+
+
 def run_one_attempt(run_record: RunRecord, ctx: CampaignContext, attempt_number: int) -> Dict[str, Any]:
     episode_id = f"{run_record.run_id}__attempt{attempt_number}"
     started_utc = datetime.now(timezone.utc).isoformat()
@@ -324,16 +343,16 @@ def run_one_attempt(run_record: RunRecord, ctx: CampaignContext, attempt_number:
         entry.update({"status": "VALID", "result": result, "cleanup": cleanup_result})
 
     except CpuOnlyArmNotYetSupportedError as exc:
-        cleanup_result = ctx.cleanup_fn()
+        cleanup_result = _safe_cleanup(ctx)  # tears down a route/relay left behind if start_episode_traffic itself raised
         entry.update({"status": "FAILED_CLOSED", "error": str(exc), "cleanup": cleanup_result})
     except SafetyTerminationError as exc:
-        cleanup_result = ctx.cleanup_fn()
+        cleanup_result = _safe_cleanup(ctx)
         entry.update({"status": "SAFETY_TERMINATION", "error": str(exc), "cleanup": cleanup_result})
     except ToolingFailureError as exc:
-        cleanup_result = ctx.cleanup_fn()
+        cleanup_result = _safe_cleanup(ctx)
         entry.update({"status": "TOOLING_FAILURE", "error": str(exc), "cleanup": cleanup_result})
     except Exception as exc:  # noqa: BLE001 -- never silently drop an unclassified failure
-        cleanup_result = ctx.cleanup_fn()
+        cleanup_result = _safe_cleanup(ctx)
         entry.update({"status": "TOOLING_FAILURE", "error": f"unclassified: {exc}", "cleanup": cleanup_result})
 
     entry["ended_utc"] = datetime.now(timezone.utc).isoformat()
@@ -441,6 +460,9 @@ class _FakeOrchestrator:
         self.drained += 1
         return 0.0
 
+    def force_cleanup(self) -> None:
+        pass
+
 
 def _fake_episode_samples(arm_id: str, profile_name: str, n_decisions: int, base_latency_ms: float) -> List[Dict[str, Any]]:
     """V2 Phase 5C-A: synthetic samples in the SAME shape
@@ -530,7 +552,7 @@ def restore_canonical_idle_state() -> Dict[str, Any]:
     backend._kubectl.restore_hpa()
     applied = backend._kubectl.list_hpa_names()
     backend.set_desired_replicas(2)
-    backend._kubectl.wait_for_replica_state(2, timeout=backend.restoration_max_wait_s)
+    backend._kubectl.wait_for_replica_state(2, timeout_seconds=backend.restoration_max_wait_s)
     return {"restored": True, "hpa_names": applied, "replicas": 2}
 
 
@@ -552,13 +574,55 @@ def live_preflight_check() -> Dict[str, Any]:
 
 
 def build_live_context(model_path: Path, epsilon: float, settle_seconds: float = 120.0) -> CampaignContext:
-    """V2 Phase 5C-A: wires the SAME control flow to the REAL, unified
+    """V2 Phase 5D: wires the SAME control flow to the REAL, unified
     per-arm episode functions in scripts/eval_v2_episodes.py (all three
-    arms now measured identically). NOT invoked by this phase (training is
-    live) -- see the module docstring."""
-    orchestrator = V2EvalTrafficOrchestrator()
+    arms now measured identically)."""
+
+    def _http_get(url: str, timeout: float):
+        """Real HTTP GET -- identical implementation to
+        scripts/train_ppo_final_v2.py's/scripts/evaluate_ppo_vs_hpa.py's
+        own `_http_get`, reused verbatim rather than reimplemented."""
+        import httpx
+
+        try:
+            resp = httpx.get(url, timeout=timeout)
+            return resp.status_code == 200, f"HTTP {resp.status_code}"
+        except Exception as exc:  # noqa: BLE001
+            return False, str(exc)
+
+    # `traffic_base_dir` is deliberately left at `to.TrafficOrchestrator`'s
+    # own default (`persistent-data/traffic/`) -- found live: the real
+    # `loadgen.traffic_generator` subprocess writes its own experiment
+    # output directory under that SAME fixed path (derived from
+    # `--experiment-id`, independent of whatever `traffic_base_dir` this
+    # Python process is told about); pointing `traffic_base_dir` elsewhere
+    # only breaks THIS process's own `resolve_next_available_run_id()`
+    # collision check (it always reports "_run1 is free" against an
+    # empty directory that was never the real one), so every retry reused
+    # the same experiment-id and collided with the loadgen's own
+    # already-exists guard. Only `ledger_path` (a separate provenance
+    # file, unrelated to the generator's own output directory) is
+    # customized here.
+    orchestrator = V2EvalTrafficOrchestrator(
+        ledger_path=EVAL_OUTPUT_ROOT / "traffic_provenance_ledger_eval_v2.jsonl",
+    )
+    orchestrator.http_get = _http_get
 
     def ppo_episode(profile_meta: "to.ProfileMetadata", episode_id: str) -> Dict[str, Any]:
+        # The ppo_v2 arm's own acquire_controller(CONTROLLER_PPO, ...) call
+        # (inside run_ppo_v2_eval_episode) fails closed if ANY HPA object
+        # is present -- found live: restore_canonical_idle_state()'s own
+        # cleanup (run after every prior arm, including a prior HPA-arm
+        # run) deliberately leaves demo-app-hpa-v2 applied, so the ppo_v2
+        # arm must remove it itself immediately before starting, exactly
+        # as run_final_training_campaign() does for the live training
+        # campaign (see scripts/train_ppo_final_v2.py). Idempotent: a
+        # no-op if no HPA is present.
+        from autoscaler.src.rl_env.live_backend import LiveKubernetesBackend
+
+        backend = LiveKubernetesBackend(hpa_name=V2_HPA_NAME, hpa_manifest_path=V2_HPA_MANIFEST_PATH, min_replicas=2, initial_replicas=2)
+        if backend._kubectl.list_hpa_names():
+            backend._kubectl.delete_hpa()
         return run_ppo_v2_eval_episode(model_path, epsilon, profile_meta.name, profile_meta.duration_seconds, episode_id)
 
     def hpa_episode(profile_meta: "to.ProfileMetadata", episode_id: str) -> Dict[str, Any]:
