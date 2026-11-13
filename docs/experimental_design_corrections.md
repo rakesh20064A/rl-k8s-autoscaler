@@ -2321,3 +2321,39 @@ Prospective only. `active_correction_reference` is updated globally to `"CORR-61
 
 **Applies to phases**: 5C-A (this correction). See `persistent-data/traffic/v2_phase5ca_episode_recorders_report.md`.
 
+## CORR-62 — CONTROLLER_CPU_ONLY_HPA_V2 Added (Post-Training, Phase 5D)
+
+### Problem
+
+Phase 5C-A's `hpa_v2_cpu_only` evaluation arm (the third arm, isolating "does the memory metric matter" from "does the higher replica floor matter") failed closed via `scripts/eval_v2_episodes.resolve_cpu_only_controller_identity()`, because `autoscaler/src/rl_env/controller_exclusivity.py` had no registered controller identity for it. That report named the exact one-line fix needed and deferred it to a dedicated post-training phase, per this project's own discipline of never making a mid-campaign change to a `FREEZE_MANIFEST.json` file without a separate, deliberate amendment.
+
+### Decision
+
+Made only AFTER the `final_min2` training campaign had already completed in full (48/48 sessions, 12,288/12,288 timesteps) -- added, additively only, to `autoscaler/src/rl_env/controller_exclusivity.py`:
+
+```python
+CONTROLLER_CPU_ONLY_HPA_V2 = "cpu_only_hpa_v2"
+ALL_CONTROLLERS = (CONTROLLER_PPO, CONTROLLER_CPU_HPA, CONTROLLER_CPU_MEMORY_HPA, CONTROLLER_CPU_ONLY_HPA_V2)
+HPA_NAME_BY_CONTROLLER[CONTROLLER_CPU_ONLY_HPA_V2] = "demo-app-hpa-v2-cpu"
+```
+
+No existing constant, function, or behavior in this file was modified or removed. Recorded as `persistent-data/rl_training_v2/final_min2/FREEZE_MANIFEST_AMENDMENT_002.json`.
+
+### Scope
+
+`autoscaler/src/rl_env/controller_exclusivity.py` only (plus its own tests). This file is one of the 43 `FREEZE_MANIFEST.json` files, but is **not** one of the 5 files `scripts/train_ppo_final_v2.py`'s `V2_GOVERNING_HASH_PATHS` checks for resume-provenance verification -- combined with training having already fully completed, this amendment has zero effect on training or on any already-verified session's resume provenance. `CONTROLLER_CPU_ONLY_HPA_V2` is never imported by any training-side module -- only by the evaluation-side `scripts/eval_v2_episodes.py`/`scripts/evaluate_v2_campaign.py` (both non-frozen, evaluation-only files from Phase 5B/5C-A).
+
+### Scientific Impact
+
+None to training (already complete; re-verified: 41 of 43 manifest files unchanged, the trainer still at its AMENDMENT_001 hash, only `controller_exclusivity.py` itself differs). Unblocks the `hpa_v2_cpu_only` evaluation arm for the upcoming live evaluation campaign.
+
+### Preserved Invariants
+
+`CONTROLLER_PPO`, `CONTROLLER_CPU_HPA`, `CONTROLLER_CPU_MEMORY_HPA` and their existing `HPA_NAME_BY_CONTROLLER` entries are unchanged. `acquire_controller`/`release_controller`/`detect_conflicting_hpas`/`current_status` behavior for all pre-existing controllers is unchanged (verified: all pre-existing `test_controller_exclusivity.py` tests pass unmodified).
+
+### Non-Retroactivity
+
+Prospective only -- applies to the evaluation campaign about to launch, never to any already-completed training session. `active_correction_reference` is updated globally to `"CORR-62"` (`prior_correction_reference: "CORR-61"`).
+
+**Applies to phases**: 5D (this correction). See `persistent-data/rl_training_v2/final_min2/FREEZE_MANIFEST_AMENDMENT_002.json`.
+

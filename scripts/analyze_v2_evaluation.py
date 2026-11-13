@@ -315,10 +315,20 @@ def analyze_evaluation_campaign(campaign_dir: Path) -> List[Dict[str, Any]]:
 
 
 def find_completed_training_sessions(sessions_dir: Path) -> List[Path]:
+    """A session directory counts as completed only if it has BOTH
+    `ppo_model.zip` and `metadata.json` AND no sibling `SESSION_FAILED.json`
+    -- a failed physical attempt (e.g. `session_004/`, retried as
+    `session_004__attempt2/`) can still carry a stale metadata.json/
+    ppo_model.zip pair from a checkpoint flush before the failure was
+    detected; `campaign_metadata.json`'s own `sessions_completed` list
+    (the authoritative resume record) never includes the failed attempt,
+    only its successful retry -- this mirrors that exclusion."""
     if not sessions_dir.exists():
         return []
     return sorted(
-        d for d in sessions_dir.iterdir() if d.is_dir() and (d / "ppo_model.zip").is_file() and (d / "metadata.json").is_file()
+        d for d in sessions_dir.iterdir()
+        if d.is_dir() and (d / "ppo_model.zip").is_file() and (d / "metadata.json").is_file()
+        and not (d / "SESSION_FAILED.json").exists()
     )
 
 
@@ -376,7 +386,11 @@ def analyze_training_curve(
 
     curve: List[Dict[str, Any]] = []
     for session_dir in completed:
-        session_index = int(session_dir.name.split("_")[-1])
+        # "session_004__attempt2" -> scientific session index 4 (the
+        # retry's own data, not the failed attempt 1's) -- strip any
+        # "__attemptN" suffix before parsing the numeric index.
+        base_name = session_dir.name.split("__attempt")[0]
+        session_index = int(base_name.split("_")[-1])
         summary = summarize_session_telemetry(session_dir)
         update_metrics = update_metrics_by_session.get(session_index, {})
         curve.append({

@@ -47,16 +47,25 @@ CONTROLLER_NONE = "none"
 CONTROLLER_PPO = "ppo"
 CONTROLLER_CPU_HPA = "cpu_hpa"
 CONTROLLER_CPU_MEMORY_HPA = "cpu_memory_hpa"
+# V2 Phase 5C / FREEZE_MANIFEST_AMENDMENT_002 (post-training, additive
+# only, CORR-62): the third evaluation arm's controller identity --
+# demo-app-hpa-v2-cpu (k8s/hpa/hpa_v2_cpu_only_min2.yaml), CPU-only
+# metric, same V2 replica floor as CONTROLLER_CPU_MEMORY_HPA. Added AFTER
+# the final_min2 training campaign completed; has no effect on training
+# (never imported by any training-side module).
+CONTROLLER_CPU_ONLY_HPA_V2 = "cpu_only_hpa_v2"
 
-ALL_CONTROLLERS = (CONTROLLER_PPO, CONTROLLER_CPU_HPA, CONTROLLER_CPU_MEMORY_HPA)
+ALL_CONTROLLERS = (CONTROLLER_PPO, CONTROLLER_CPU_HPA, CONTROLLER_CPU_MEMORY_HPA, CONTROLLER_CPU_ONLY_HPA_V2)
 
 # The exact HPA object names each HPA-based controller corresponds to (see
-# k8s/hpa/hpa.yaml and k8s/hpa/hpa_v2_cpu_memory.yaml's metadata.name) --
-# deliberately DIFFERENT names so applying one never silently replaces the
-# other via same-name overwrite.
+# k8s/hpa/hpa.yaml, k8s/hpa/hpa_v2_cpu_memory.yaml, and
+# k8s/hpa/hpa_v2_cpu_only_min2.yaml's metadata.name) -- deliberately
+# DIFFERENT names so applying one never silently replaces another via
+# same-name overwrite.
 HPA_NAME_BY_CONTROLLER = {
     CONTROLLER_CPU_HPA: "demo-app-hpa",
     CONTROLLER_CPU_MEMORY_HPA: "demo-app-hpa-v2",
+    CONTROLLER_CPU_ONLY_HPA_V2: "demo-app-hpa-v2-cpu",
 }
 
 # V2 Phase 4C-1 (P1-2): the ONE canonical identity for the V2 pipeline's own

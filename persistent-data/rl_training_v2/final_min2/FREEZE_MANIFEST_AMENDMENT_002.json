@@ -1,0 +1,25 @@
+{
+  "amendment_id": "FREEZE_MANIFEST_AMENDMENT_002",
+  "corr_id": "CORR-62",
+  "phase": "V2 Phase 5D (post-training)",
+  "created_utc": "2026-11-13T15:18:39Z",
+  "decided_utc": "2026-11-13 (post-training; the final_min2 campaign had already completed all 48 sessions / 12,288 timesteps before this amendment was made)",
+  "training_impact": "NONE -- the final_min2 training campaign completed in full before this amendment was authored. CONTROLLER_CPU_ONLY_HPA_V2 is never imported by any training-side module (scripts/train_ppo_final_v2.py, scripts/v2_pilot_safety.py, autoscaler/src/rl_env/environment_v2.py, observation.py, reward_v2.py) -- it is used only by the evaluation-side scripts/eval_v2_episodes.py and scripts/evaluate_v2_campaign.py (both already-frozen-free, non-governing files from V2 Phase 5B/5C-A).",
+  "change": {
+    "field": "autoscaler/src/rl_env/controller_exclusivity.py",
+    "description": "Additive only: added CONTROLLER_CPU_ONLY_HPA_V2 = \"cpu_only_hpa_v2\" to ALL_CONTROLLERS (3 -> 4 entries) and HPA_NAME_BY_CONTROLLER[CONTROLLER_CPU_ONLY_HPA_V2] = \"demo-app-hpa-v2-cpu\". No existing constant, function, or behavior was modified or removed.",
+    "rationale": "Unblocks the hpa_v2_cpu_only evaluation arm (Phase 5A/5B/5C-A's third arm, k8s/hpa/hpa_v2_cpu_only_min2.yaml) which previously failed closed via scripts/eval_v2_episodes.resolve_cpu_only_controller_identity()'s getattr-based check -- this amendment IS the one-line change that check was always waiting for, named explicitly in the Phase 5C-A report."
+  },
+  "trainer_file": "scripts/train_ppo_final_v2.py",
+  "trainer_sha256_unchanged_from_amendment_001": "6c6f00c096c4932540e11baa94d961658b850cbc917e7068ba085ea7805a69ac",
+  "manifest_file_amended": {
+    "path": "autoscaler/src/rl_env/controller_exclusivity.py",
+    "sha256_old": "6b995a1be5588820a5be31c3af2a37c2770aeaf677cf58c0eabd824fc552516b",
+    "sha256_new": "6de8f8f59b19cd0722ad2ed619f5e9dad353cdfdb20a0569848d7993ec69e902",
+    "is_one_of_the_5_resume_governing_hash_files": false,
+    "note": "controller_exclusivity.py is one of the 43 FREEZE_MANIFEST.json files but is NOT one of the 5 files scripts/train_ppo_final_v2.py's own V2_GOVERNING_HASH_PATHS checks for resume-provenance verification (configs/rl_v2.yaml, configs/reward_v2.yaml, environment_v2.py, reward_v2.py, observation.py). This amendment therefore has zero effect on resume-provenance verification for any already-completed session, in addition to training itself already having finished."
+  },
+  "other_41_manifest_files_unchanged": true,
+  "manifest_diff_summary": "Of the 43 files listed in FREEZE_MANIFEST.json's file_hashes_sha256, exactly 2 now differ: scripts/train_ppo_final_v2.py (unchanged from AMENDMENT_001's own recorded hash) and autoscaler/src/rl_env/controller_exclusivity.py (this amendment). The remaining 41 (including all 5 of the resume-governing files: configs/rl_v2.yaml, configs/reward_v2.yaml, autoscaler/src/rl_env/environment_v2.py, observation.py, reward_v2.py) are byte-identical to FREEZE_MANIFEST.json's originally recorded values.",
+  "rule": "The original FREEZE_MANIFEST remains authoritative except for the trainer hash (recorded in AMENDMENT_001) and the controller_exclusivity.py hash recorded here. Training itself is permanently closed to further amendment -- the campaign has already completed; this amendment concerns only the post-training evaluation tooling."
+}

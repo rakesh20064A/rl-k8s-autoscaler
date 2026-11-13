@@ -13,10 +13,13 @@ from typing import List
 import pytest
 
 from autoscaler.src.rl_env.controller_exclusivity import (
+    ALL_CONTROLLERS,
     CONTROLLER_CPU_HPA,
     CONTROLLER_CPU_MEMORY_HPA,
+    CONTROLLER_CPU_ONLY_HPA_V2,
     CONTROLLER_NONE,
     CONTROLLER_PPO,
+    HPA_NAME_BY_CONTROLLER,
     ControllerConflictError,
     acquire_controller,
     clear_lock,
@@ -134,6 +137,32 @@ class TestCurrentStatus:
         status = current_status(FakeHpaLister(["demo-app-hpa"]), lock_path)
         assert status.locked_controller == CONTROLLER_CPU_HPA
         assert status.active_hpa_names == ["demo-app-hpa"]
+
+
+class TestCpuOnlyHpaV2Identity:
+    """V2 Phase 5C / FREEZE_MANIFEST_AMENDMENT_002 / CORR-62: the third
+    evaluation arm's controller identity, added post-training (additive
+    only -- does not alter any pre-existing constant/behavior)."""
+
+    def test_constant_value(self):
+        assert CONTROLLER_CPU_ONLY_HPA_V2 == "cpu_only_hpa_v2"
+
+    def test_registered_in_all_controllers(self):
+        assert CONTROLLER_CPU_ONLY_HPA_V2 in ALL_CONTROLLERS
+        assert len(ALL_CONTROLLERS) == 4
+
+    def test_hpa_name_mapping(self):
+        assert HPA_NAME_BY_CONTROLLER[CONTROLLER_CPU_ONLY_HPA_V2] == "demo-app-hpa-v2-cpu"
+
+    def test_acquire_and_release_round_trip(self, lock_path):
+        acquire_controller(CONTROLLER_CPU_ONLY_HPA_V2, FakeHpaLister(["demo-app-hpa-v2-cpu"]), lock_path)
+        assert read_lock(lock_path) == CONTROLLER_CPU_ONLY_HPA_V2
+        release_controller(CONTROLLER_CPU_ONLY_HPA_V2, lock_path)
+        assert read_lock(lock_path) == CONTROLLER_NONE
+
+    def test_ppo_blocked_while_cpu_only_hpa_v2_active(self, lock_path):
+        with pytest.raises(ControllerConflictError):
+            acquire_controller(CONTROLLER_PPO, FakeHpaLister(["demo-app-hpa-v2-cpu"]), lock_path)
 
 
 class TestPpoNeverRunsWhileHpaActive:

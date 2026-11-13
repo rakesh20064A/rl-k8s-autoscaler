@@ -99,22 +99,41 @@ class TestDryRunFullCampaign:
         assert result["ok"] is True
         assert result["status"] == "COMPLETE"
 
-    def test_ledger_has_27_valid_or_failed_closed_entries(self, tmp_path):
+    def test_ledger_has_27_valid_entries(self, tmp_path):
+        """V2 Phase 5C / CORR-62: CONTROLLER_CPU_ONLY_HPA_V2 now exists in
+        controller_exclusivity.py (post-training amendment) -- all 3 arms,
+        including hpa_v2_cpu_only, succeed by default."""
         ctx = campaign_mod.build_dry_run_context("dr2")
         campaign_mod.run_campaign("dr2", ctx, output_root=tmp_path)
         ledger = campaign_mod.load_ledger(tmp_path / "dr2" / "ledger.jsonl")
         assert len(ledger) == 27
         statuses = {row["status"] for row in ledger}
-        assert statuses == {"VALID", "FAILED_CLOSED"}
+        assert statuses == {"VALID"}
 
-    def test_cpu_only_arm_fails_closed_every_time_never_retried(self, tmp_path):
+    def test_cpu_only_arm_succeeds_now_that_the_phase5c_constant_exists(self, tmp_path):
         ctx = campaign_mod.build_dry_run_context("dr3")
         campaign_mod.run_campaign("dr3", ctx, output_root=tmp_path)
         ledger = campaign_mod.load_ledger(tmp_path / "dr3" / "ledger.jsonl")
         cpu_only_rows = [r for r in ledger if r["arm_id"] == "hpa_v2_cpu_only"]
         assert len(cpu_only_rows) == 9
+        assert all(r["status"] == "VALID" for r in cpu_only_rows)
+        assert all(r["attempt_number"] == 1 for r in cpu_only_rows)
+
+    def test_cpu_only_arm_still_fails_closed_if_the_constant_is_ever_absent(self, tmp_path, monkeypatch):
+        """Regression coverage for the pre-Phase-5C state: if
+        CONTROLLER_CPU_ONLY_HPA_V2 were ever removed/renamed, the campaign
+        must still fail closed for that arm, never silently skip it or
+        crash the whole campaign."""
+        import autoscaler.src.rl_env.controller_exclusivity as ce
+
+        monkeypatch.delattr(ce, "CONTROLLER_CPU_ONLY_HPA_V2", raising=False)
+        ctx = campaign_mod.build_dry_run_context("dr3b")
+        campaign_mod.run_campaign("dr3b", ctx, output_root=tmp_path)
+        ledger = campaign_mod.load_ledger(tmp_path / "dr3b" / "ledger.jsonl")
+        cpu_only_rows = [r for r in ledger if r["arm_id"] == "hpa_v2_cpu_only"]
+        assert len(cpu_only_rows) == 9
         assert all(r["status"] == "FAILED_CLOSED" for r in cpu_only_rows)
-        assert all(r["attempt_number"] == 1 for r in cpu_only_rows)  # never retried
+        assert all(r["attempt_number"] == 1 for r in cpu_only_rows)
 
     def test_run_status_ends_complete_with_no_current_run(self, tmp_path):
         ctx = campaign_mod.build_dry_run_context("dr4")
@@ -140,16 +159,16 @@ class TestDryRunFullCampaign:
     def test_cleanup_and_settle_called_once_per_successful_run(self, tmp_path):
         ctx = campaign_mod.build_dry_run_context("dr6")
         campaign_mod.run_campaign("dr6", ctx, output_root=tmp_path)
-        # 18 successful (VALID) runs out of 27; settle_fn recorded once per attempt that reached settle.
-        assert len(ctx.settle_fn.calls) == 18
+        # All 27 runs are now VALID (CONTROLLER_CPU_ONLY_HPA_V2 exists).
+        assert len(ctx.settle_fn.calls) == 27
         assert all(c == 120.0 for c in ctx.settle_fn.calls)
 
-    def test_traffic_started_and_stopped_only_for_non_cpu_only_runs(self, tmp_path):
+    def test_traffic_started_and_stopped_for_every_run(self, tmp_path):
         ctx = campaign_mod.build_dry_run_context("dr7")
         campaign_mod.run_campaign("dr7", ctx, output_root=tmp_path)
-        assert len(ctx.orchestrator.started) == 18
-        assert len(ctx.orchestrator.stopped) == 18
-        assert ctx.orchestrator.drained == 18
+        assert len(ctx.orchestrator.started) == 27
+        assert len(ctx.orchestrator.stopped) == 27
+        assert ctx.orchestrator.drained == 27
 
 
 class TestToolingFailureRetryPolicy:
@@ -242,13 +261,13 @@ class TestEndToEndDryCampaignToAnalysis:
 
         campaign_dir = tmp_path / "e2e"
         run_metrics = av.analyze_evaluation_campaign(campaign_dir)
-        # 18 VALID runs (ppo_v2 + hpa_v2_cpu_memory); the 9 hpa_v2_cpu_only
-        # runs are FAILED_CLOSED and carry no normalized_series.json.
-        assert len(run_metrics) == 18
-        assert {m["arm_id"] for m in run_metrics} == {"ppo_v2", "hpa_v2_cpu_memory"}
+        # All 27 runs are VALID now (CONTROLLER_CPU_ONLY_HPA_V2 exists,
+        # V2 Phase 5C / CORR-62) and all carry normalized_series.json.
+        assert len(run_metrics) == 27
+        assert {m["arm_id"] for m in run_metrics} == {"ppo_v2", "hpa_v2_cpu_memory", "hpa_v2_cpu_only"}
 
         aggregated = av.aggregate_per_profile_arm(run_metrics)
-        assert len(aggregated) == 6  # 3 profiles x 2 arms with data
+        assert len(aggregated) == 9  # 3 profiles x 3 arms with data
 
         output_dir = tmp_path / "analysis"
         tables = av.write_evaluation_tables(aggregated, output_dir)
