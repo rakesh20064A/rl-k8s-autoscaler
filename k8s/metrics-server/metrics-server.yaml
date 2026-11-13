@@ -64,6 +64,46 @@ subjects:
     name: metrics-server
     namespace: kube-system
 ---
+# V2 Phase 5D (live-setup, first real deployment of this manifest):
+# metrics-server panics on startup without read access to the
+# extension-apiserver-authentication ConfigMap (kube-system) -- it needs
+# this to load the request-header client CA for aggregated-API auth.
+# Binds to the built-in `extension-apiserver-authentication-reader` Role
+# every cluster already ships (not something this manifest invents).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: metrics-server-auth-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - kind: ServiceAccount
+    name: metrics-server
+    namespace: kube-system
+---
+# V2 Phase 5D (live-setup): the aggregation layer requires metrics-server
+# to be able to create SubjectAccessReviews at cluster scope to authorize
+# incoming requests to the metrics.k8s.io API -- without this, the HPA
+# controller's own calls fail with "subjectaccessreviews... is forbidden"
+# even though metrics-server itself is healthy and `kubectl top` works
+# (that path doesn't go through the same authorization check the same
+# way). Binds to the built-in `system:auth-delegator` ClusterRole.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: metrics-server:system:auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: metrics-server
+    namespace: kube-system
+---
 apiVersion: v1
 kind: Service
 metadata:

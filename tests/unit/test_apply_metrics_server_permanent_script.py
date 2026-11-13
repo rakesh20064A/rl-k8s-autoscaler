@@ -31,6 +31,24 @@ class TestManifestParsesAndHasExpectedArgs:
         assert len(docs) >= 1
         assert all(d is not None for d in docs)
 
+    def test_auth_reader_rolebinding_present(self):
+        """V2 Phase 5D (live-setup): metrics-server panics on startup
+        without read access to the extension-apiserver-authentication
+        ConfigMap -- found live when this manifest was first actually
+        deployed. Binds to the cluster's own built-in
+        extension-apiserver-authentication-reader Role."""
+        docs = _load_all(MANIFEST_PATH)
+        bindings = [d for d in docs if d.get("kind") == "RoleBinding" and d.get("metadata", {}).get("namespace") == "kube-system"]
+        assert any(b["roleRef"]["name"] == "extension-apiserver-authentication-reader" for b in bindings)
+
+    def test_auth_delegator_clusterrolebinding_present(self):
+        """V2 Phase 5D (live-setup): the HPA controller's own calls to the
+        metrics.k8s.io API fail with a SubjectAccessReview-forbidden error
+        without this binding -- found live during the same deployment."""
+        docs = _load_all(MANIFEST_PATH)
+        bindings = [d for d in docs if d.get("kind") == "ClusterRoleBinding"]
+        assert any(b["roleRef"]["name"] == "system:auth-delegator" for b in bindings)
+
     def test_deployment_present(self):
         docs = _load_all(MANIFEST_PATH)
         deployments = [d for d in docs if d.get("kind") == "Deployment"]
