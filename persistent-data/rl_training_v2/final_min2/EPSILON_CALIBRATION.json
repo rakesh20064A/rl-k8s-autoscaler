@@ -1,0 +1,27 @@
+{
+  "created_utc": "2026-11-13T15:20:45.931720+00:00",
+  "official": true,
+  "model_path": "persistent-data/rl_training_v2/final_min2/sessions/session_047/ppo_model.zip",
+  "model_sha256": "d58e50184d353e2b183cf7b30a8b0cddeea3cac7a79e742496a0c4e5a3922d3f",
+  "sessions_dir": "persistent-data/rl_training_v2/final_min2/sessions",
+  "sessions_requested": 5,
+  "sessions_used": [
+    "session_043",
+    "session_044",
+    "session_045",
+    "session_046",
+    "session_047"
+  ],
+  "sessions_used_count": 5,
+  "fewer_than_requested_sessions_disclosed": false,
+  "n_observations": 1280,
+  "percentile": 10.0,
+  "raw_percentile_value": 0.4503167048096657,
+  "cap": 0.05,
+  "floor": 0.0,
+  "epsilon": 0.05,
+  "tie_fraction_at_epsilon": 0.00546875,
+  "margin_min": 0.012487679719924927,
+  "margin_max": 0.9997175912067178,
+  "margin_mean": 0.8359735396295094
+}

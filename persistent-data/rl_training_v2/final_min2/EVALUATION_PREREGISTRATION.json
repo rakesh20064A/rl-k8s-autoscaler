@@ -28,7 +28,7 @@
     {
       "arm_id": "HPA_CPU_ONLY",
       "description": "HPA-V2, CPU-only metric, V2 replica floor (demo-app-hpa-v2-cpu).",
-      "controller": "cpu_only_hpa_v2 (not yet defined -- Phase 5B gap, see report)",
+      "controller": "cpu_only_hpa_v2 (defined V2 Phase 5D / CORR-62, FREEZE_MANIFEST_AMENDMENT_002.json)",
       "hpa_name": "demo-app-hpa-v2-cpu",
       "manifest": "k8s/hpa/hpa_v2_cpu_only_min2.yaml",
       "min_replicas": 2,
@@ -55,7 +55,8 @@
     "cap": 0.05,
     "floor": 0.0,
     "when_computed": "Once, before evaluation begins -- never re-tuned after seeing any evaluation result.",
-    "value": "TO BE COMPUTED in Phase 5B once session_047 exists -- not computable now (training is live, session_047 does not yet exist). This record reserves the field; the computed value must be appended here (not silently overwritten elsewhere) before the first evaluation run.",
+    "value": 0.05,
+    "value_note": "Computed 2026-11-13 (V2 Phase 5D, post-training) via scripts/calibrate_epsilon_v2.py --official against session_047 (model sha256 d58e50184d353e2b183cf7b30a8b0cddeea3cac7a79e742496a0c4e5a3922d3f) and the last 5 sessions (043-047), n=1280 observations. Raw (uncapped) 10th-percentile margin was 0.4503 -- the cap (0.05) is what binds, not the raw percentile. tie_fraction_at_epsilon=0.00547 (0.55% of decisions). Full record: persistent-data/rl_training_v2/final_min2/EPSILON_CALIBRATION.json.",
     "current_provisional_epsilon_in_configs_rl_v2_yaml": "0.05 (near_tie_epsilon, status: provisional_unvalidated -- this pre-registration's own computed value supersedes it for evaluation purposes only; training itself is unaffected, CORR-58 scope note)"
   },
   "metrics": {

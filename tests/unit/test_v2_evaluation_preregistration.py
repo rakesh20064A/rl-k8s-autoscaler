@@ -80,12 +80,14 @@ class TestEpsilonRule:
         assert epsilon["cap"] == 0.05
         assert epsilon["floor"] == 0.0
 
-    def test_value_not_yet_computed_is_disclosed(self):
-        """Training is still live (session_047 does not exist yet) -- the
-        epsilon value must be explicitly disclosed as not-yet-computed,
-        never a guessed or silently-defaulted number."""
+    def test_value_computed_official(self):
+        """V2 Phase 5D (post-training): the official epsilon value has
+        been computed from session_047 and is pinned within [floor, cap]."""
         record = _load()
-        assert "TO BE COMPUTED" in record["epsilon_rule"]["value"]
+        epsilon = record["epsilon_rule"]
+        assert isinstance(epsilon["value"], (int, float))
+        assert epsilon["floor"] <= epsilon["value"] <= epsilon["cap"]
+        assert "value_note" in epsilon
 
 
 class TestValidityAndDecisionRules:
