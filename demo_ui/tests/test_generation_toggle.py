@@ -72,12 +72,41 @@ class TestSwitchingToV1RestoresV1Behaviour:
         assert set(arm_radio.options) == {"PPO-V2", "HPA-V2 (CPU+memory)"}
 
 
+class TestV2LiveEnabledNowThatTrainingFinished:
+    """V2 Phase 5D (post-training): demo_ui/config_v2.yaml now points at
+    the real session_047 checkpoint and the real official epsilon file --
+    V2 LIVE must be enabled, with no disabled message and a clickable
+    START button."""
+
+    def test_no_live_disabled_message_shown(self):
+        at = _goto_experiment(AppTest.from_file(APP_PATH, default_timeout=30))
+        at.segmented_control(key="du_data_source_widget").set_value("LIVE").run()
+        assert not at.exception
+        html = "".join(m.value for m in at.markdown)
+        assert "V2 LIVE is disabled" not in html
+
+    def test_start_button_not_disabled(self):
+        at = _goto_experiment(AppTest.from_file(APP_PATH, default_timeout=30))
+        at.segmented_control(key="du_data_source_widget").set_value("LIVE").run()
+        start_button = [b for b in at.button if b.label == "START"][0]
+        assert start_button.disabled is False
+
+
 class TestV2LiveDisabledMessage:
-    def test_live_disabled_message_shown_when_model_and_epsilon_missing(self):
-        """The normal state before training finishes: config_v2.yaml points
-        at session_047's checkpoint and the official epsilon file, neither
-        of which exists yet -- V2 LIVE must show a clear, specific message,
-        never a crash and never a silently-enabled START."""
+    """Regression coverage for the pre-training state (model/epsilon
+    missing) -- exercised against a fake config pointing at nonexistent
+    files, since the real config_v2.yaml now points at real, existing
+    files (V2 Phase 5D)."""
+
+    def test_live_disabled_message_shown_when_model_and_epsilon_missing(self, tmp_path, monkeypatch):
+        from demo_ui.config_v2 import ConfigV2
+
+        fake_cfg = ConfigV2(
+            model_path=tmp_path / "no_model.zip", epsilon_calibration_path=tmp_path / "no_eps.json",
+            evaluation_campaign_dir=tmp_path / "no_campaign",
+        )
+        monkeypatch.setattr("demo_ui.views.experiment.load_config_v2_safe", lambda: (fake_cfg, None))
+
         at = _goto_experiment(AppTest.from_file(APP_PATH, default_timeout=30))
         at.segmented_control(key="du_data_source_widget").set_value("LIVE").run()
         assert not at.exception
@@ -86,7 +115,15 @@ class TestV2LiveDisabledMessage:
         assert "model checkpoint not found" in html
         assert "epsilon calibration file not found" in html
 
-    def test_start_button_disabled_in_v2_live_when_not_enabled(self):
+    def test_start_button_disabled_in_v2_live_when_not_enabled(self, tmp_path, monkeypatch):
+        from demo_ui.config_v2 import ConfigV2
+
+        fake_cfg = ConfigV2(
+            model_path=tmp_path / "no_model.zip", epsilon_calibration_path=tmp_path / "no_eps.json",
+            evaluation_campaign_dir=tmp_path / "no_campaign",
+        )
+        monkeypatch.setattr("demo_ui.views.experiment.load_config_v2_safe", lambda: (fake_cfg, None))
+
         at = _goto_experiment(AppTest.from_file(APP_PATH, default_timeout=30))
         at.segmented_control(key="du_data_source_widget").set_value("LIVE").run()
         start_button = [b for b in at.button if b.label == "START"][0]
