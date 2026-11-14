@@ -629,6 +629,23 @@ def build_live_context(model_path: Path, epsilon: float, settle_seconds: float =
         return run_hpa_v2_cpu_memory_eval_episode(profile_meta.name, profile_meta.duration_seconds, episode_id)
 
     def cpu_only_episode(profile_meta: "to.ProfileMetadata", episode_id: str) -> Dict[str, Any]:
+        # CORR-63: the hpa_v2_cpu_only arm's own acquire_controller(
+        # CONTROLLER_CPU_ONLY_HPA_V2, ...) call (inside
+        # run_hpa_v2_cpu_only_eval_episode) fails closed if ANY *other*
+        # HPA object is present -- found live: the prior hpa_v2_cpu_memory
+        # run's own canonical-idle-state cleanup deliberately leaves
+        # demo-app-hpa-v2 applied, so this arm must remove it itself
+        # immediately before starting, exactly the same pattern the
+        # ppo_v2 wrapper above already uses. Idempotent: a no-op if no
+        # conflicting HPA is present. Scope: this wrapper only -- the
+        # shared run_hpa_v2_eval_episode() implementation (also used by
+        # the hpa_v2_cpu_memory arm) is unmodified.
+        from autoscaler.src.rl_env.live_backend import LiveKubernetesBackend
+
+        backend = LiveKubernetesBackend(hpa_name=V2_HPA_NAME, hpa_manifest_path=V2_HPA_MANIFEST_PATH, min_replicas=2, initial_replicas=2)
+        existing = backend._kubectl.list_hpa_names()
+        if any(name != "demo-app-hpa-v2-cpu" for name in existing):
+            backend._kubectl.delete_hpa()
         return run_hpa_v2_cpu_only_eval_episode(profile_meta.name, profile_meta.duration_seconds, episode_id)
 
     return CampaignContext(
@@ -636,6 +653,70 @@ def build_live_context(model_path: Path, epsilon: float, settle_seconds: float =
         hpa_episode_fn=hpa_episode, cpu_only_episode_fn=cpu_only_episode, cleanup_fn=restore_canonical_idle_state,
         settle_fn=__import__("time").sleep, settle_seconds=settle_seconds,
     )
+
+
+def rerun_run_after_fix(
+    campaign_id: str, run_id: str, ctx: CampaignContext, corr_id: str, output_root: Path = EVAL_OUTPUT_ROOT,
+) -> Dict[str, Any]:
+    """V2 Phase 5F / CORR-63: `run_campaign()`'s own resume logic treats
+    `FAILED_AFTER_RETRY` as terminal (by design -- it already burned its
+    one permitted retry) and will never re-attempt it on a plain resume,
+    even once the underlying code defect that caused it is fixed. This is
+    the explicit, deliberate escape hatch for exactly that situation: a
+    confirmed TOOLING-side bug (never a scientific outcome) is fixed, and
+    the SAME run_id is re-attempted as a brand-new attempt, appended to
+    the ledger (never overwriting or deleting the prior failed rows),
+    tagged with `corr_id` so the correction this rerun was authorized
+    under is always traceable from the ledger alone. Mirrors
+    `run_campaign()`'s own retry-once-on-TOOLING_FAILURE rule for this one
+    run, then returns -- it does NOT continue the rest of the plan (call
+    `run_campaign()` again afterward, as a separate invocation, for that).
+    """
+    campaign_dir = output_root / campaign_id
+    plan_path = campaign_dir / "RUN_PLAN.json"
+    ledger_path = campaign_dir / "ledger.jsonl"
+    status_path = campaign_dir / "run_status.json"
+    ctx.runs_dir = campaign_dir / "runs"
+
+    with open(plan_path, encoding="utf-8") as f:
+        plan = json.load(f)
+    matching = [r for r in plan["runs"] if r["run_id"] == run_id]
+    if not matching:
+        raise ValueError(f"run_id {run_id!r} not found in {plan_path}")
+    run_record = RunRecord(**{k: v for k, v in matching[0].items() if k != "run_id"})
+
+    ledger = load_ledger(ledger_path)
+    prior_attempts = [row["attempt_number"] for row in ledger if row["run_id"] == run_id]
+    if not prior_attempts:
+        raise ValueError(f"run_id {run_id!r} has no prior ledger rows -- nothing to rerun after a fix")
+    next_attempt_number = max(prior_attempts) + 1
+
+    write_run_status(status_path, "RUNNING", run_record.to_dict())
+
+    entry = run_one_attempt(run_record, ctx, attempt_number=next_attempt_number)
+    entry["corr_id"] = corr_id
+    entry["rerun_after_fix"] = True
+    append_ledger(ledger_path, entry)
+
+    if entry["status"] == "TOOLING_FAILURE":
+        retry_entry = run_one_attempt(run_record, ctx, attempt_number=next_attempt_number + 1)
+        retry_entry["corr_id"] = corr_id
+        retry_entry["rerun_after_fix"] = True
+        if retry_entry["status"] == "TOOLING_FAILURE":
+            retry_entry["status"] = "FAILED_AFTER_RETRY"
+        append_ledger(ledger_path, retry_entry)
+        entry = retry_entry
+
+    # Leave run_status.json as "RUNNING" with this run cleared regardless
+    # of outcome -- a separate, normal `run_campaign()` invocation decides
+    # what COMPLETE/FAILED means for the rest of the plan; this function
+    # only ever resolves the one named run_id.
+    write_run_status(status_path, "RUNNING", None)
+
+    return {
+        "ok": entry["status"] == "VALID", "run_id": run_id, "final_status": entry["status"],
+        "corr_id": corr_id, "campaign_dir": str(campaign_dir),
+    }
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -647,10 +728,25 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--model-path", default=str(PROJECT_ROOT / "models" / "ppo_v2" / "ppo_model_v2_min2.zip"))
     parser.add_argument("--epsilon-calibration-path", default=None)
     parser.add_argument("--output-root", default=str(EVAL_OUTPUT_ROOT))
+    parser.add_argument(
+        "--rerun-after-fix", default=None, metavar="RUN_ID",
+        help="Re-attempt a single run_id that is stuck at FAILED_AFTER_RETRY after a confirmed tooling-side fix "
+             "(never a scientific retry) -- appends a new attempt to the ledger, never overwrites prior rows. "
+             "Requires --corr-id.",
+    )
+    parser.add_argument("--corr-id", default=None, help="The CORR-NN id this --rerun-after-fix is authorized under.")
     args = parser.parse_args(argv)
 
     campaign_id = args.campaign_id or f"campaign_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     output_root = Path(args.output_root)
+
+    if args.rerun_after_fix:
+        if not args.execute:
+            print("Refusing --rerun-after-fix without --execute (it only makes sense against a real campaign).", file=sys.stderr)
+            return 2
+        if not args.corr_id:
+            print("Refusing --rerun-after-fix without --corr-id.", file=sys.stderr)
+            return 2
 
     if args.execute:
         if not args.i_confirm_live_cluster_interaction:
@@ -665,6 +761,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         ctx = build_live_context(Path(args.model_path), epsilon)
     else:
         ctx = build_dry_run_context(campaign_id)
+
+    if args.rerun_after_fix:
+        result = rerun_run_after_fix(campaign_id, args.rerun_after_fix, ctx, args.corr_id, output_root=output_root)
+        print(json.dumps(result, indent=2, default=str))
+        return 0 if result["ok"] else 1
 
     result = run_campaign(campaign_id, ctx, output_root=output_root)
     print(json.dumps(result, indent=2, default=str))

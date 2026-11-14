@@ -284,3 +284,178 @@ class TestEndToEndDryCampaignToAnalysis:
             # the pre-registered "better in all 3 repeats" rule must find
             # ppo_v2 the decidable winner on mean_p95_latency_ms.
             assert comparison[profile]["mean_p95_latency_ms"] == "ppo_v2_better"
+
+
+class _FakeKubectlForLiveContext:
+    def __init__(self, existing_hpa_names):
+        self._existing = list(existing_hpa_names)
+        self.delete_hpa_calls = 0
+
+    def list_hpa_names(self):
+        return list(self._existing)
+
+    def delete_hpa(self):
+        self.delete_hpa_calls += 1
+        self._existing = []
+
+
+class _FakeBackendForLiveContext:
+    def __init__(self, hpa_name=None, hpa_manifest_path=None, min_replicas=None, initial_replicas=None, existing_hpa_names=()):
+        self._kubectl = _FakeKubectlForLiveContext(existing_hpa_names)
+
+
+class TestBuildLiveContextRemovesConflictingHpaBeforeStart:
+    """V2 Phase 5F / CORR-63: `build_live_context()`'s ppo_v2 and
+    hpa_v2_cpu_only wrappers must each remove a conflicting HPA left
+    behind by a prior arm's own canonical-idle-state cleanup, BEFORE
+    calling into their own `acquire_controller(...)` (which fails closed
+    if any such HPA is present) -- reproduces the exact live failures
+    found in V2 Phase 5D/5F (ppo_v2 blocked by demo-app-hpa-v2;
+    hpa_v2_cpu_only blocked by demo-app-hpa-v2 left over from the
+    hpa_v2_cpu_memory arm's own cleanup)."""
+
+    def _build_ctx_with_fake_backend(self, monkeypatch, existing_hpa_names, ppo_result=None, cpu_only_result=None):
+        import scripts.evaluate_v2_campaign as campaign_mod
+
+        captured = {}
+
+        def fake_backend_factory(**kwargs):
+            backend = _FakeBackendForLiveContext(existing_hpa_names=existing_hpa_names, **{k: v for k, v in kwargs.items() if k in ("hpa_name", "hpa_manifest_path", "min_replicas", "initial_replicas")})
+            captured["backend"] = backend
+            return backend
+
+        monkeypatch.setattr("autoscaler.src.rl_env.live_backend.LiveKubernetesBackend", fake_backend_factory)
+        monkeypatch.setattr(campaign_mod, "run_ppo_v2_eval_episode", lambda *a, **k: ppo_result or {"ok": True})
+        monkeypatch.setattr(campaign_mod, "run_hpa_v2_cpu_only_eval_episode", lambda *a, **k: cpu_only_result or {"ok": True})
+
+        ctx = campaign_mod.build_live_context(__import__("pathlib").Path("model.zip"), 0.05)
+        return ctx, captured
+
+    def test_ppo_episode_deletes_hpa_when_present(self, monkeypatch):
+        import scripts.evaluate_v2_campaign as campaign_mod
+
+        ctx, captured = self._build_ctx_with_fake_backend(monkeypatch, existing_hpa_names=["demo-app-hpa-v2"])
+        profile_meta = campaign_mod.resolve_eval_profile_metadata("eval_cpu_step")
+        ctx.ppo_episode_fn(profile_meta, "e1")
+        assert captured["backend"]._kubectl.delete_hpa_calls == 1
+
+    def test_ppo_episode_is_a_noop_when_no_hpa_present(self, monkeypatch):
+        import scripts.evaluate_v2_campaign as campaign_mod
+
+        ctx, captured = self._build_ctx_with_fake_backend(monkeypatch, existing_hpa_names=[])
+        profile_meta = campaign_mod.resolve_eval_profile_metadata("eval_cpu_step")
+        ctx.ppo_episode_fn(profile_meta, "e1")
+        assert captured["backend"]._kubectl.delete_hpa_calls == 0
+
+    def test_cpu_only_episode_deletes_conflicting_hpa_when_present(self, monkeypatch):
+        """Reproduces the exact V2 Phase 5F failure: demo-app-hpa-v2 (the
+        hpa_v2_cpu_memory arm's own HPA) left present blocks the
+        hpa_v2_cpu_only arm's own acquire_controller call."""
+        import scripts.evaluate_v2_campaign as campaign_mod
+
+        ctx, captured = self._build_ctx_with_fake_backend(monkeypatch, existing_hpa_names=["demo-app-hpa-v2"])
+        profile_meta = campaign_mod.resolve_eval_profile_metadata("eval_cpu_step")
+        ctx.cpu_only_episode_fn(profile_meta, "e1")
+        assert captured["backend"]._kubectl.delete_hpa_calls == 1
+
+    def test_cpu_only_episode_is_a_noop_when_only_its_own_hpa_present(self, monkeypatch):
+        import scripts.evaluate_v2_campaign as campaign_mod
+
+        ctx, captured = self._build_ctx_with_fake_backend(monkeypatch, existing_hpa_names=["demo-app-hpa-v2-cpu"])
+        profile_meta = campaign_mod.resolve_eval_profile_metadata("eval_cpu_step")
+        ctx.cpu_only_episode_fn(profile_meta, "e1")
+        assert captured["backend"]._kubectl.delete_hpa_calls == 0
+
+    def test_cpu_only_episode_is_a_noop_when_no_hpa_present(self, monkeypatch):
+        import scripts.evaluate_v2_campaign as campaign_mod
+
+        ctx, captured = self._build_ctx_with_fake_backend(monkeypatch, existing_hpa_names=[])
+        profile_meta = campaign_mod.resolve_eval_profile_metadata("eval_cpu_step")
+        ctx.cpu_only_episode_fn(profile_meta, "e1")
+        assert captured["backend"]._kubectl.delete_hpa_calls == 0
+
+
+class TestRerunAfterFix:
+    """V2 Phase 5F / CORR-63: the explicit --rerun-after-fix escape hatch
+    for a run stuck at FAILED_AFTER_RETRY after a confirmed tooling-side
+    fix -- appends a new attempt, never overwrites the prior failed rows,
+    and tags every appended row with the CORR id."""
+
+    def _seed_failed_after_retry(self, tmp_path, campaign_id="rerun1"):
+        ctx = campaign_mod.build_dry_run_context(campaign_id)
+        ctx.ppo_episode_fn = lambda *a, **k: (_ for _ in ()).throw(campaign_mod.ToolingFailureError("simulated bug"))
+        campaign_mod.run_campaign(campaign_id, ctx, output_root=tmp_path)
+        ledger_before = campaign_mod.load_ledger(tmp_path / campaign_id / "ledger.jsonl")
+        failed_rows = [r for r in ledger_before if r["run_id"] == "eval_cpu_step__repeat0__ppo_v2"]
+        assert len(failed_rows) == 2
+        assert failed_rows[-1]["status"] == "FAILED_AFTER_RETRY"
+        return ledger_before
+
+    def test_rerun_appends_a_new_attempt_without_touching_prior_rows(self, tmp_path):
+        campaign_id = "rerun1"
+        ledger_before = self._seed_failed_after_retry(tmp_path, campaign_id)
+
+        ctx2 = campaign_mod.build_dry_run_context(campaign_id)  # the "fix": fresh fake context, ppo_episode_fn now succeeds
+        result = campaign_mod.rerun_run_after_fix(
+            campaign_id, "eval_cpu_step__repeat0__ppo_v2", ctx2, "CORR-63", output_root=tmp_path,
+        )
+        assert result["ok"] is True
+        assert result["final_status"] == "VALID"
+        assert result["corr_id"] == "CORR-63"
+
+        ledger_after = campaign_mod.load_ledger(tmp_path / campaign_id / "ledger.jsonl")
+        assert ledger_after[:2] == ledger_before  # prior 2 rows byte-identical, never overwritten
+        assert len(ledger_after) == 3
+        new_row = ledger_after[2]
+        assert new_row["attempt_number"] == 3
+        assert new_row["status"] == "VALID"
+        assert new_row["corr_id"] == "CORR-63"
+        assert new_row["rerun_after_fix"] is True
+
+    def test_rerun_on_a_run_with_no_prior_attempts_raises(self, tmp_path):
+        campaign_id = "rerun2"
+        campaign_dir = tmp_path / campaign_id
+        runs = campaign_mod.build_run_plan(campaign_mod.load_preregistration())
+        campaign_mod.write_run_plan(runs, campaign_id, campaign_mod.load_preregistration(), campaign_dir / "RUN_PLAN.json")
+        # RUN_PLAN.json exists (the run_id IS a real planned run) but no
+        # ledger row has ever been written for it -- nothing to rerun yet.
+        ctx2 = campaign_mod.build_dry_run_context(campaign_id)
+        with pytest.raises(ValueError, match="no prior ledger rows"):
+            campaign_mod.rerun_run_after_fix(campaign_id, "eval_cpu_step__repeat0__ppo_v2", ctx2, "CORR-99", output_root=tmp_path)
+
+    def test_rerun_unknown_run_id_raises(self, tmp_path):
+        campaign_id = "rerun3"
+        ledger_before = self._seed_failed_after_retry(tmp_path, campaign_id)
+        assert ledger_before
+        ctx2 = campaign_mod.build_dry_run_context(campaign_id)
+        with pytest.raises(ValueError, match="not found"):
+            campaign_mod.rerun_run_after_fix(campaign_id, "not_a_real_run_id", ctx2, "CORR-63", output_root=tmp_path)
+
+    def test_rerun_that_fails_again_is_recorded_as_failed_after_retry_again(self, tmp_path):
+        campaign_id = "rerun4"
+        self._seed_failed_after_retry(tmp_path, campaign_id)
+
+        ctx2 = campaign_mod.build_dry_run_context(campaign_id)
+        ctx2.ppo_episode_fn = lambda *a, **k: (_ for _ in ()).throw(campaign_mod.ToolingFailureError("still broken"))
+        result = campaign_mod.rerun_run_after_fix(
+            campaign_id, "eval_cpu_step__repeat0__ppo_v2", ctx2, "CORR-63", output_root=tmp_path,
+        )
+        assert result["ok"] is False
+        assert result["final_status"] == "FAILED_AFTER_RETRY"
+
+        ledger_after = campaign_mod.load_ledger(tmp_path / campaign_id / "ledger.jsonl")
+        run_rows = [r for r in ledger_after if r["run_id"] == "eval_cpu_step__repeat0__ppo_v2"]
+        assert len(run_rows) == 4  # original 2 + this rerun's own 2 attempts
+        assert [r["attempt_number"] for r in run_rows] == [1, 2, 3, 4]
+        assert all(r.get("corr_id") == "CORR-63" for r in run_rows[2:])
+
+    def test_main_refuses_rerun_after_fix_without_execute(self):
+        rc = campaign_mod.main(["--rerun-after-fix", "some_run_id", "--corr-id", "CORR-63"])
+        assert rc == 2
+
+    def test_main_refuses_rerun_after_fix_without_corr_id(self):
+        rc = campaign_mod.main([
+            "--execute", "--i-confirm-live-cluster-interaction", "--rerun-after-fix", "some_run_id",
+            "--epsilon-calibration-path", "/dev/null",
+        ])
+        assert rc == 2
