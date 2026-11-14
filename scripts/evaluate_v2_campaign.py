@@ -539,21 +539,40 @@ def restore_canonical_idle_state() -> Dict[str, Any]:
     -- neither `run_live_v2_episode()` nor `run_hpa_v2_episode()` guarantee
     this on their own: the PPO arm's own `finally` releases its lock but
     applies no HPA at all (PPO requires zero HPAs present to even start),
-    and the HPA arm's own `finally` re-applies `demo-app-hpa-v2` but this
-    campaign must do the same after a PPO run too, so every run leaves the
-    SAME canonical idle state behind it regardless of which arm just ran.
-    Idempotent (`kubectl apply`); never deletes/scales down below the
-    floor. NOT called by this phase (dry-run only)."""
+    and the HPA arm's own `finally` re-applies ONLY its own HPA (never
+    deleting another arm's) but this campaign must reach the SAME
+    canonical idle state behind it regardless of which arm just ran.
+
+    V2 Phase 5G / CORR-64: found live -- after the hpa_v2_cpu_only arm's
+    own run, its `demo-app-hpa-v2-cpu` was left applied (that arm's own
+    `finally` re-applies only ITS OWN manifest, same pattern as the other
+    HPA arm, by design) and this function previously only ever APPLIED
+    `demo-app-hpa-v2`, never deleting any OTHER HPA object -- so both
+    `demo-app-hpa-v2` and `demo-app-hpa-v2-cpu` ended up present
+    simultaneously, failing the very next run's preflight (`live_preflight_check()`
+    requires the HPA list to be `[]` or exactly `[demo-app-hpa-v2]`). Now
+    deletes every HPA in the namespace EXCEPT `demo-app-hpa-v2` first
+    (idempotent, `--ignore-not-found`), then applies `demo-app-hpa-v2`, so
+    the canonical idle state is reached regardless of how many/which HPAs
+    a prior arm left behind.
+
+    Idempotent; never deletes/scales down below the floor. NOT called by
+    this phase (dry-run only)."""
     from autoscaler.src.rl_env.live_backend import LiveKubernetesBackend
 
     backend = LiveKubernetesBackend(
         hpa_name=V2_HPA_NAME, hpa_manifest_path=V2_HPA_MANIFEST_PATH, min_replicas=2, initial_replicas=2,
     )
+    deleted = []
+    for name in backend._kubectl.list_hpa_names():
+        if name != V2_HPA_NAME:
+            backend._kubectl.run(["kubectl", "delete", "hpa", name, "-n", backend._kubectl.app_namespace, "--ignore-not-found"], backend._kubectl.timeout_s)
+            deleted.append(name)
     backend._kubectl.restore_hpa()
     applied = backend._kubectl.list_hpa_names()
     backend.set_desired_replicas(2)
     backend._kubectl.wait_for_replica_state(2, timeout_seconds=backend.restoration_max_wait_s)
-    return {"restored": True, "hpa_names": applied, "replicas": 2}
+    return {"restored": True, "hpa_names": applied, "deleted_hpa_names": deleted, "replicas": 2}
 
 
 def live_preflight_check() -> Dict[str, Any]:

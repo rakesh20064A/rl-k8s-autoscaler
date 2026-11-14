@@ -459,3 +459,103 @@ class TestRerunAfterFix:
             "--epsilon-calibration-path", "/dev/null",
         ])
         assert rc == 2
+
+
+class _FakeKubectlForCleanup:
+    def __init__(self, existing_hpa_names, app_namespace="autoscaler-app", timeout_s=30.0):
+        self._existing = list(existing_hpa_names)
+        self.app_namespace = app_namespace
+        self.timeout_s = timeout_s
+        self.run_calls = []
+        self.restore_hpa_calls = 0
+
+    def list_hpa_names(self):
+        return list(self._existing)
+
+    def run(self, cmd, timeout):
+        self.run_calls.append(cmd)
+        if cmd[:3] == ["kubectl", "delete", "hpa"]:
+            name = cmd[3]
+            self._existing = [n for n in self._existing if n != name]
+
+    def restore_hpa(self):
+        self.restore_hpa_calls += 1
+        if "demo-app-hpa-v2" not in self._existing:
+            self._existing.append("demo-app-hpa-v2")
+
+    def wait_for_replica_state(self, desired, timeout_seconds):
+        pass
+
+
+class _FakeBackendForCleanup:
+    def __init__(self, hpa_name=None, hpa_manifest_path=None, min_replicas=None, initial_replicas=None, existing_hpa_names=()):
+        self._kubectl = _FakeKubectlForCleanup(existing_hpa_names)
+        self.restoration_max_wait_s = 1.0
+
+    def set_desired_replicas(self, desired):
+        pass
+
+
+class TestRestoreCanonicalIdleStateDeletesExtraHpas:
+    """V2 Phase 5G / CORR-64: restore_canonical_idle_state() must delete
+    EVERY HPA other than demo-app-hpa-v2 before applying it -- reproduces
+    the exact live failure where demo-app-hpa-v2-cpu (left behind by the
+    hpa_v2_cpu_only arm's own finally, which only ever re-applies its own
+    manifest) survived cleanup and coexisted with demo-app-hpa-v2,
+    failing the next run's preflight."""
+
+    def _patch(self, monkeypatch, existing_hpa_names):
+        captured = {}
+
+        def fake_backend_factory(**kwargs):
+            backend = _FakeBackendForCleanup(existing_hpa_names=existing_hpa_names, **{k: v for k, v in kwargs.items() if k in ("hpa_name", "hpa_manifest_path", "min_replicas", "initial_replicas")})
+            captured["backend"] = backend
+            return backend
+
+        monkeypatch.setattr("autoscaler.src.rl_env.live_backend.LiveKubernetesBackend", fake_backend_factory)
+        return captured
+
+    def test_deletes_demo_app_hpa_v2_cpu_left_by_cpu_only_arm(self, monkeypatch):
+        captured = self._patch(monkeypatch, existing_hpa_names=["demo-app-hpa-v2-cpu"])
+        result = campaign_mod.restore_canonical_idle_state()
+        kubectl = captured["backend"]._kubectl
+        assert ["kubectl", "delete", "hpa", "demo-app-hpa-v2-cpu", "-n", "autoscaler-app", "--ignore-not-found"] in kubectl.run_calls
+        assert kubectl.list_hpa_names() == ["demo-app-hpa-v2"]
+        assert result["hpa_names"] == ["demo-app-hpa-v2"]
+        assert result["deleted_hpa_names"] == ["demo-app-hpa-v2-cpu"]
+
+    def test_deletes_both_stray_hpas_leaving_only_demo_app_hpa_v2(self, monkeypatch):
+        """Reproduces the exact live state found: both demo-app-hpa-v2 AND
+        demo-app-hpa-v2-cpu present simultaneously after a prior bug."""
+        captured = self._patch(monkeypatch, existing_hpa_names=["demo-app-hpa-v2", "demo-app-hpa-v2-cpu"])
+        result = campaign_mod.restore_canonical_idle_state()
+        kubectl = captured["backend"]._kubectl
+        assert kubectl.list_hpa_names() == ["demo-app-hpa-v2"]
+        assert result["deleted_hpa_names"] == ["demo-app-hpa-v2-cpu"]
+        # demo-app-hpa-v2 itself must never be deleted, only re-applied.
+        assert not any(call[:3] == ["kubectl", "delete", "hpa"] and call[3] == "demo-app-hpa-v2" for call in kubectl.run_calls)
+
+    def test_noop_when_only_demo_app_hpa_v2_present(self, monkeypatch):
+        captured = self._patch(monkeypatch, existing_hpa_names=["demo-app-hpa-v2"])
+        result = campaign_mod.restore_canonical_idle_state()
+        kubectl = captured["backend"]._kubectl
+        assert kubectl.run_calls == []  # no delete calls needed
+        assert result["deleted_hpa_names"] == []
+        assert kubectl.list_hpa_names() == ["demo-app-hpa-v2"]
+
+    def test_noop_delete_when_no_hpa_present(self, monkeypatch):
+        captured = self._patch(monkeypatch, existing_hpa_names=[])
+        result = campaign_mod.restore_canonical_idle_state()
+        kubectl = captured["backend"]._kubectl
+        assert kubectl.run_calls == []
+        assert result["deleted_hpa_names"] == []
+        assert kubectl.list_hpa_names() == ["demo-app-hpa-v2"]  # restore_hpa() applied it
+
+    def test_cpu_only_arm_followed_by_cpu_memory_arm_reaches_canonical_state(self, monkeypatch):
+        """End-to-end regression for the exact reported scenario: after a
+        cpu-only run, the NEXT run's preflight must see only
+        demo-app-hpa-v2 present, never both."""
+        captured = self._patch(monkeypatch, existing_hpa_names=["demo-app-hpa-v2-cpu"])
+        campaign_mod.restore_canonical_idle_state()
+        hpa_names = captured["backend"]._kubectl.list_hpa_names()
+        assert hpa_names == ["demo-app-hpa-v2"]
