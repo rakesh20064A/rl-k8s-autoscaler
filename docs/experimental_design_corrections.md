@@ -2443,3 +2443,93 @@ to `"CORR-63"` (`prior_correction_reference: "CORR-62"`).
 `persistent-data/evaluation_v2/eval_final/ledger.jsonl` (run_id
 `eval_cpu_step__repeat0__hpa_v2_cpu_only`).
 
+
+## CORR-64 — restore_canonical_idle_state() Left demo-app-hpa-v2-cpu Behind (Code Defect, Phase 5G)
+
+### Problem
+
+During the live `eval_final` evaluation campaign, run 3
+(`eval_cpu_step__repeat1__hpa_v2_cpu_memory`) failed on both its attempt
+(`TOOLING_FAILURE`) and its one permitted retry (`FAILED_AFTER_RETRY`),
+both at preflight, with the identical error:
+`preflight failed: {'ok': False, 'lock': 'none', 'hpa_names':
+['demo-app-hpa-v2', 'demo-app-hpa-v2-cpu']}`. Root cause:
+`scripts/evaluate_v2_campaign.py`'s campaign-level
+`restore_canonical_idle_state()` -- which runs after every single run
+regardless of which arm just executed, and is supposed to reach ONE
+canonical idle state (`demo-app-hpa-v2` applied, nothing else) -- only
+ever did `kubectl apply` of `demo-app-hpa-v2` (via
+`backend._kubectl.restore_hpa()`) and never deleted any OTHER HPA. The
+preceding run (`eval_cpu_step__repeat0__hpa_v2_cpu_only`, the
+`--rerun-after-fix` run from CORR-63) left `demo-app-hpa-v2-cpu` applied
+(that arm's own `finally` re-applies only its own manifest, by design,
+same pattern as the `hpa_v2_cpu_memory` arm). Because
+`restore_canonical_idle_state()` never deleted it, both
+`demo-app-hpa-v2` and `demo-app-hpa-v2-cpu` ended up present
+simultaneously, and `live_preflight_check()` requires the HPA list to be
+`[]` or exactly `[demo-app-hpa-v2]`. This is the same underlying bug
+class as CORR-63 (an arm's own cleanup only restores itself, never
+anticipating what the next arm needs), but surfacing this time at the
+campaign-level cleanup rather than in a per-arm wrapper.
+
+**Neither failed attempt produced any scientific sample** -- both ledger
+rows have no `"result"` key at all; `live_preflight_check()` raises
+before any traffic, profile resolution, or episode logic ever runs. Pure
+tooling/code-defect failure, zero scientific content.
+
+### Decision
+
+Fixed in `scripts/evaluate_v2_campaign.py`'s `restore_canonical_idle_state()`
+itself (not another per-arm wrapper, since this cleanup runs after EVERY
+arm and must reach the same canonical state regardless of which arm left
+what behind): before applying `demo-app-hpa-v2`, list every HPA present
+in `autoscaler-app` and delete any HPA other than `demo-app-hpa-v2`
+(`kubectl delete hpa <name> -n autoscaler-app --ignore-not-found`,
+idempotent), then apply `demo-app-hpa-v2` as before. 5 new regression
+tests were added (`TestRestoreCanonicalIdleStateDeletesExtraHpas`),
+including a scenario covering the `hpa_v2_cpu_only` -> `hpa_v2_cpu_memory`
+arm transition that reproduces this exact failure offline. The per-arm
+`ppo_episode`/`cpu_only_episode` wrapper fixes from Phase 5D/CORR-63 are
+left in place unchanged (defense in depth: a wrapper clears the one
+specific conflicting HPA it knows about before its own arm starts, and
+the campaign-level cleanup now also clears every non-canonical HPA after
+every run).
+
+The existing `--rerun-after-fix <RUN_ID> --corr-id <CORR-NN>` mechanism
+(added in CORR-63) is reused unchanged to re-attempt run 3
+(`eval_cpu_step__repeat1__hpa_v2_cpu_memory`) under this fix, tagged with
+`corr_id: "CORR-64"`.
+
+### Scope
+
+`scripts/evaluate_v2_campaign.py` only (`restore_canonical_idle_state()`).
+No arm wrapper, no profile, no metric, and none of the 5 governing files
+were touched.
+
+### Scientific Impact
+
+None. Runs 0-2 (`eval_cpu_step__repeat0__ppo_v2`,
+`eval_cpu_step__repeat0__hpa_v2_cpu_memory`,
+`eval_cpu_step__repeat0__hpa_v2_cpu_only`) are already `VALID` and are
+kept, unmodified. Run 3's two failed attempts are preserved as-is in the
+ledger (never deleted); the rerun appends a new attempt under the fixed
+code.
+
+### Preserved Invariants
+
+`run_hpa_v2_eval_episode()`'s shared implementation, both HPA arms' own
+`finally` cleanup, `live_preflight_check()`'s own validation rule, and
+`controller_exclusivity.py`'s conflict-detection rule are all
+unchanged -- the fix only ensures the campaign-level cleanup that runs
+after every arm actually reaches the canonical idle state it already
+claimed to guarantee.
+
+### Non-Retroactivity
+
+Prospective only -- applies to run 3 of `eval_final` going forward via
+its own explicit rerun. `active_correction_reference` is updated globally
+to `"CORR-64"` (`prior_correction_reference: "CORR-63"`).
+
+**Applies to phases**: 5G (this correction). See
+`persistent-data/evaluation_v2/eval_final/ledger.jsonl` (run_id
+`eval_cpu_step__repeat1__hpa_v2_cpu_memory`).
