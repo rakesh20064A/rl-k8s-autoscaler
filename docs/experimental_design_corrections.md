@@ -2357,3 +2357,89 @@ Prospective only -- applies to the evaluation campaign about to launch, never to
 
 **Applies to phases**: 5D (this correction). See `persistent-data/rl_training_v2/final_min2/FREEZE_MANIFEST_AMENDMENT_002.json`.
 
+## CORR-63 — hpa_v2_cpu_only Arm Blocked by Leftover demo-app-hpa-v2 (Code Defect, Phase 5F)
+
+### Problem
+
+During the live `eval_final` evaluation campaign, run 2
+(`eval_cpu_step__repeat0__hpa_v2_cpu_only`) failed on both its attempt
+(`TOOLING_FAILURE`) and its one permitted retry (`FAILED_AFTER_RETRY`),
+both with the identical error: `cannot start controller 'cpu_only_hpa_v2':
+conflicting HPA object(s) present in cluster: ['demo-app-hpa-v2']`. Root
+cause: `scripts/evaluate_v2_campaign.py`'s `cpu_only_episode` wrapper
+(inside `build_live_context()`) called straight into
+`run_hpa_v2_cpu_only_eval_episode()`, whose own
+`acquire_controller(CONTROLLER_CPU_ONLY_HPA_V2, ...)` call fails closed
+(by design -- `detect_conflicting_hpas()` treats ANY HPA other than the
+requesting controller's own as a conflict) if `demo-app-hpa-v2` is
+present -- which it always is immediately after the preceding
+`hpa_v2_cpu_memory` arm's own run, since that arm's cleanup
+(`restore_canonical_idle_state()`) deliberately leaves `demo-app-hpa-v2`
+applied as the canonical idle state. Nothing removed it before the
+`hpa_v2_cpu_only` arm started. This is the exact same class of bug
+already found and fixed for the `ppo_v2` arm earlier in Phase 5D (that
+arm's own wrapper now deletes `demo-app-hpa-v2` first) -- the
+`hpa_v2_cpu_only` wrapper had not received the equivalent fix.
+
+**Neither failed attempt produced any scientific sample** -- both ledger
+rows for this run carry only an `"error"` field and a `"cleanup"` record,
+no `"result"` key at all; `acquire_controller()` raises before any
+traffic, profile resolution, or episode logic ever runs. Pure
+tooling/code-defect failure, zero scientific content.
+
+### Decision
+
+Fixed in `scripts/evaluate_v2_campaign.py`'s `cpu_only_episode` wrapper
+only (mirroring the existing `ppo_episode` wrapper's own pattern): before
+calling `run_hpa_v2_cpu_only_eval_episode()`, read the live HPA list and,
+if any HPA other than `demo-app-hpa-v2-cpu` (the cpu_only arm's own) is
+present, delete it (`backend._kubectl.delete_hpa()`, idempotent,
+`--ignore-not-found`). No other arm's wrapper, no profile, no metric, and
+none of the 5 governing files were touched.
+
+Because `run_campaign()`'s own resume logic treats `FAILED_AFTER_RETRY`
+as terminal (it already burned its one permitted retry) and would never
+re-attempt it automatically even after the fix, a new, explicit
+`--rerun-after-fix <RUN_ID> --corr-id <CORR-NN>` CLI option (and
+`rerun_run_after_fix()` function) was added: it appends exactly one new
+attempt to the ledger (never overwriting or deleting the two prior failed
+rows), tags the new row(s) with the given `corr_id` so the authorizing
+correction is always traceable from the ledger alone, and mirrors the
+same retry-once-on-`TOOLING_FAILURE` rule for that one run before
+returning (it does not continue the rest of the campaign plan -- a
+separate, normal `--execute` invocation does that once this run is
+resolved).
+
+### Scope
+
+`scripts/evaluate_v2_campaign.py` only (the `cpu_only_episode` wrapper,
+plus the new `rerun_run_after_fix()`/`--rerun-after-fix` addition). The
+`ppo_v2` and `hpa_v2_cpu_memory` arms, every profile, every metric, and
+all 5 governing files are unchanged.
+
+### Scientific Impact
+
+None. Run 0 (`ppo_v2`) and run 1 (`hpa_v2_cpu_memory`) for this
+profile/repeat were already `VALID` and are kept, unmodified. Run 2's two
+failed attempts are preserved as-is in the ledger (never deleted); this
+rerun appends a third attempt under the fixed code.
+
+### Preserved Invariants
+
+The `ppo_v2`/`hpa_v2_cpu_memory` wrappers, `run_hpa_v2_eval_episode()`'s
+shared implementation (used by both HPA arms), and
+`controller_exclusivity.py`'s conflict-detection rule itself are all
+unchanged -- the fix only ensures the `hpa_v2_cpu_only` arm proactively
+clears the ONE specific conflicting HPA it knows about before relying on
+that (unchanged) rule.
+
+### Non-Retroactivity
+
+Prospective only -- applies to run 2 of `eval_final` going forward via
+its own explicit rerun. `active_correction_reference` is updated globally
+to `"CORR-63"` (`prior_correction_reference: "CORR-62"`).
+
+**Applies to phases**: 5F (this correction). See
+`persistent-data/evaluation_v2/eval_final/ledger.jsonl` (run_id
+`eval_cpu_step__repeat0__hpa_v2_cpu_only`).
+
