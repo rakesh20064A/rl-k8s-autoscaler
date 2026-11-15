@@ -219,19 +219,34 @@ Figures: `docs/figures/stress_explore_*.png/.pdf` (every title says
   resource mode), all 3 arms violate the 1000ms SLA roughly half the
   time (50.0%-52.6%) -- a qualitatively different regime from
   eval_final's near-0% violation rates on the same arms.
-- On `stress_cpu_burst`, PPO shows the lowest replica-minutes (84.00)
-  of the 3 arms while also showing the lowest mean p95 latency
-  (1567.65 ms) and the lowest SLA-violation rate (50.0%) -- i.e. on
-  this single exploratory run, PPO did not trade cost for latency the
-  way the light-load eval_final data alone would suggest an HPA arm
-  might; this is one run, not a repeated-measures finding, and is
-  reported descriptively only.
-- On `stress_memory_ramp` and `stress_mixed_burst` (profiles that ramp
-  to or burst to a less extreme peak, 45 RPS and 70 RPS respectively,
-  but with gentler per-interval load than the sustained CPU burst),
-  SLA-violation rates stay at or near 0 for most arms, similar in
-  character to eval_final -- the stress effect is clearest specifically
-  on the CPU-burst profile, not uniformly across all 3 stress profiles.
+- **`stress_cpu_burst`**: PPO has the lowest cost (84.00 replica-minutes
+  vs. 123.00 for HPA CPU+memory and 130.00 for HPA CPU-only) and the
+  lowest mean p95 latency (1567.65 ms vs. 1703.08-1820.30 ms). Its
+  SLA-violation rate @1000ms is *similar to*, not meaningfully lower
+  than, the two HPA arms (0.500 vs. 0.525/0.526) -- all 3 arms violate
+  the SLA roughly half the time here, so this is not a case of PPO
+  trading cost for a better SLA outcome; it does better on cost and
+  latency without a worse SLA-violation rate. Both HPA arms repeatedly
+  reach their 8-pod ceiling during this run, while PPO never exceeds 5
+  replicas -- consistent with PPO's lower replica-minutes figure. This
+  is one run, not a repeated-measures finding, and is reported
+  descriptively only.
+- **`stress_memory_ramp`**: no SLA@1000ms breaches for any arm (0.0000
+  across the board). PPO's cost is mid-range (56.00 replica-minutes),
+  between HPA CPU-only's 40.00 and HPA CPU+memory's 78.00 -- neither
+  the cheapest nor the most expensive arm on this profile.
+- **`stress_mixed_burst`**: PPO has the *highest* SLA-violation rate
+  @1000ms of the 3 arms (0.2000, vs. 0.0000 for HPA CPU+memory and
+  0.1000 for HPA CPU-only) at a mid-range cost (66.50 replica-minutes,
+  vs. 76.00 and 62.50 respectively) -- the opposite ordering from
+  `stress_cpu_burst`.
+- Taken together, there is **no single arm that is uniformly better
+  across all 3 stress profiles** -- PPO's advantage on `stress_cpu_burst`
+  (cost and latency, not SLA) does not generalize to `stress_mixed_burst`
+  (where it has the worst SLA-violation rate), and `stress_memory_ramp`
+  shows no SLA differentiation at all. This is consistent with the
+  pre-registration's own no-aggregate-winner principle, even though that
+  specific decision rule cannot be formally applied here (1 repeat).
 - Replica-minutes (cost) separate much more widely under stress than in
   eval_final: on `stress_cpu_burst`, HPA (CPU-only) costs 130.00
   replica-minutes vs. PPO's 84.00 -- a far larger relative gap than any
@@ -246,6 +261,14 @@ Figures: `docs/figures/stress_explore_*.png/.pdf` (every title says
 - 1 repeat per profile x arm: every number above is a single
   observation, not a mean over repeats -- it should be read as "what
   happened in this one run," not as a statistically powered comparison.
+- A recurring p95 latency value of exactly 975 ms (seen across several
+  `stress_memory_ramp`/`stress_mixed_burst` cells above) is a
+  **histogram-bucket artefact**, not a precisely-measured value -- the
+  underlying Prometheus latency histogram's bucket boundaries place the
+  true p95 somewhere in the 0.5-1.0 s range, and 975 ms is the bucket
+  interpolation's output at that boundary, not a distinct measured
+  latency. Treat any occurrence of exactly 975.00 ms as "p95 fell in the
+  0.5-1.0 s bucket," not as a precise figure.
 - These results do not revise, invalidate, or reclassify any eval_final
   run; eval_final's own 27 VALID runs and Section 3's verdicts stand
   exactly as reported above.
