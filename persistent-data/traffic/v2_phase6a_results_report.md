@@ -176,3 +176,79 @@ rerun rows).
   better-in-all-3-repeats rules exactly as pre-registered; no additional
   statistical test (e.g. significance testing beyond the pre-registered
   rule) was introduced.
+
+## 8. Exploratory Stress Test (CORR-65)
+
+**This section is descriptive only and is reported separately from the
+pre-registered results above. It is never merged with, and never treated
+as superseding, eval_final's pre-registered comparison.** The
+`stress_explore` campaign (9 runs, 1 repeat per profile x arm, CORR-65)
+pushes peak load up to the SAME peaks already exercised live during
+training (burst_mixed's 70 RPS burst peak, ramp_mixed's 60 RPS ramp
+peak), using 3 new profiles (`stress_cpu_burst`, `stress_memory_ramp`,
+`stress_mixed_burst`) firewalled away from both the training allowlist
+and the held-out `eval_final` profiles. With only 1 repeat per cell, the
+pre-registration's own "better in all 3 repeats" decision rule cannot be
+applied and is **not** applied here -- no verdict, no aggregate winner,
+no claim of statistical significance.
+
+### Per-profile x arm results (single run per cell, descriptive)
+
+| profile | arm | replica-minutes | SLA-violation @1000ms | SLA-violation @300ms (reference) | mean p95 latency (ms) |
+|---|---|---|---|---|---|
+| stress_cpu_burst | PPO | 84.00 | 0.5000 | 0.7750 | 1567.65 |
+| stress_cpu_burst | HPA (CPU+memory) | 123.00 | 0.5263 | 0.6053 | 1820.30 |
+| stress_cpu_burst | HPA (CPU-only) | 130.00 | 0.5250 | 0.6250 | 1703.08 |
+| stress_memory_ramp | PPO | 56.00 | 0.0000 | 0.9750 | 950.63 |
+| stress_memory_ramp | HPA (CPU+memory) | 78.00 | 0.0000 | 1.0000 | 975.00 |
+| stress_memory_ramp | HPA (CPU-only) | 40.00 | 0.0000 | 1.0000 | 975.00 |
+| stress_mixed_burst | PPO | 66.50 | 0.2000 | 0.9750 | 1091.72 |
+| stress_mixed_burst | HPA (CPU+memory) | 76.00 | 0.0000 | 1.0000 | 980.31 |
+| stress_mixed_burst | HPA (CPU-only) | 62.50 | 0.1000 | 1.0000 | 1041.42 |
+
+Full descriptive table (all metrics): `docs/tables/stress_explore_descriptive_metrics.{csv,md,tex}`.
+Figures: `docs/figures/stress_explore_*.png/.pdf` (every title says
+"Exploratory").
+
+### Qualitative observations
+
+- **The primary SLA metric, which sat at or near its floor (0.0) for
+  every arm in eval_final, becomes strongly nonzero and differentiates
+  arms at training-level peak load.** On `stress_cpu_burst` (the
+  profile closest to a sustained overload, 70 RPS bursts on CPU-only
+  resource mode), all 3 arms violate the 1000ms SLA roughly half the
+  time (50.0%-52.6%) -- a qualitatively different regime from
+  eval_final's near-0% violation rates on the same arms.
+- On `stress_cpu_burst`, PPO shows the lowest replica-minutes (84.00)
+  of the 3 arms while also showing the lowest mean p95 latency
+  (1567.65 ms) and the lowest SLA-violation rate (50.0%) -- i.e. on
+  this single exploratory run, PPO did not trade cost for latency the
+  way the light-load eval_final data alone would suggest an HPA arm
+  might; this is one run, not a repeated-measures finding, and is
+  reported descriptively only.
+- On `stress_memory_ramp` and `stress_mixed_burst` (profiles that ramp
+  to or burst to a less extreme peak, 45 RPS and 70 RPS respectively,
+  but with gentler per-interval load than the sustained CPU burst),
+  SLA-violation rates stay at or near 0 for most arms, similar in
+  character to eval_final -- the stress effect is clearest specifically
+  on the CPU-burst profile, not uniformly across all 3 stress profiles.
+- Replica-minutes (cost) separate much more widely under stress than in
+  eval_final: on `stress_cpu_burst`, HPA (CPU-only) costs 130.00
+  replica-minutes vs. PPO's 84.00 -- a far larger relative gap than any
+  eval_final profile showed.
+- No safety termination occurred in any of the 9 stress runs (consistent
+  with eval_final); the stress test increased latency/SLA pressure
+  without triggering the CORR-61 safety thresholds (per-pod memory,
+  pod restarts, zero-ready-replicas).
+
+### Scope and limitations of this section
+
+- 1 repeat per profile x arm: every number above is a single
+  observation, not a mean over repeats -- it should be read as "what
+  happened in this one run," not as a statistically powered comparison.
+- These results do not revise, invalidate, or reclassify any eval_final
+  run; eval_final's own 27 VALID runs and Section 3's verdicts stand
+  exactly as reported above.
+- See CORR-65 (`docs/experimental_design_corrections.md`) for the full
+  rationale, design, and non-retroactivity statement governing this
+  campaign.

@@ -1,0 +1,13 @@
+field,value
+n_sessions_analyzed,48
+total_timesteps,12288
+first_session_entropy_loss,-1.0984
+last_session_entropy_loss,-0.2792
+min_entropy_loss,-1.0984
+max_entropy_loss,-0.2048
+first_session_explained_variance,0.0125
+last_session_explained_variance,0.7993
+min_explained_variance,-1.2461
+max_explained_variance,0.7993
+n_failed_retried_attempts,2
+failed_attempt_session_indices,"4, 38"
