@@ -1,0 +1,71 @@
+{
+  "plan_id": "EXPLORATORY_STRESS_PLAN",
+  "corr_id": "CORR-65",
+  "phase": "V2 Phase 6B",
+  "created_utc": "2026-11-15T00:00:00Z",
+  "created_after_seeing_eval_final_results": true,
+  "status": "EXPLORATORY_POST_HOC -- never a member of the pre-registered eval_final comparison (EVALUATION_PREREGISTRATION.json / CORR-60) and never reported as if it were",
+  "why": {
+    "observation": "eval_final (CORR-60, 27 VALID runs, reported in persistent-data/traffic/v2_phase6a_results_report.md) used profiles whose own peak load (<=20 RPS) sits well inside each arm's comfortable operating range -- the pre-registered primary SLA metric (sla_violation_rate_at_1000ms) is at or near its floor (0.0) for every arm in every profile, so it cannot discriminate between arms at these loads.",
+    "motivation": "An exploratory, descriptive-only look at behavior near the SAME peaks the model and HPA manifests were already validated against DURING TRAINING (burst_mixed's own 70 RPS burst peak, ramp_mixed's own 60 RPS ramp peak) -- not a new, harder regime -- to see whether the SLA metric (or any secondary metric) starts to discriminate once load approaches training-level peaks.",
+    "decided_post_hoc": "This plan was written AFTER eval_final's results were already analyzed and reported (Phase 6A) -- it is explicitly NOT a pre-registration in the CORR-60 sense. No formal 'better' claim (the pre-registration's own all-3-repeats rule) is made or attempted from this plan's results; see 'reporting_rule' below."
+  },
+  "design": {
+    "profiles_dir": "configs/traffic_profiles/v2_stress/",
+    "profiles": [
+      {
+        "name": "stress_cpu_burst",
+        "resource_mode": "cpu",
+        "seed": 9201,
+        "shape": "repeated bursts, same baseline/burst/timing as the training burst_mixed.yaml profile, CPU-only resource mode",
+        "peak_rps": 70.0,
+        "intensity": 4
+      },
+      {
+        "name": "stress_memory_ramp",
+        "resource_mode": "memory",
+        "seed": 9202,
+        "shape": "ramp up to a ~45 RPS plateau, hold, ramp back down",
+        "peak_rps": 45.0,
+        "intensity": 3
+      },
+      {
+        "name": "stress_mixed_burst",
+        "resource_mode": "mixed",
+        "seed": 9203,
+        "shape": "repeated bursts, same baseline/burst/timing as the training burst_mixed.yaml profile, mixed CPU+memory resource mode",
+        "peak_rps": 70.0,
+        "intensity": 4
+      }
+    ],
+    "within_training_envelope": {
+      "rule": "Every stress profile's peak RPS, intensity, memory_mb, and memory_safe_max_in_flight must stay at or below the maximum already exercised by at least one of the 5 live V2 training profiles (constant_cpu, constant_memory, constant_mixed, ramp_mixed, burst_mixed) -- this is an exploratory look at the EDGE of the already-validated envelope, never a push beyond it.",
+      "ceiling_used": {"peak_rps": 70, "intensity": 4, "memory_mb": 16, "memory_safe_max_in_flight": 8},
+      "ceiling_source": "configs/traffic_profiles/v2/burst_mixed.yaml (peak_rps=70, intensity=4, memory_mb=16, memory_safe_max_in_flight=8) and configs/traffic_profiles/v2/ramp_mixed.yaml (peak_rps=60)"
+    },
+    "generator_features": "Existing generator phase types only (constant/ramp/burst, unified `phases:` schema already used by configs/traffic_profiles/v2_eval/). No new phase type, no new generator feature.",
+    "firewall": "Every v2_stress profile name is excluded from autoscaler.src.rl_env.training_contract_v2.V2_TRAINING_PROFILE_ALLOWLIST (so the live training schedule can never select it, by the same construction-level proof pattern as tests/unit/test_v2_eval_profiles.py::TestTrainingFirewall) and is a distinct name from every configs/traffic_profiles/v2_eval/ and configs/traffic_profiles/v2_demo/ profile (no collision, no reuse)."
+  },
+  "runner": {
+    "mechanism": "scripts/evaluate_v2_campaign.py --plan stress (new, additive CLI option)",
+    "campaign_id": "stress_explore",
+    "arms": ["ppo_v2", "hpa_v2_cpu_memory", "hpa_v2_cpu_only"],
+    "model_and_epsilon": "Same final model (session_047) and same official calibrated epsilon (EPSILON_CALIBRATION.json) as eval_final -- no re-tuning.",
+    "safety_rules": "Identical to eval_final (CORR-61): same thresholds, applied identically to every arm.",
+    "repeats_per_profile_per_arm": 1,
+    "n_runs": 9,
+    "order": "Same rotated Latin-square order rule as eval_final, applied over 3 profiles x 3 arms x 1 repeat.",
+    "cleanup_retry_rerun": "Reuses run_campaign()'s existing preflight/cleanup/retry-once-on-TOOLING_FAILURE logic and the existing --rerun-after-fix/--corr-id escape hatch unchanged -- no new cleanup or retry mechanism introduced."
+  },
+  "reporting_rule": {
+    "descriptive_only": "With n_repeats=1 per profile-arm cell, the pre-registration's own 'better in all 3 repeats' decision rule (EVALUATION_PREREGISTRATION.json decision_rule.claiming_better) cannot be applied and MUST NOT be applied -- there is no 'all 3 repeats' to check. scripts/analyze_v2_evaluation.py's evaluation analysis path must detect n_repeats=1 and emit descriptive tables (raw per-run values, no mean+-sd framed as if from multiple repeats, no verdict/claiming_better output) rather than silently degrading the existing multi-repeat comparison into a single-repeat 'verdict'.",
+    "labelling": "Every output artifact, table, and report section produced under campaign_id=stress_explore must be labelled EXPLORATORY in its own content (filenames, headers, or both) so it can never be mistaken for, or silently merged into, the pre-registered eval_final results.",
+    "never_replaces": "This exploratory campaign never supersedes, amends, or is merged into eval_final's own 27 VALID runs or their CORR-60-governed verdicts (Phase 6A report). It is reported in a separate document."
+  },
+  "scope": {
+    "statement": "Evaluation-exploration-only. No training file, no FREEZE_MANIFEST.json file (or its two amendments), no governing-hash-tracked module, and none of eval_final's own 27 ledger rows are touched, read-write, or re-interpreted by this plan."
+  },
+  "non_retroactivity": "Prospective only -- governs stress_explore runs executed after this plan and CORR-65 are committed. Does not retroactively reclassify or reinterpret any eval_final run.",
+  "active_correction_reference": "CORR-65",
+  "prior_correction_reference": "CORR-64"
+}

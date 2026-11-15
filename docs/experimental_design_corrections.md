@@ -2533,3 +2533,78 @@ to `"CORR-64"` (`prior_correction_reference: "CORR-63"`).
 **Applies to phases**: 5G (this correction). See
 `persistent-data/evaluation_v2/eval_final/ledger.jsonl` (run_id
 `eval_cpu_step__repeat1__hpa_v2_cpu_memory`).
+
+## CORR-65 — Exploratory Post-Hoc Stress Test at Training-Level Peaks (Phase 6B)
+
+### Problem
+
+`eval_final` (CORR-60, reported in
+`persistent-data/traffic/v2_phase6a_results_report.md`) used held-out
+evaluation profiles whose peak load (<=20 RPS) sits well inside the
+comfortable operating range of all 3 arms -- the pre-registered primary
+SLA metric (`sla_violation_rate_at_1000ms`) is at or near 0.0 for every
+arm in every profile, so it cannot discriminate between arms at these
+loads. This was observed only AFTER `eval_final`'s results were already
+analyzed and reported.
+
+### Decision
+
+Add an EXPLORATORY, POST-HOC stress test, decided and designed strictly
+after seeing `eval_final`'s results, under a new
+`persistent-data/rl_training_v2/final_min2/EXPLORATORY_STRESS_PLAN.json`
+(a new, additive file; no existing governing file is touched). Three new
+profiles under `configs/traffic_profiles/v2_stress/` (`stress_cpu_burst`,
+`stress_memory_ramp`, `stress_mixed_burst`) push peak load up to the SAME
+peaks already exercised live during training (burst_mixed's 70 RPS burst
+peak, ramp_mixed's 60 RPS ramp peak) -- never beyond the already-validated
+training envelope, and using only existing traffic-generator phase types.
+Run via a new, additive `--plan stress` option on
+`scripts/evaluate_v2_campaign.py` (campaign id `stress_explore`), same 3
+arms, same final model + calibrated epsilon, same CORR-61 safety rules,
+same cleanup/retry/rerun-after-fix machinery -- but only **1 repeat** per
+profile x arm (9 runs total, not 27).
+
+Because there is only 1 repeat, the pre-registration's own
+"better-in-all-3-repeats" decision rule cannot be applied and must not be
+applied here -- `scripts/analyze_v2_evaluation.py`'s evaluation path now
+detects `n_repeats == 1` and emits descriptive-only tables (raw per-run
+values, no verdict/claiming_better output) instead of silently degrading
+the multi-repeat comparison logic into a single-repeat "verdict". Every
+output artifact under `campaign_id=stress_explore` is labelled
+EXPLORATORY in its own content so it can never be mistaken for, or
+silently merged into, `eval_final`'s pre-registered results.
+
+### Scope
+
+New files only: `EXPLORATORY_STRESS_PLAN.json`, the 3
+`configs/traffic_profiles/v2_stress/*.yaml` profiles, the `--plan stress`
+addition to `scripts/evaluate_v2_campaign.py`, and the n_repeats==1
+descriptive-table path in `scripts/analyze_v2_evaluation.py`. No training
+file, no `FREEZE_MANIFEST.json` file (or its two amendments), no
+governing-hash-tracked module, and none of `eval_final`'s own 27 ledger
+rows are touched, read-write, or re-interpreted.
+
+### Scientific Impact
+
+None to `eval_final`. This plan creates a SEPARATE, descriptive-only
+exploratory campaign; it never supersedes, amends, or is merged into
+`eval_final`'s 27 VALID runs or their CORR-60-governed verdicts.
+
+### Preserved Invariants
+
+`EVALUATION_PREREGISTRATION.json`'s own arms, profiles, metrics, epsilon
+rule, and decision rule are all unchanged and continue to govern
+`eval_final` alone. The training contract (all 5 governing files) is
+completely untouched. The 3 new stress profiles are excluded from
+`autoscaler.src.rl_env.training_contract_v2.V2_TRAINING_PROFILE_ALLOWLIST`
+by construction, so the live training schedule can never select them.
+
+### Non-Retroactivity
+
+Prospective only -- governs `stress_explore` runs executed after this
+plan is committed. Does not retroactively reclassify or reinterpret any
+`eval_final` run. `active_correction_reference` is updated globally to
+`"CORR-65"` (`prior_correction_reference: "CORR-64"`).
+
+**Applies to phases**: 6B (this correction). See
+`persistent-data/rl_training_v2/final_min2/EXPLORATORY_STRESS_PLAN.json`.
