@@ -1,0 +1,20 @@
+digraph rl_control_loop {
+  rankdir=LR;
+  fontname="Helvetica";
+  node [fontname="Helvetica", fontsize=11, shape=box, style="rounded,filled", fillcolor="#f5f5f5", color="#555555"];
+  edge [fontname="Helvetica", fontsize=9, color="#555555"];
+  graph [ranksep=0.7, nodesep=0.35];
+
+  obs [label="11-feature\nobservation state\n(cpu/mem per replica,\nrequest rate, p95 latency,\nerror rate, ready replicas,\ntime since last scale, deltas)", fillcolor="#e3eef7"];
+  policy [label="PPO policy\n(action probabilities)", fillcolor="#fde8db", color="#D55E00"];
+  action [label="Requested action\n(SCALE_DOWN / HOLD / SCALE_UP)", fillcolor="#fde8db", color="#D55E00"];
+  safety [label="Safety gating\n(tie rules R1, R3-R6;\nDOWN never wins a tie)", fillcolor="#fde8db", color="#D55E00"];
+  k8s [label="Kubernetes API\n(scale deployment)", fillcolor="#e3eef7", color="#0072B2"];
+  metrics [label="Metrics\n(Prometheus + Metrics Server)", fillcolor="#e3eef7", color="#0072B2"];
+  reward [label="7-component reward\n(reliability, sla, pressure,\nwaste, action, boundary,\nreversal)", fillcolor="#f0e9f7", color="#6a3d9a"];
+  update [label="PPO update\n(policy/value network)", fillcolor="#fde8db", color="#D55E00"];
+
+  obs -> policy -> action -> safety -> k8s -> metrics -> reward -> update;
+  update -> policy [label="updated weights\n(training only)", style=dashed];
+  metrics -> obs [label="next decision\n(30s interval)", style=dashed];
+}

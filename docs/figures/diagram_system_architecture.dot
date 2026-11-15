@@ -1,0 +1,48 @@
+digraph system_architecture {
+  rankdir=LR;
+  fontname="Helvetica";
+  node [fontname="Helvetica", fontsize=11, shape=box, style="rounded,filled", fillcolor="#f5f5f5", color="#555555"];
+  edge [fontname="Helvetica", fontsize=9, color="#555555"];
+  graph [ranksep=0.6, nodesep=0.35];
+
+  subgraph cluster_host {
+    label="Host (outside the cluster)";
+    style=rounded; color="#888888"; fontsize=12;
+    loadgen [label="Load generator\n(loadgen/traffic_generator.py)", fillcolor="#e8e8e8"];
+    relay [label="Relay / route\n(traffic_orchestrator.py)", fillcolor="#e8e8e8"];
+
+    subgraph cluster_ppo {
+      label="PPO agent";
+      style=rounded; color="#D55E00"; fontsize=11;
+      obs_builder [label="Observation builder\n(observation.py)", fillcolor="#fde8db"];
+      policy [label="PPO policy\n(ppo_model.zip)", fillcolor="#fde8db"];
+      safety [label="Safety layer\n(action_selection.py,\ntie rules R1/R3-R6)", fillcolor="#fde8db"];
+      executor [label="Executor\n(live_backend.py)", fillcolor="#fde8db"];
+      obs_builder -> policy -> safety -> executor;
+    }
+    lock [label="Controller lock\n(active_controller.json)", shape=note, fillcolor="#fff6d8", color="#b38f00"];
+  }
+
+  subgraph cluster_k8s {
+    label="Minikube cluster";
+    style=rounded; color="#0072B2"; fontsize=12;
+    demoapp [label="demo-app\n(Deployment, 2-8 pods)", fillcolor="#e3eef7"];
+    hpa [label="HPA\n(demo-app-hpa-v2 /\ndemo-app-hpa-v2-cpu)", fillcolor="#e3eef7", color="#0072B2"];
+    metrics [label="Metrics Server\n(--metric-resolution=15s)", fillcolor="#e3eef7"];
+    prometheus [label="Prometheus", fillcolor="#e3eef7"];
+  }
+
+  loadgen -> relay [label="HTTP traffic"];
+  relay -> demoapp [label="requests"];
+  demoapp -> prometheus [label="scrape"];
+  demoapp -> metrics [label="cAdvisor/\nkubelet stats"];
+  prometheus -> obs_builder [label="p95 latency,\nerror rate"];
+  metrics -> obs_builder [label="cpu/mem\nper replica"];
+  demoapp -> obs_builder [label="replica\ncounts"];
+  executor -> demoapp [label="scale\n(executor arm only)"];
+  metrics -> hpa [label="cpu/mem\n(HPA arms only)"];
+  hpa -> demoapp [label="scale\n(HPA arms only)"];
+
+  lock -> executor [label="gates", style=dashed, color="#b38f00"];
+  lock -> hpa [label="gates\n(mutually exclusive)", style=dashed, color="#b38f00"];
+}

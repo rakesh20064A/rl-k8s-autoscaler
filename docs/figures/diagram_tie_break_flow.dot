@@ -1,0 +1,44 @@
+digraph tie_break_flow {
+  rankdir=LR;
+  fontname="Helvetica";
+  node [fontname="Helvetica", fontsize=10, shape=box, style="rounded,filled", fillcolor="#f5f5f5", color="#555555"];
+  edge [fontname="Helvetica", fontsize=9, color="#555555"];
+  graph [ranksep=0.6, nodesep=0.3];
+
+  start [label="Action probabilities\n(DOWN, HOLD, UP)", fillcolor="#e3eef7"];
+  tieset [label="Tie set =\nactions within epsilon\nof the max probability", shape=diamond, fillcolor="#fff6d8", color="#b38f00"];
+
+  r1 [label="R1: exactly 1 action\nin tie set", shape=diamond, fillcolor="#fff6d8", color="#b38f00"];
+  r1_out [label="Choose that action", fillcolor="#fde8db", color="#D55E00"];
+
+  down_check [label="DOWN in tie set?", shape=diamond, fillcolor="#fff6d8", color="#b38f00"];
+  r4 [label="R4: tie set includes\nDOWN and UP\n({DOWN,UP} or {DOWN,HOLD,UP})", shape=diamond, fillcolor="#fff6d8", color="#b38f00"];
+  r4_out [label="Choose HOLD\n(DOWN never wins a tie)", fillcolor="#fde8db", color="#D55E00"];
+  r5 [label="R5: tie set =\n{DOWN, HOLD}", fillcolor="#fde8db", color="#D55E00"];
+  r5_out [label="Choose HOLD\n(DOWN never wins a tie)", fillcolor="#fde8db", color="#D55E00"];
+
+  hold_up [label="Only {HOLD, UP}\nremains", fillcolor="#f5f5f5"];
+  stress_known [label="stressed determined?", shape=diamond, fillcolor="#fff6d8", color="#b38f00"];
+  r6 [label="R6: stressed = None\n(could not be determined)", fillcolor="#fde8db", color="#D55E00"];
+  r6_out [label="Choose HOLD\n(fail-safe default)"];
+  r3 [label="R3: stressed known", fillcolor="#fde8db", color="#D55E00"];
+  r3_stressed [label="stressed = True", shape=diamond, fillcolor="#fff6d8", color="#b38f00"];
+  r3_up [label="Choose UP"];
+  r3_hold [label="Choose HOLD"];
+
+  start -> tieset -> r1;
+  r1 -> r1_out [label="yes"];
+  r1 -> down_check [label="no (tie, >=2 actions)"];
+  down_check -> r4 [label="yes, and UP present"];
+  r4 -> r4_out;
+  down_check -> r5 [label="yes, UP absent\n(tie = {DOWN,HOLD})"];
+  r5 -> r5_out;
+  down_check -> hold_up [label="no"];
+  hold_up -> stress_known;
+  stress_known -> r6 [label="no"];
+  r6 -> r6_out;
+  stress_known -> r3 [label="yes"];
+  r3 -> r3_stressed;
+  r3_stressed -> r3_up [label="yes"];
+  r3_stressed -> r3_hold [label="no"];
+}
