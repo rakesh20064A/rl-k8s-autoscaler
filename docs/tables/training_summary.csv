@@ -1,6 +1,5 @@
 field,value
 n_sessions_analyzed,48
-total_timesteps,12288
 first_session_entropy_loss,-1.0984
 last_session_entropy_loss,-0.2792
 min_entropy_loss,-1.0984

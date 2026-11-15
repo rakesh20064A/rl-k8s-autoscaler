@@ -12,4 +12,4 @@
 | max_grad_norm | 0.5 |
 | policy | MlpPolicy |
 | net_arch | [128, 128] |
-| training_budget | 48 sessions x 256 steps/session = 12288 total timesteps (final_min2 campaign, not configs/rl_v2.yaml's own generic training.total_timesteps default) |
+| training_budget | 48 sessions x 256 steps/session = 12288 total timesteps (final_min2 campaign) |
