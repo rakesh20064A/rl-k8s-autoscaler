@@ -1,0 +1,13 @@
+\begin{tabular}{llll}
+\hline
+component & weight & meaning & threshold\_params \\
+\hline
+w\_reliability & 6.0 & Penalizes the live 5xx error rate (clipped to [0,1]). & n/a (reliability term has no separate threshold) \\
+w\_sla & 4.0 & Penalizes squared excess p95 latency above the SLA target (clipped to [0,1]). & p95\_target\_ms=1000 \\
+w\_pressure & 2.0 & Penalizes the worse of CPU/memory 'unsafe pressure' (distance toward the pod's hard resource limit). & cpu\_safe\_high=3.0, cpu\_hard\_limit=5.0, memory\_safe\_high=1.2, memory\_hard\_limit=4.0 \\
+w\_waste & 0.3 & Penalizes over-provisioning (replicas > floor, low CPU+memory, SLA/error already healthy). & cpu\_waste\_threshold=1.0, memory\_waste\_threshold=1.0 \\
+w\_action & 0.1 & Penalizes taking any non-HOLD action (discourages unnecessary churn). & per\_action\_cost=1.0 \\
+w\_reversal & 0.5 & Penalizes reversing a scaling direction within the reversal window (discourages oscillation). & reversal\_window\_seconds=120, per\_reversal\_cost=1.0 \\
+w\_boundary & 0.2 & Penalizes an action clamped at the replica floor/ceiling (discourages pushing against the bound). & per\_boundary\_violation\_cost=1.0 \\
+\hline
+\end{tabular}

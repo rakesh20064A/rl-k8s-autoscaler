@@ -1,0 +1,12 @@
+index,name,meaning,raw_range,normalized_range,temporal
+0,cpu_per_replica,"(cpu_cores / ready_replicas) / 0.100, i.e. fraction of the 100m CPU request per Ready replica -- a NOMINALLY COMPARABLE proxy to HPA's averageUtilization/100, not literally identical to it (docs/rl_mdp_spec.md sec.4, CORR-27).","[0.0, 5.0]","[0.0, 1.0]",current
+1,cpu_per_replica_delta,"current step's cpu_per_replica minus its 90s EWMA (momentum/trend, not a raw one-step difference).","[-5.0, 5.0]","[-1.0, 1.0]",trend
+2,memory_per_replica,"(memory_bytes / ready_replicas) / 67108864, i.e. fraction of the 64MiB memory request per Ready replica.","[0.0, 4.0]","[0.0, 1.0]",current
+3,in_progress_per_replica,"requests_in_progress / ready_replicas -- secondary queueing-pressure signal, redundant with CPU on this CPU-bound app but retained per Phase 15A evaluation for robustness.","[0.0, 20.0]","[0.0, 1.0]",current
+4,request_rate_norm,"sum(rate(demo_app_requests_total{route=""/work""}[1m])), normalized against a 100 RPS design ceiling, justified ONLY from non-held-out development profile peaks (burst=70, ramp=60, step=50 RPS). Never justified from any held-out evaluation workload's parameters (CORR-27; see docs/rl_mdp_spec.md sec.22).","[0.0, 100.0]","[0.0, 1.0]",current
+5,request_rate_delta,current step's request_rate_rps minus its 90s EWMA.,"[-100.0, 100.0]","[-1.0, 1.0]",trend
+6,p95_latency_norm,"latency_p95_seconds (ms), normalized against a 2000ms ceiling (~6.67x the 300ms SLA target). If request_rate_rps==0 with no histogram observations, this is semantically 0ms (""no_traffic"", CORR-27) -- not a telemetry failure; see docs/rl_mdp_spec.md sec.6.","[0.0, 2000.0]","[0.0, 1.0]",current
+7,p95_latency_delta,current step's p95 latency (ms) minus its 90s EWMA.,"[-2000.0, 2000.0]","[-1.0, 1.0]",trend
+8,error_rate,"error_rate_rps (5xx only, live-observable) / request_rate_rps; 0.0 if request_rate_rps==0; null (missing) if request_rate_rps is null.","[0.0, 1.0]","[0.0, 1.0]",current
+9,ready_replica_norm,"(replicas_ready - 2) / (8 - 2) -- authoritative physical capacity, never hpa_status_current_replicas (CORR-25). V2 Phase 4D-B / CORR-55 -- raw_min changed from 1.0 to 2.0, the V2 replica floor is now 2, never 1.","[2.0, 8.0]","[0.0, 1.0]",current
+10,seconds_since_last_scale_norm,"controller-tracked seconds since the last EFFECTIVE (non-HOLD) action, capped per experiment.yaml rl.time_since_scale_cap_seconds.","[0.0, 300.0]","[0.0, 1.0]",current

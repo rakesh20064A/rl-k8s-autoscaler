@@ -1,0 +1,7 @@
+campaign,profile,resource_mode,peak_rps,repeats
+"eval_final (pre-registered, CORR-60)",eval_cpu_step,cpu,18.0,3
+"eval_final (pre-registered, CORR-60)",eval_memory_ramp,memory,18.0,3
+"eval_final (pre-registered, CORR-60)",eval_mixed_burst,mixed,20.0,3
+"stress_explore (exploratory, CORR-65)",stress_cpu_burst,cpu,70.0,1
+"stress_explore (exploratory, CORR-65)",stress_memory_ramp,memory,45.0,1
+"stress_explore (exploratory, CORR-65)",stress_mixed_burst,mixed,70.0,1

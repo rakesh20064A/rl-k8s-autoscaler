@@ -23,6 +23,7 @@ import numpy as np  # noqa: E402
 
 import scripts.analyze_v2_evaluation as av  # noqa: E402
 import scripts.paper_style as ps  # noqa: E402
+from loadgen.traffic_generator import parse_traffic_profile  # noqa: E402
 
 FIGURES_DIR = PROJECT_ROOT / "docs" / "figures"
 EVAL_FINAL_DIR = PROJECT_ROOT / "persistent-data" / "evaluation_v2" / "eval_final"
@@ -30,7 +31,50 @@ STRESS_DIR = PROJECT_ROOT / "persistent-data" / "evaluation_v2" / "stress_explor
 SESSIONS_DIR = PROJECT_ROOT / "persistent-data" / "rl_training_v2" / "final_min2" / "sessions"
 UPDATE_METRICS_PATH = PROJECT_ROOT / "persistent-data" / "rl_training_v2" / "final_min2" / "ppo_update_metrics.jsonl"
 
+EVAL_PROFILE_DIR = PROJECT_ROOT / "configs" / "traffic_profiles" / "v2_eval"
+STRESS_PROFILE_DIR = PROJECT_ROOT / "configs" / "traffic_profiles" / "v2_stress"
+EVAL_PROFILE_NAMES = ("eval_cpu_step", "eval_memory_ramp", "eval_mixed_burst")
+STRESS_PROFILE_NAMES = ("stress_cpu_burst", "stress_memory_ramp", "stress_mixed_burst")
+
 SLA_MS = 1000.0
+
+
+def plot_p0_workload_shapes() -> None:
+    """V2 Phase 6D item 7 (paper additions): request rate (RPS) vs. time
+    for the 3 pre-registered eval profiles (top) and the 3 exploratory
+    stress profiles (bottom), sampled directly from each profile's own
+    YAML definition (not live traffic logs) -- correct for a "workload
+    shapes" figure, since it shows what was INTENDED, independent of any
+    run's realized traffic."""
+    fig, (ax_eval, ax_stress) = ps.new_figure(width_in=ps.DOUBLE_COL_WIDTH_IN, height_in=4.2, nrows=2, sharex=True)
+
+    # stress_cpu_burst and stress_mixed_burst share the IDENTICAL burst
+    # timing/amplitude (both built from the training burst_mixed envelope)
+    # -- without a linestyle difference their lines exactly overlap and
+    # one becomes invisible; distinct linestyles keep both visible.
+    linestyles = ("-", "--", ":")
+
+    for ax, profile_dir, names, label_prefix in (
+        (ax_eval, EVAL_PROFILE_DIR, EVAL_PROFILE_NAMES, "eval"),
+        (ax_stress, STRESS_PROFILE_DIR, STRESS_PROFILE_NAMES, "stress"),
+    ):
+        for i, name in enumerate(names):
+            profile = parse_traffic_profile(profile_dir / f"{name}.yaml")
+            total = sum(ph.duration_seconds for ph in profile.phases)
+            t = np.arange(0.0, total, 1.0)
+            rps = np.array([profile.get_phase_and_target_rps(float(ti))[0] for ti in t])
+            ax.plot(
+                t, rps, linewidth=1.2, linestyle=linestyles[i % len(linestyles)],
+                label=f"{name} ({profile.resource_mode})", color=plt.get_cmap("tab10")(i),
+            )
+        ax.set_ylabel("Request rate (RPS)")
+        ps.style_axes(ax)
+        ax.legend(frameon=False, loc="upper right", fontsize=6.5, ncol=1)
+
+    ax_stress.set_xlabel("Time (s)")
+    fig.text(0.02, 0.98, "Pre-registered evaluation", fontsize=7, ha="left", va="top", transform=ax_eval.transAxes)
+    fig.text(0.02, 0.98, "Exploratory stress (CORR-65)", fontsize=7, ha="left", va="top", transform=ax_stress.transAxes)
+    ps.save_figure(fig, FIGURES_DIR / "P0_workload_shapes")
 
 
 def _failed_retried_session_indices() -> list[int]:
@@ -386,6 +430,7 @@ def plot_p8_ppo_policy_map() -> None:
 def main() -> None:
     ps.apply_style()
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    plot_p0_workload_shapes()
     plot_p1_training_diagnostics()
     plot_p2_action_mix_and_replicas()
     plot_p3_eval_primary_metrics()

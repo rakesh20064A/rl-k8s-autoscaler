@@ -1,0 +1,17 @@
+\begin{tabular}{llllll}
+\hline
+index & name & meaning & raw\_range & normalized\_range & temporal \\
+\hline
+0 & cpu\_per\_replica & (cpu\_cores / ready\_replicas) / 0.100, i.e. fraction of the 100m CPU request per Ready replica -- a NOMINALLY COMPARABLE proxy to HPA's averageUtilization/100, not literally identical to it (docs/rl\_mdp\_spec.md sec.4, CORR-27). & [0.0, 5.0] & [0.0, 1.0] & current \\
+1 & cpu\_per\_replica\_delta & current step's cpu\_per\_replica minus its 90s EWMA (momentum/trend, not a raw one-step difference). & [-5.0, 5.0] & [-1.0, 1.0] & trend \\
+2 & memory\_per\_replica & (memory\_bytes / ready\_replicas) / 67108864, i.e. fraction of the 64MiB memory request per Ready replica. & [0.0, 4.0] & [0.0, 1.0] & current \\
+3 & in\_progress\_per\_replica & requests\_in\_progress / ready\_replicas -- secondary queueing-pressure signal, redundant with CPU on this CPU-bound app but retained per Phase 15A evaluation for robustness. & [0.0, 20.0] & [0.0, 1.0] & current \\
+4 & request\_rate\_norm & sum(rate(demo\_app\_requests\_total{route="/work"}[1m])), normalized against a 100 RPS design ceiling, justified ONLY from non-held-out development profile peaks (burst=70, ramp=60, step=50 RPS). Never justified from any held-out evaluation workload's parameters (CORR-27; see docs/rl\_mdp\_spec.md sec.22). & [0.0, 100.0] & [0.0, 1.0] & current \\
+5 & request\_rate\_delta & current step's request\_rate\_rps minus its 90s EWMA. & [-100.0, 100.0] & [-1.0, 1.0] & trend \\
+6 & p95\_latency\_norm & latency\_p95\_seconds (ms), normalized against a 2000ms ceiling (~6.67x the 300ms SLA target). If request\_rate\_rps==0 with no histogram observations, this is semantically 0ms ("no\_traffic", CORR-27) -- not a telemetry failure; see docs/rl\_mdp\_spec.md sec.6. & [0.0, 2000.0] & [0.0, 1.0] & current \\
+7 & p95\_latency\_delta & current step's p95 latency (ms) minus its 90s EWMA. & [-2000.0, 2000.0] & [-1.0, 1.0] & trend \\
+8 & error\_rate & error\_rate\_rps (5xx only, live-observable) / request\_rate\_rps; 0.0 if request\_rate\_rps==0; null (missing) if request\_rate\_rps is null. & [0.0, 1.0] & [0.0, 1.0] & current \\
+9 & ready\_replica\_norm & (replicas\_ready - 2) / (8 - 2) -- authoritative physical capacity, never hpa\_status\_current\_replicas (CORR-25). V2 Phase 4D-B / CORR-55 -- raw\_min changed from 1.0 to 2.0, the V2 replica floor is now 2, never 1. & [2.0, 8.0] & [0.0, 1.0] & current \\
+10 & seconds\_since\_last\_scale\_norm & controller-tracked seconds since the last EFFECTIVE (non-HOLD) action, capped per experiment.yaml rl.time\_since\_scale\_cap\_seconds. & [0.0, 300.0] & [0.0, 1.0] & current \\
+\hline
+\end{tabular}

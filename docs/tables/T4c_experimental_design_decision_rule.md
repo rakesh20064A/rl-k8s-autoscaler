@@ -1,0 +1,6 @@
+| rule | statement |
+|---|---|
+| reporting | Per profile, per arm: report mean +/- standard deviation over the 3 repeats for every metric. |
+| claiming_better | An arm may be claimed 'better' than another on a given metric for a given profile ONLY if it is better in ALL 3 of the 3 repeats (not merely on average) -- a single repeat going the other way blocks the claim for that metric/profile pair. |
+| no_aggregate_winner | No single aggregate 'winner' is declared across metrics that disagree (e.g. one arm has a lower SLA-violation rate but higher replica-minutes) -- such cases are reported explicitly as a trade-off, not resolved into a single ranking. |
+| applies_to | eval_final only (3 repeats/cell). Does NOT apply to stress_explore (1 repeat/cell, descriptive only, CORR-65). |

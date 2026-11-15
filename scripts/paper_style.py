@@ -32,7 +32,9 @@ DOUBLE_COL_WIDTH_IN = 7.16
 # -- fixed per-arm identity: color (Okabe-Ito), marker, hatch --
 ARM_IDS: Tuple[str, ...] = ("ppo_v2", "hpa_v2_cpu_memory", "hpa_v2_cpu_only")
 ARM_LABELS: Dict[str, str] = {
-    "ppo_v2": "PPO", "hpa_v2_cpu_memory": "HPA (CPU+memory)", "hpa_v2_cpu_only": "HPA (CPU-only)",
+    "ppo_v2": "PPO (multi-metric, 11 signals)",
+    "hpa_v2_cpu_memory": "HPA CPU+Memory (resource baseline)",
+    "hpa_v2_cpu_only": "HPA CPU-only (Kubernetes default)",
 }
 ARM_COLORS: Dict[str, str] = {
     "ppo_v2": "#D55E00", "hpa_v2_cpu_memory": "#0072B2", "hpa_v2_cpu_only": "#009E73",
