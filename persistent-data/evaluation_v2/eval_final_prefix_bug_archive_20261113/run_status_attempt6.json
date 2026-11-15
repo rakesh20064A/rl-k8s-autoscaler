@@ -1,0 +1,13 @@
+{
+  "status": "FAILED",
+  "updated_utc": "2026-11-13T15:43:13.139904+00:00",
+  "current_run": {
+    "run_index": 0,
+    "run_id": "eval_cpu_step__repeat0__ppo_v2",
+    "block_index": 0,
+    "position_in_block": 0,
+    "profile": "eval_cpu_step",
+    "repeat_index": 0,
+    "arm_id": "ppo_v2"
+  }
+}

@@ -1,0 +1,2027 @@
+{
+  "attempt_id": "2f7e0e0f-d626-4fb3-bd17-8f2c4c3e70a2",
+  "run_id": "eval_cpu_step__repeat0__hpa_v2_cpu_memory",
+  "run_index": 1,
+  "profile": "eval_cpu_step",
+  "repeat_index": 0,
+  "arm_id": "hpa_v2_cpu_memory",
+  "attempt_number": 1,
+  "episode_id": "eval_cpu_step__repeat0__hpa_v2_cpu_memory__attempt1",
+  "started_utc": "2026-11-13T16:13:24.735023+00:00",
+  "status": "VALID",
+  "result": {
+    "episode_id": "eval_cpu_step__repeat0__hpa_v2_cpu_memory__attempt1",
+    "arm_id": "hpa_v2_cpu_memory",
+    "profile": "eval_cpu_step",
+    "samples": [
+      {
+        "decision_index": 0,
+        "t_s": 0.0,
+        "timestamp_utc": "2026-11-13T16:14:30.628741+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.2969145859418776,
+          0.0,
+          0.1528167724609375,
+          0.0,
+          0.05359785608575658,
+          0.0,
+          0.11579207920792081,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.484572929709388,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.61126708984375,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 5.359785608575658,
+          "request_rate_delta": null,
+          "p95_latency_norm": 231.5841584158416,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 231.5841584158416,
+        "error_rate": 0.0,
+        "request_rate_rps": 5.359785608575658,
+        "desired_replicas": 2,
+        "ready_replicas": 2,
+        "max_per_pod_memory_mib": 39.92578125,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 1,
+        "t_s": 30.0,
+        "timestamp_utc": "2026-11-13T16:15:00.942076+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.25199292490994796,
+          -0.04492166103192963,
+          0.15186309814453125,
+          0.0,
+          0.04879902401951961,
+          -0.0047988320662369684,
+          0.11628571428571428,
+          0.0004936350777934706,
+          0.0,
+          0.0,
+          0.1
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.2599646245497398,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.607452392578125,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 4.879902401951961,
+          "request_rate_delta": null,
+          "p95_latency_norm": 232.57142857142856,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 232.57142857142856,
+        "error_rate": 0.0,
+        "request_rate_rps": 4.879902401951961,
+        "desired_replicas": 2,
+        "ready_replicas": 2,
+        "max_per_pod_memory_mib": 39.69921875,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 2,
+        "t_s": 60.0,
+        "timestamp_utc": "2026-11-13T16:15:31.245550+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.25061319667926574,
+          -0.023840558746647034,
+          0.1527862548828125,
+          0.0,
+          0.04399955200895983,
+          -0.007198888043678266,
+          0.11468749929688185,
+          -0.001351397449935689,
+          0.0,
+          0.0,
+          0.2
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.2530659833963287,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.61114501953125,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 4.399955200895983,
+          "request_rate_delta": null,
+          "p95_latency_norm": 229.3749985937637,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 229.3749985937637,
+        "error_rate": 0.0,
+        "request_rate_rps": 4.399955200895983,
+        "desired_replicas": 2,
+        "ready_replicas": 2,
+        "max_per_pod_memory_mib": 39.921875,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 3,
+        "t_s": 90.0,
+        "timestamp_utc": "2026-11-13T16:16:01.567151+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.2603665495668342,
+          -0.002166926485755072,
+          0.1523284912109375,
+          0.0,
+          0.04699868007919525,
+          -0.0006003159516037115,
+          0.11355523085554142,
+          -0.0018079671663082735,
+          0.0,
+          0.0,
+          0.3
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.301832747834171,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.60931396484375,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 4.699868007919525,
+          "request_rate_delta": null,
+          "p95_latency_norm": 227.11046171108285,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 227.11046171108285,
+        "error_rate": 0.0,
+        "request_rate_rps": 4.699868007919525,
+        "desired_replicas": 2,
+        "ready_replicas": 2,
+        "max_per_pod_memory_mib": 39.92578125,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 4,
+        "t_s": 120.0,
+        "timestamp_utc": "2026-11-13T16:16:31.873295+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.27334900810354046,
+          0.011898995293828697,
+          0.15228271484375,
+          0.0,
+          0.05299996402119999,
+          0.005701125966202882,
+          0.1135775808362998,
+          -0.000881633602395766,
+          0.0,
+          0.0,
+          0.4
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.3667450405177022,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.609130859375,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 5.299996402119999,
+          "request_rate_delta": null,
+          "p95_latency_norm": 227.1551616725996,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 227.1551616725996,
+        "error_rate": 0.0,
+        "request_rate_rps": 5.299996402119999,
+        "desired_replicas": 2,
+        "ready_replicas": 2,
+        "max_per_pod_memory_mib": 39.67578125,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 5,
+        "t_s": 150.0,
+        "timestamp_utc": "2026-11-13T16:17:02.176576+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.27331869129741826,
+          0.005919180840792171,
+          0.1523284912109375,
+          0.0,
+          0.05260052801056021,
+          0.0024511269724616725,
+          0.11768026083550132,
+          0.00366186319800363,
+          0.0,
+          0.0,
+          0.5
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.3665934564870914,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.60931396484375,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 5.2600528010560215,
+          "request_rate_delta": null,
+          "p95_latency_norm": 235.36052167100263,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 235.36052167100263,
+        "error_rate": 0.0,
+        "request_rate_rps": 5.2600528010560215,
+        "desired_replicas": 2,
+        "ready_replicas": 2,
+        "max_per_pod_memory_mib": 39.67578125,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 6,
+        "t_s": 180.0,
+        "timestamp_utc": "2026-11-13T16:17:32.487182+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.24167182919964794,
+          -0.028687271677374282,
+          0.15229034423828125,
+          0.0,
+          0.0486,
+          -0.002774964524329384,
+          0.11623798076923075,
+          0.0003886515327312594,
+          0.0,
+          0.0,
+          0.6
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.2083591459982397,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.609161376953125,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 4.859999999999999,
+          "request_rate_delta": null,
+          "p95_latency_norm": 232.47596153846152,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 232.47596153846152,
+        "error_rate": 0.0,
+        "request_rate_rps": 4.859999999999999,
+        "desired_replicas": 2,
+        "ready_replicas": 2,
+        "max_per_pod_memory_mib": 39.67578125,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 7,
+        "t_s": 210.0,
+        "timestamp_utc": "2026-11-13T16:18:02.788200+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.2572798369563347,
+          0.0012643719179996626,
+          0.15233612060546875,
+          0.0,
+          0.05060107204288171,
+          0.000613589780717021,
+          0.11479837280581585,
+          -0.0012452821970492778,
+          0.0,
+          0.0,
+          0.7
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.2863991847816736,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.609344482421875,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 5.060107204288171,
+          "request_rate_delta": null,
+          "p95_latency_norm": 229.59674561163172,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 229.59674561163172,
+        "error_rate": 0.0,
+        "request_rate_rps": 5.060107204288171,
+        "desired_replicas": 2,
+        "ready_replicas": 2,
+        "max_per_pod_memory_mib": 39.9453125,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 8,
+        "t_s": 240.0,
+        "timestamp_utc": "2026-11-13T16:18:33.081960+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.2880218467625194,
+          0.03137419576518452,
+          0.15228271484375,
+          0.0,
+          0.05139748416934709,
+          0.0011032070168238927,
+          0.11324692167380167,
+          -0.0021740922305388322,
+          0.0,
+          0.0,
+          0.8
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.440109233812597,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.609130859375,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 5.139748416934709,
+          "request_rate_delta": null,
+          "p95_latency_norm": 226.49384334760333,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 226.49384334760333,
+        "error_rate": 0.0,
+        "request_rate_rps": 5.139748416934709,
+        "desired_replicas": 2,
+        "ready_replicas": 2,
+        "max_per_pod_memory_mib": 39.6796875,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 9,
+        "t_s": 270.0,
+        "timestamp_utc": "2026-11-13T16:19:03.399077+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.2788654317673156,
+          0.006530682887388473,
+          0.15238189697265625,
+          0.0,
+          0.050600532010640215,
+          -0.00024534865029493427,
+          0.11356927536650954,
+          -0.0007646924225615379,
+          0.0,
+          0.0,
+          0.9
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.394327158836578,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.609527587890625,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 5.060053201064021,
+          "request_rate_delta": null,
+          "p95_latency_norm": 227.1385507330191,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 227.1385507330191,
+        "error_rate": 0.0,
+        "request_rate_rps": 5.060053201064021,
+        "desired_replicas": 2,
+        "ready_replicas": 2,
+        "max_per_pod_memory_mib": 39.69921875,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 10,
+        "t_s": 300.0,
+        "timestamp_utc": "2026-11-13T16:19:33.712509+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.2668963173136012,
+          -0.008703773010020167,
+          0.15282440185546875,
+          0.0,
+          0.05020068805392163,
+          -0.0005225182818660468,
+          0.11418100558832595,
+          0.00022938401053562528,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.334481586568006,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.611297607421875,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 5.020068805392163,
+          "request_rate_delta": null,
+          "p95_latency_norm": 228.3620111766519,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 228.3620111766519,
+        "error_rate": 0.0,
+        "request_rate_rps": 5.020068805392163,
+        "desired_replicas": 2,
+        "ready_replicas": 2,
+        "max_per_pod_memory_mib": 39.921875,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 11,
+        "t_s": 330.0,
+        "timestamp_utc": "2026-11-13T16:20:04.038212+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.25682007804561036,
+          -0.014428125773000922,
+          0.1528167724609375,
+          0.0,
+          0.05380107602152043,
+          0.003339128826665778,
+          0.11449218749999998,
+          0.0004258739169418533,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.2841003902280517,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.61126708984375,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 5.380107602152043,
+          "request_rate_delta": null,
+          "p95_latency_norm": 228.98437499999997,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 228.98437499999997,
+        "error_rate": 0.0,
+        "request_rate_rps": 5.380107602152043,
+        "desired_replicas": 2,
+        "ready_replicas": 2,
+        "max_per_pod_memory_mib": 39.69921875,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 12,
+        "t_s": 360.0,
+        "timestamp_utc": "2026-11-13T16:20:34.329074+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.2328262058527623,
+          -0.03120793507934847,
+          0.15271759033203125,
+          0.0,
+          0.046800024018720014,
+          -0.005331487589467523,
+          0.11467650658809128,
+          0.0003972560465622337,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.1641310292638116,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.610870361328125,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 4.6800024018720014,
+          "request_rate_delta": null,
+          "p95_latency_norm": 229.35301317618257,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 229.35301317618257,
+        "error_rate": 0.0,
+        "request_rate_rps": 4.6800024018720014,
+        "desired_replicas": 2,
+        "ready_replicas": 2,
+        "max_per_pod_memory_mib": 39.8984375,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 13,
+        "t_s": 390.0,
+        "timestamp_utc": "2026-11-13T16:21:04.637798+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.25792441688425505,
+          0.00949424349181851,
+          0.15331268310546875,
+          0.0,
+          0.046998524088554684,
+          -0.0024672437248990952,
+          0.11585933421997337,
+          0.0013814556551631938,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.2896220844212753,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.613250732421875,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 4.6998524088554685,
+          "request_rate_delta": null,
+          "p95_latency_norm": 231.71866843994673,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 231.71866843994673,
+        "error_rate": 0.0,
+        "request_rate_rps": 4.6998524088554685,
+        "desired_replicas": 2,
+        "ready_replicas": 2,
+        "max_per_pod_memory_mib": 40.1953125,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 14,
+        "t_s": 420.0,
+        "timestamp_utc": "2026-11-13T16:21:34.954110+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.2619536804561613,
+          0.00877638531781546,
+          0.1522979736328125,
+          0.0,
+          0.05019948801023979,
+          0.0019673420592355574,
+          0.11610955079850749,
+          0.0009409444061157188,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.3097684022808065,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.60919189453125,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 5.019948801023979,
+          "request_rate_delta": null,
+          "p95_latency_norm": 232.21910159701497,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 232.21910159701497,
+        "error_rate": 0.0,
+        "request_rate_rps": 5.019948801023979,
+        "desired_replicas": 2,
+        "ready_replicas": 2,
+        "max_per_pod_memory_mib": 39.9296875,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 15,
+        "t_s": 450.0,
+        "timestamp_utc": "2026-11-13T16:22:05.305742+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.22915873246231713,
+          -0.02840675533493644,
+          0.152313232421875,
+          0.0,
+          0.05039395272567292,
+          0.0011781357450509056,
+          0.1149468085106383,
+          -0.0006922700848113408,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.1457936623115856,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.6092529296875,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 5.039395272567292,
+          "request_rate_delta": null,
+          "p95_latency_norm": 229.89361702127658,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 229.89361702127658,
+        "error_rate": 0.0,
+        "request_rate_rps": 5.039395272567292,
+        "desired_replicas": 2,
+        "ready_replicas": 2,
+        "max_per_pod_memory_mib": 39.91796875,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 16,
+        "t_s": 480.0,
+        "timestamp_utc": "2026-11-13T16:22:35.668102+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.21817417819349863,
+          -0.0251879319362867,
+          0.15329742431640625,
+          0.0,
+          0.049189790241803165,
+          -0.0006150946113443023,
+          0.11497281253239804,
+          -0.0003201310206459169,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.0908708909674931,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.613189697265625,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 4.918979024180317,
+          "request_rate_delta": null,
+          "p95_latency_norm": 229.94562506479608,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 229.94562506479608,
+        "error_rate": 0.0,
+        "request_rate_rps": 4.918979024180317,
+        "desired_replicas": 2,
+        "ready_replicas": 2,
+        "max_per_pod_memory_mib": 40.171875,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 17,
+        "t_s": 510.0,
+        "timestamp_utc": "2026-11-13T16:23:05.989509+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.24816320643141565,
+          0.0173950622697737,
+          0.15374755859375,
+          0.0,
+          0.05359516844091929,
+          0.0040978308934439675,
+          0.1130356989809474,
+          -0.0020971790617735878,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.2408160321570783,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.614990234375,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 5.359516844091929,
+          "request_rate_delta": null,
+          "p95_latency_norm": 226.0713979618948,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 226.0713979618948,
+        "error_rate": 0.0,
+        "request_rate_rps": 5.359516844091929,
+        "desired_replicas": 2,
+        "ready_replicas": 2,
+        "max_per_pod_memory_mib": 40.421875,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 18,
+        "t_s": 540.0,
+        "timestamp_utc": "2026-11-13T16:23:36.283312+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.27777401037113375,
+          0.03830833507460496,
+          0.1528778076171875,
+          0.15,
+          0.06660060801216025,
+          0.015054355017962937,
+          0.12146868383775876,
+          0.007384395325924572,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.3888700518556687,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.61151123046875,
+          "in_progress_per_replica": 3.0,
+          "request_rate_norm": 6.660060801216025,
+          "request_rate_delta": null,
+          "p95_latency_norm": 242.93736767551752,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 242.93736767551752,
+        "error_rate": 0.0,
+        "request_rate_rps": 6.660060801216025,
+        "desired_replicas": 2,
+        "ready_replicas": 2,
+        "max_per_pod_memory_mib": 39.67578125,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 19,
+        "t_s": 570.0,
+        "timestamp_utc": "2026-11-13T16:24:06.600842+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.2982936728517923,
+          0.03967383001796101,
+          0.0766448974609375,
+          0.0125,
+          0.14800440426425587,
+          0.08893097376107707,
+          0.22865851970500536,
+          0.1108820335302089,
+          0.0,
+          0.3333333333333333,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.4914683642589615,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.30657958984375,
+          "in_progress_per_replica": 0.25,
+          "request_rate_norm": 14.800440426425586,
+          "request_rate_delta": null,
+          "p95_latency_norm": 457.31703941001075,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 457.31703941001075,
+        "error_rate": 0.0,
+        "request_rate_rps": 14.800440426425586,
+        "desired_replicas": 4,
+        "ready_replicas": 4,
+        "max_per_pod_memory_mib": 40.09375,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0,
+          "demo-app-7846d9ddbf-qcbqq": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 20,
+        "t_s": 600.0,
+        "timestamp_utc": "2026-11-13T16:24:36.930972+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.3550346237793447,
+          0.0765778659365329,
+          0.14907073974609375,
+          0.0125,
+          0.17574256613387568,
+          0.07220364875015836,
+          0.19820378056207832,
+          0.024986277622177398,
+          0.0,
+          0.3333333333333333,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.7751731188967235,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.596282958984375,
+          "in_progress_per_replica": 0.25,
+          "request_rate_norm": 17.57425661338757,
+          "request_rate_delta": null,
+          "p95_latency_norm": 396.40756112415664,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 396.40756112415664,
+        "error_rate": 0.0,
+        "request_rate_rps": 17.57425661338757,
+        "desired_replicas": 4,
+        "ready_replicas": 4,
+        "max_per_pod_memory_mib": 39.94921875,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0,
+          "demo-app-7846d9ddbf-qcbqq": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 21,
+        "t_s": 630.0,
+        "timestamp_utc": "2026-11-13T16:25:07.249180+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.30628971064734223,
+          -0.010455980163736056,
+          0.14782333374023438,
+          0.0,
+          0.17799951624040516,
+          0.03835877448160867,
+          0.11510393350057413,
+          -0.0706067082504155,
+          0.0,
+          0.3333333333333333,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.531448553236711,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.5912933349609375,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 17.799951624040517,
+          "request_rate_delta": null,
+          "p95_latency_norm": 230.20786700114826,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 230.20786700114826,
+        "error_rate": 0.0,
+        "request_rate_rps": 17.799951624040517,
+        "desired_replicas": 4,
+        "ready_replicas": 4,
+        "max_per_pod_memory_mib": 39.73828125,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0,
+          "demo-app-7846d9ddbf-qcbqq": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 22,
+        "t_s": 660.0,
+        "timestamp_utc": "2026-11-13T16:25:37.559552+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.3528864019420148,
+          0.0413687012128046,
+          0.14923477172851562,
+          0.0,
+          0.18940376030082404,
+          0.0305836313012232,
+          0.11522951000010312,
+          -0.035177777625678745,
+          0.0,
+          0.3333333333333333,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.764432009710074,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.5969390869140625,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 18.940376030082405,
+          "request_rate_delta": null,
+          "p95_latency_norm": 230.45902000020624,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 230.45902000020624,
+        "error_rate": 0.0,
+        "request_rate_rps": 18.940376030082405,
+        "desired_replicas": 4,
+        "ready_replicas": 4,
+        "max_per_pod_memory_mib": 40.1875,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0,
+          "demo-app-7846d9ddbf-qcbqq": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 23,
+        "t_s": 690.0,
+        "timestamp_utc": "2026-11-13T16:26:07.872410+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.39913435904514777,
+          0.06693230770953526,
+          0.14821624755859375,
+          0.0,
+          0.18560000000000001,
+          0.011488055349787559,
+          0.11075313807531384,
+          -0.02206526073762865,
+          0.0,
+          0.3333333333333333,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.9956717952257388,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.592864990234375,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 18.560000000000002,
+          "request_rate_delta": null,
+          "p95_latency_norm": 221.50627615062768,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 221.50627615062768,
+        "error_rate": 0.0,
+        "request_rate_rps": 18.560000000000002,
+        "desired_replicas": 4,
+        "ready_replicas": 4,
+        "max_per_pod_memory_mib": 40.20703125,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0,
+          "demo-app-7846d9ddbf-qcbqq": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 24,
+        "t_s": 720.0,
+        "timestamp_utc": "2026-11-13T16:26:38.178543+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.3935230416023311,
+          0.027854836411950988,
+          0.14886093139648438,
+          0.0125,
+          0.18539816803663928,
+          0.00554219571153304,
+          0.11515625321177404,
+          -0.006629515232354123,
+          0.0,
+          0.3333333333333333,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.9676152080116556,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.5954437255859375,
+          "in_progress_per_replica": 0.25,
+          "request_rate_norm": 18.53981680366393,
+          "request_rate_delta": null,
+          "p95_latency_norm": 230.3125064235481,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 230.3125064235481,
+        "error_rate": 0.0,
+        "request_rate_rps": 18.53981680366393,
+        "desired_replicas": 4,
+        "ready_replicas": 4,
+        "max_per_pod_memory_mib": 39.6953125,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0,
+          "demo-app-7846d9ddbf-qcbqq": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 25,
+        "t_s": 750.0,
+        "timestamp_utc": "2026-11-13T16:27:08.520690+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.37451334584634016,
+          -0.00508227755001549,
+          0.14931869506835938,
+          0.0,
+          0.19079524032173545,
+          0.008168170140862685,
+          0.1130528965800703,
+          -0.005418114247880809,
+          0.0,
+          0.3333333333333333,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.8725667292317008,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.5972747802734375,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 19.079524032173545,
+          "request_rate_delta": null,
+          "p95_latency_norm": 226.1057931601406,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 226.1057931601406,
+        "error_rate": 0.0,
+        "request_rate_rps": 19.079524032173545,
+        "desired_replicas": 4,
+        "ready_replicas": 4,
+        "max_per_pod_memory_mib": 39.9453125,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0,
+          "demo-app-7846d9ddbf-qcbqq": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 26,
+        "t_s": 780.0,
+        "timestamp_utc": "2026-11-13T16:27:38.834678+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.36537474587799956,
+          -0.011679738743348312,
+          0.14915847778320312,
+          0.0,
+          0.17679905233383933,
+          -0.009912102917464765,
+          0.10824991554866026,
+          -0.007512038155350439,
+          0.0,
+          0.3333333333333333,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.826873729389998,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.5966339111328125,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 17.679905233383934,
+          "request_rate_delta": null,
+          "p95_latency_norm": 216.4998310973205,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 216.4998310973205,
+        "error_rate": 0.0,
+        "request_rate_rps": 17.679905233383934,
+        "desired_replicas": 4,
+        "ready_replicas": 4,
+        "max_per_pod_memory_mib": 40.23828125,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0,
+          "demo-app-7846d9ddbf-qcbqq": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 27,
+        "t_s": 810.0,
+        "timestamp_utc": "2026-11-13T16:28:09.155707+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.33698168835741427,
+          -0.03423292689225947,
+          0.14864730834960938,
+          0.0,
+          0.1697966281658308,
+          -0.011958475626740928,
+          0.11055017258841866,
+          -0.001455762037916813,
+          0.0,
+          0.3333333333333333,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.6849084417870714,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.5945892333984375,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 16.97966281658308,
+          "request_rate_delta": null,
+          "p95_latency_norm": 221.10034517683732,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 221.10034517683732,
+        "error_rate": 0.0,
+        "request_rate_rps": 16.97966281658308,
+        "desired_replicas": 4,
+        "ready_replicas": 4,
+        "max_per_pod_memory_mib": 39.71875,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0,
+          "demo-app-7846d9ddbf-qcbqq": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 28,
+        "t_s": 840.0,
+        "timestamp_utc": "2026-11-13T16:28:39.460061+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.3704403684216727,
+          0.016342216618128715,
+          0.149169921875,
+          0.0,
+          0.17420203225377848,
+          -0.001573833725422773,
+          0.10946965109495783,
+          -0.001808402512419235,
+          0.0,
+          0.3333333333333333,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.8522018421083637,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.5966796875,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 17.420203225377847,
+          "request_rate_delta": null,
+          "p95_latency_norm": 218.93930218991568,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 218.93930218991568,
+        "error_rate": 0.0,
+        "request_rate_rps": 17.420203225377847,
+        "desired_replicas": 4,
+        "ready_replicas": 4,
+        "max_per_pod_memory_mib": 40.21484375,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0,
+          "demo-app-7846d9ddbf-qcbqq": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 29,
+        "t_s": 870.0,
+        "timestamp_utc": "2026-11-13T16:29:09.775672+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.36168351730635606,
+          -0.0005857428062522984,
+          0.14846038818359375,
+          0.0,
+          0.17960160806432257,
+          0.004612658947832706,
+          0.1097250530070783,
+          -0.0006487993440891557,
+          0.0,
+          0.3333333333333333,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.8084175865317804,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.593841552734375,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 17.960160806432256,
+          "request_rate_delta": null,
+          "p95_latency_norm": 219.4501060141566,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 219.4501060141566,
+        "error_rate": 0.0,
+        "request_rate_rps": 17.960160806432256,
+        "desired_replicas": 4,
+        "ready_replicas": 4,
+        "max_per_pod_memory_mib": 39.9609375,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0,
+          "demo-app-7846d9ddbf-qcbqq": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 30,
+        "t_s": 900.0,
+        "timestamp_utc": "2026-11-13T16:29:40.098990+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.4614794503234518,
+          0.09950306161396956,
+          0.15072123209635416,
+          0.0,
+          0.18305788693860134,
+          0.005762608348195109,
+          0.11221845800574615,
+          0.002169005326623264,
+          0.0,
+          0.16666666666666666,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 2.307397251617259,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.6028849283854166,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 18.305788693860134,
+          "request_rate_delta": null,
+          "p95_latency_norm": 224.4369160114923,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 224.4369160114923,
+        "error_rate": 0.0,
+        "request_rate_rps": 18.305788693860134,
+        "desired_replicas": 3,
+        "ready_replicas": 3,
+        "max_per_pod_memory_mib": 39.734375,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 31,
+        "t_s": 930.0,
+        "timestamp_utc": "2026-11-13T16:30:10.401025+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.47511074681878585,
+          0.06338282730231884,
+          0.150665283203125,
+          0.03333333333333333,
+          0.18520362841707083,
+          0.005027045652567068,
+          0.12332430651528833,
+          0.01219035117285381,
+          0.0,
+          0.16666666666666666,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 2.3755537340939292,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.6026611328125,
+          "in_progress_per_replica": 0.6666666666666666,
+          "request_rate_norm": 18.520362841707083,
+          "request_rate_delta": null,
+          "p95_latency_norm": 246.64861303057666,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 246.64861303057666,
+        "error_rate": 0.0,
+        "request_rate_rps": 18.520362841707083,
+        "desired_replicas": 3,
+        "ready_replicas": 3,
+        "max_per_pod_memory_mib": 40.515625,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 32,
+        "t_s": 960.0,
+        "timestamp_utc": "2026-11-13T16:30:40.710045+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.50254959707056,
+          0.059130263902933675,
+          0.15090433756510416,
+          0.05,
+          0.19120269610784432,
+          0.008512590517057035,
+          0.14818089558762793,
+          0.030951764658766506,
+          0.0,
+          0.16666666666666666,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 2.5127479853528003,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.6036173502604166,
+          "in_progress_per_replica": 1.0,
+          "request_rate_norm": 19.120269610784433,
+          "request_rate_delta": null,
+          "p95_latency_norm": 296.36179117525586,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 296.36179117525586,
+        "error_rate": 0.0,
+        "request_rate_rps": 19.120269610784433,
+        "desired_replicas": 3,
+        "ready_replicas": 3,
+        "max_per_pod_memory_mib": 40.51953125,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 33,
+        "t_s": 990.0,
+        "timestamp_utc": "2026-11-13T16:31:11.024596+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.40842035135275195,
+          -0.06456411376634126,
+          0.11344146728515625,
+          0.0125,
+          0.1825986960260795,
+          -0.00434770482323632,
+          0.13451564030536284,
+          0.0018106270471181744,
+          0.0,
+          0.3333333333333333,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 2.04210175676376,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.453765869140625,
+          "in_progress_per_replica": 0.25,
+          "request_rate_norm": 18.25986960260795,
+          "request_rate_delta": null,
+          "p95_latency_norm": 269.0312806107257,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 269.0312806107257,
+        "error_rate": 0.0,
+        "request_rate_rps": 18.25986960260795,
+        "desired_replicas": 4,
+        "ready_replicas": 4,
+        "max_per_pod_memory_mib": 40.203125,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-kkxt6": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 34,
+        "t_s": 1020.0,
+        "timestamp_utc": "2026-11-13T16:31:41.344670+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.3764244473101409,
+          -0.06427796092578171,
+          0.15799331665039062,
+          0.025,
+          0.1723451680393608,
+          -0.012427380398336822,
+          0.12060866570295475,
+          -0.013001661078848982,
+          0.0,
+          0.3333333333333333,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.8821222365507044,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.6319732666015625,
+          "in_progress_per_replica": 0.5,
+          "request_rate_norm": 17.23451680393608,
+          "request_rate_delta": null,
+          "p95_latency_norm": 241.2173314059095,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 241.2173314059095,
+        "error_rate": 0.0,
+        "request_rate_rps": 17.23451680393608,
+        "desired_replicas": 4,
+        "ready_replicas": 4,
+        "max_per_pod_memory_mib": 46.15625,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-kkxt6": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 35,
+        "t_s": 1050.0,
+        "timestamp_utc": "2026-11-13T16:32:11.694561+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.3635186945340282,
+          -0.0450447332390036,
+          0.15750503540039062,
+          0.0125,
+          0.1808,
+          0.0022411417614707574,
+          0.1132499999999999,
+          -0.013859496242379336,
+          0.0,
+          0.3333333333333333,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.8175934726701408,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.6300201416015625,
+          "in_progress_per_replica": 0.25,
+          "request_rate_norm": 18.08,
+          "request_rate_delta": null,
+          "p95_latency_norm": 226.4999999999998,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 226.4999999999998,
+        "error_rate": 0.0,
+        "request_rate_rps": 18.08,
+        "desired_replicas": 4,
+        "ready_replicas": 4,
+        "max_per_pod_memory_mib": 45.90625,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-kkxt6": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 36,
+        "t_s": 1080.0,
+        "timestamp_utc": "2026-11-13T16:32:42.020145+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.3787037450853691,
+          -0.00733731606816086,
+          0.15877151489257812,
+          0.0,
+          0.1844010160203204,
+          0.004721586901055801,
+          0.11034621352736786,
+          -0.00983353459382171,
+          0.0,
+          0.3333333333333333,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.8935187254268455,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.6350860595703125,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 18.44010160203204,
+          "request_rate_delta": null,
+          "p95_latency_norm": 220.6924270547357,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 220.6924270547357,
+        "error_rate": 0.0,
+        "request_rate_rps": 18.44010160203204,
+        "desired_replicas": 4,
+        "ready_replicas": 4,
+        "max_per_pod_memory_mib": 45.93359375,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-kkxt6": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 37,
+        "t_s": 1110.0,
+        "timestamp_utc": "2026-11-13T16:33:12.335127+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.389615226844806,
+          0.0072428237253564735,
+          0.158203125,
+          0.0125,
+          0.18280090401808038,
+          0.0007606814482878832,
+          0.10934618218577644,
+          -0.005916798638502272,
+          0.0,
+          0.3333333333333333,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.94807613422403,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.6328125,
+          "in_progress_per_replica": 0.25,
+          "request_rate_norm": 18.28009040180804,
+          "request_rate_delta": null,
+          "p95_latency_norm": 218.69236437155288,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 218.69236437155288,
+        "error_rate": 0.0,
+        "request_rate_rps": 18.28009040180804,
+        "desired_replicas": 4,
+        "ready_replicas": 4,
+        "max_per_pod_memory_mib": 46.4375,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-kkxt6": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 38,
+        "t_s": 1140.0,
+        "timestamp_utc": "2026-11-13T16:33:42.661979+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.3108258462352356,
+          -0.07516796874689216,
+          0.156707763671875,
+          0.0,
+          0.13620612028513382,
+          -0.04621444300880261,
+          0.10909673580083472,
+          -0.003207845704192863,
+          0.0,
+          0.3333333333333333,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 1.554129231176178,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.6268310546875,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 13.620612028513383,
+          "request_rate_delta": null,
+          "p95_latency_norm": 218.19347160166944,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 218.19347160166944,
+        "error_rate": 0.0,
+        "request_rate_rps": 13.620612028513383,
+        "desired_replicas": 4,
+        "ready_replicas": 4,
+        "max_per_pod_memory_mib": 45.9375,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-kkxt6": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      },
+      {
+        "decision_index": 39,
+        "t_s": 1170.0,
+        "timestamp_utc": "2026-11-13T16:34:13.004439+00:00",
+        "profile": "eval_cpu_step",
+        "arm_id": "hpa_v2_cpu_memory",
+        "normalized_observation": [
+          0.057957296426767,
+          -0.2904525341819147,
+          0.15781021118164062,
+          0.0,
+          0.022799136038878044,
+          -0.1365142057506571,
+          0.10821449012766833,
+          -0.0024861685252628263,
+          0.0,
+          0.3333333333333333,
+          1.0
+        ],
+        "raw_observation": {
+          "cpu_per_replica": 0.289786482133835,
+          "cpu_per_replica_delta": null,
+          "memory_per_replica": 0.6312408447265625,
+          "in_progress_per_replica": 0.0,
+          "request_rate_norm": 2.2799136038878043,
+          "request_rate_delta": null,
+          "p95_latency_norm": 216.42898025533665,
+          "p95_latency_delta": null,
+          "error_rate": 0.0,
+          "ready_replica_norm": null,
+          "seconds_since_last_scale_norm": null
+        },
+        "sample_valid": true,
+        "p95_latency_ms": 216.42898025533665,
+        "error_rate": 0.0,
+        "request_rate_rps": 2.2799136038878043,
+        "desired_replicas": 4,
+        "ready_replicas": 4,
+        "max_per_pod_memory_mib": 46.4140625,
+        "pod_restart_counts": {
+          "demo-app-7846d9ddbf-gjw9q": 0,
+          "demo-app-7846d9ddbf-j7hq2": 0,
+          "demo-app-7846d9ddbf-kkxt6": 0,
+          "demo-app-7846d9ddbf-nt9nd": 0
+        },
+        "hpa_status": {
+          "hpa_name": "demo-app-hpa-v2",
+          "applied": true
+        },
+        "ppo_decision": null
+      }
+    ],
+    "pod_restarts_total": 0
+  },
+  "cleanup": {
+    "restored": true,
+    "hpa_names": [
+      "demo-app-hpa-v2"
+    ],
+    "replicas": 2
+  },
+  "ended_utc": "2026-11-13T16:36:13.614056+00:00"
+}

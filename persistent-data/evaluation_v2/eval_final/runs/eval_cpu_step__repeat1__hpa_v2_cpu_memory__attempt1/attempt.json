@@ -1,0 +1,22 @@
+{
+  "attempt_id": "4297b1fe-6ab4-42f7-9421-05cf5b7de981",
+  "run_id": "eval_cpu_step__repeat1__hpa_v2_cpu_memory",
+  "run_index": 3,
+  "profile": "eval_cpu_step",
+  "repeat_index": 1,
+  "arm_id": "hpa_v2_cpu_memory",
+  "attempt_number": 1,
+  "episode_id": "eval_cpu_step__repeat1__hpa_v2_cpu_memory__attempt1",
+  "started_utc": "2026-11-14T03:25:47.380074+00:00",
+  "status": "TOOLING_FAILURE",
+  "error": "preflight failed: {'ok': False, 'lock': 'none', 'hpa_names': ['demo-app-hpa-v2', 'demo-app-hpa-v2-cpu']}",
+  "cleanup": {
+    "restored": true,
+    "hpa_names": [
+      "demo-app-hpa-v2",
+      "demo-app-hpa-v2-cpu"
+    ],
+    "replicas": 2
+  },
+  "ended_utc": "2026-11-14T03:25:48.320653+00:00"
+}

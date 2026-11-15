@@ -1,0 +1,21 @@
+{
+  "attempt_id": "62575e9a-0459-4409-8da9-772b11992712",
+  "run_id": "eval_cpu_step__repeat0__ppo_v2",
+  "run_index": 0,
+  "profile": "eval_cpu_step",
+  "repeat_index": 0,
+  "arm_id": "ppo_v2",
+  "attempt_number": 2,
+  "episode_id": "eval_cpu_step__repeat0__ppo_v2__attempt2",
+  "started_utc": "2026-11-13T15:33:07.514491+00:00",
+  "status": "TOOLING_FAILURE",
+  "error": "unclassified: cannot start controller 'ppo': conflicting HPA object(s) present in cluster: ['demo-app-hpa-v2']",
+  "cleanup": {
+    "restored": true,
+    "hpa_names": [
+      "demo-app-hpa-v2"
+    ],
+    "replicas": 2
+  },
+  "ended_utc": "2026-11-13T15:33:16.161389+00:00"
+}

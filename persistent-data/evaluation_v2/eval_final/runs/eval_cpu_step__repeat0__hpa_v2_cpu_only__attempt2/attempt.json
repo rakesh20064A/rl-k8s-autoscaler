@@ -1,0 +1,21 @@
+{
+  "attempt_id": "af9142e5-1c19-4ba6-ad75-11ad716d1da5",
+  "run_id": "eval_cpu_step__repeat0__hpa_v2_cpu_only",
+  "run_index": 2,
+  "profile": "eval_cpu_step",
+  "repeat_index": 0,
+  "arm_id": "hpa_v2_cpu_only",
+  "attempt_number": 2,
+  "episode_id": "eval_cpu_step__repeat0__hpa_v2_cpu_only__attempt2",
+  "started_utc": "2026-11-13T16:36:20.645486+00:00",
+  "status": "TOOLING_FAILURE",
+  "error": "unclassified: cannot start controller 'cpu_only_hpa_v2': conflicting HPA object(s) present in cluster: ['demo-app-hpa-v2']",
+  "cleanup": {
+    "restored": true,
+    "hpa_names": [
+      "demo-app-hpa-v2"
+    ],
+    "replicas": 2
+  },
+  "ended_utc": "2026-11-13T16:36:28.045990+00:00"
+}

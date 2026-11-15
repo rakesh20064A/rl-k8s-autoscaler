@@ -1,0 +1,21 @@
+{
+  "attempt_id": "48464fd4-8d3f-47bc-b4c1-bf58d4831d26",
+  "run_id": "eval_cpu_step__repeat0__ppo_v2",
+  "run_index": 0,
+  "profile": "eval_cpu_step",
+  "repeat_index": 0,
+  "arm_id": "ppo_v2",
+  "attempt_number": 1,
+  "episode_id": "eval_cpu_step__repeat0__ppo_v2__attempt1",
+  "started_utc": "2026-11-13T15:48:29.950766+00:00",
+  "status": "TOOLING_FAILURE",
+  "error": "unclassified: generator failed to start for eval profile 'eval_cpu_step', episode eval_cpu_step__repeat0__ppo_v2__attempt1",
+  "cleanup": {
+    "restored": true,
+    "hpa_names": [
+      "demo-app-hpa-v2"
+    ],
+    "replicas": 2
+  },
+  "ended_utc": "2026-11-13T15:48:37.106521+00:00"
+}

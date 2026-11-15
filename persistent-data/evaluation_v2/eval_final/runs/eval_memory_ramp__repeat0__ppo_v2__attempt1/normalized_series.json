@@ -1,0 +1,411 @@
+{
+  "run_id": "eval_memory_ramp__repeat0__ppo_v2",
+  "profile": "eval_memory_ramp",
+  "arm_id": "ppo_v2",
+  "repeat_index": 0,
+  "decision_interval_s": 30.0,
+  "samples": [
+    {
+      "t_s": 0.0,
+      "p95_latency_ms": 974.9999999999999,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 87.609375,
+      "replicas": 2,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 30.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 71.84765625,
+      "replicas": 2,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 60.0,
+      "p95_latency_ms": 974.9999999999999,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 103.87109375,
+      "replicas": 2,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 90.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 87.7109375,
+      "replicas": 2,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 120.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 103.65625,
+      "replicas": 2,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 150.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 104.0859375,
+      "replicas": 2,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 180.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 55.48828125,
+      "replicas": 2,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 210.0,
+      "p95_latency_ms": 975.0000000000001,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 71.69140625,
+      "replicas": 3,
+      "action": "SCALE_UP_ONE",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 240.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 72.05078125,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 270.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 71.20703125,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 300.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 85.1484375,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 330.0,
+      "p95_latency_ms": 974.9999999999999,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 87.92578125,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 360.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 55.1875,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 390.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 69.0390625,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 420.0,
+      "p95_latency_ms": 974.9999999999999,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 119.53125,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 450.0,
+      "p95_latency_ms": 975.0000000000001,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 85.05078125,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 480.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 87.62890625,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 510.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 87.390625,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 540.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 101.390625,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 570.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 101.625,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 600.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 103.73828125,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 630.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 55.36328125,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 660.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 71.58984375,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 690.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 69.4921875,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 720.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 71.63671875,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 750.0,
+      "p95_latency_ms": 974.9999999999999,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 39.6328125,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 780.0,
+      "p95_latency_ms": 975.0000000000001,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 101.82421875,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 810.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 88.0390625,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 840.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 55.4453125,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 870.0,
+      "p95_latency_ms": 974.9999999999999,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 104.10546875,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 900.0,
+      "p95_latency_ms": 974.9999999999999,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 88.0703125,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 930.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 55.5625,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 960.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 55.32421875,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 990.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 55.77734375,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 1020.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 85.07421875,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 1050.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 85.71875,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 1080.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 55.453125,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 1110.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 55.5,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 1140.0,
+      "p95_latency_ms": 975.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 39.49609375,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    },
+    {
+      "t_s": 1170.0,
+      "p95_latency_ms": 0.0,
+      "error_rate": 0.0,
+      "memory_per_replica_mib": 39.171875,
+      "replicas": 3,
+      "action": "HOLD",
+      "reversal": false,
+      "invalid": false
+    }
+  ],
+  "pod_restarts": 0,
+  "load_change_times_s": []
+}

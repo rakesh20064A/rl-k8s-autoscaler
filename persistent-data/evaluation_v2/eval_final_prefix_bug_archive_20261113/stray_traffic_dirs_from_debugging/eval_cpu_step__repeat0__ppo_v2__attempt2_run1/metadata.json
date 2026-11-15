@@ -1,0 +1,55 @@
+{
+  "experiment_id": "eval_cpu_step__repeat0__ppo_v2__attempt2_run1",
+  "profile": "eval_cpu_step",
+  "seed": 9101,
+  "arrival_process": "poisson",
+  "configured_intensity": 3,
+  "target_url": "http://localhost:51200",
+  "requested_duration_seconds": 1200.0,
+  "schedule_end_elapsed_seconds": 1199.964858,
+  "actual_runtime_seconds": 4.91,
+  "actual_duration_seconds": 4.91,
+  "duration_seconds": 4.91,
+  "duration_semantics": {
+    "requested_duration_seconds": "Configured total duration of the workload profile.",
+    "schedule_end_elapsed_seconds": "Planned arrival elapsed time of the final scheduled request.",
+    "actual_runtime_seconds": "Total wall-clock execution time of the generator including profile completion and bounded grace period.",
+    "duration_seconds": "Alias to actual_runtime_seconds (retained for backward compatibility).",
+    "actual_duration_seconds": "Alias to actual_runtime_seconds (retained for backward compatibility)."
+  },
+  "timeout_seconds": 5.0,
+  "max_in_flight": 50,
+  "effective_max_in_flight": 50,
+  "connection_mode": "fresh",
+  "total_offered": 13946,
+  "total_sent": 20,
+  "outcome_totals": {
+    "success_2xx": 20,
+    "client_error_4xx": 0,
+    "server_error_5xx": 0,
+    "timeout": 0,
+    "connection_error": 0,
+    "dropped_overload": 0
+  },
+  "dispatch_lag_stats": {
+    "mean_seconds": 0.002619,
+    "max_seconds": 0.027226,
+    "min_seconds": -0.000241
+  },
+  "client_latency_stats": {
+    "mean_seconds": 0.13059,
+    "p50_seconds": 0.112538,
+    "p95_seconds": 0.240994,
+    "p99_seconds": 0.240994
+  },
+  "schedule_generation_info": {
+    "arrival_process": "poisson",
+    "seed": 9101,
+    "total_planned_requests": 13946,
+    "replayed_from_schedule": null,
+    "schedule_sha256": "647d32ef95ba04275374f852b2bbb8aaf10bab46bb9b4b37cee63ba5bf3ee486"
+  },
+  "test_non_benchmark": false,
+  "start_time_utc": "2026-11-13T15:33:09.173481+00:00",
+  "end_time_utc": "2026-11-13T15:33:14.082439+00:00"
+}
