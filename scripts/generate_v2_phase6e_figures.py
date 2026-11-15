@@ -375,6 +375,18 @@ def plot_evaluation_figures() -> None:
         "persistent-data/evaluation_v2/eval_final/runs/eval_cpu_step*/normalized_series.json",
         "Latency distributions sit mostly below the SLA line at eval_final's light load levels.", "Results",
     )
+    _boxplot_figure(
+        series_by_name, "eval_memory_ramp", "evaluation_p95_boxplot_eval_memory_ramp",
+        "Box plot of per-decision p95 latency, pooled across 3 repeats, eval_memory_ramp, eval_final. Dashed line = 1000ms SLA. A p95 of exactly 975ms is a histogram-bucket artefact (true value somewhere in 0.5-1.0s).",
+        "persistent-data/evaluation_v2/eval_final/runs/eval_memory_ramp*/normalized_series.json",
+        "Latencies cluster tightly near the 975ms histogram bucket for every arm at eval_final's light load levels.", "Results",
+    )
+    _boxplot_figure(
+        series_by_name, "eval_mixed_burst", "evaluation_p95_boxplot_eval_mixed_burst",
+        "Box plot of per-decision p95 latency, pooled across 3 repeats, eval_mixed_burst, eval_final. Dashed line = 1000ms SLA. A p95 of exactly 975ms is a histogram-bucket artefact (true value somewhere in 0.5-1.0s).",
+        "persistent-data/evaluation_v2/eval_final/runs/eval_mixed_burst*/normalized_series.json",
+        "Latencies cluster tightly near the 975ms histogram bucket for every arm at eval_final's light load levels.", "Results",
+    )
 
     for profile in EVAL_PROFILE_NAMES:
         _replicas_over_time_figure(
@@ -442,6 +454,18 @@ def plot_stress_figures() -> None:
         "Box plot of per-decision p95 latency, 1 repeat, stress_cpu_burst, stress_explore (exploratory, 1 repeat, CORR-65). Dashed line = 1000ms SLA. A p95 of exactly 975ms is a histogram-bucket artefact (true value somewhere in 0.5-1.0s).",
         "persistent-data/evaluation_v2/stress_explore/runs/stress_cpu_burst*/normalized_series.json",
         "Latency distributions widen and shift above the SLA line at stress-test peak loads.", "Results",
+    )
+    _boxplot_figure(
+        series_by_name, "stress_memory_ramp", "stress_p95_boxplot_stress_memory_ramp",
+        "Box plot of per-decision p95 latency, 1 repeat, stress_memory_ramp, stress_explore (exploratory, 1 repeat, CORR-65). Dashed line = 1000ms SLA. A p95 of exactly 975ms is a histogram-bucket artefact (true value somewhere in 0.5-1.0s).",
+        "persistent-data/evaluation_v2/stress_explore/runs/stress_memory_ramp*/normalized_series.json",
+        "Latency distributions stay near the 975ms histogram bucket for every arm, with no SLA breaches, even at a training-level ramp peak.", "Results",
+    )
+    _boxplot_figure(
+        series_by_name, "stress_mixed_burst", "stress_p95_boxplot_stress_mixed_burst",
+        "Box plot of per-decision p95 latency, 1 repeat, stress_mixed_burst, stress_explore (exploratory, 1 repeat, CORR-65). Dashed line = 1000ms SLA. A p95 of exactly 975ms is a histogram-bucket artefact (true value somewhere in 0.5-1.0s).",
+        "persistent-data/evaluation_v2/stress_explore/runs/stress_mixed_burst*/normalized_series.json",
+        "PPO shows a wider spread above the SLA line than either HPA arm on this profile, consistent with its higher SLA-violation rate here.", "Results",
     )
 
     for profile in STRESS_PROFILE_NAMES:
