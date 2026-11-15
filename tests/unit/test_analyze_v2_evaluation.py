@@ -274,3 +274,97 @@ class TestRealTrainingCurveSmoke:
         curve = av.analyze_training_curve()
         assert len(curve) == len(completed)
         assert all(row["mean_step_reward"] is not None for row in curve)
+
+
+class TestIsBetterInAllRepeatsRefusesSingleRepeat:
+    """V2 Phase 6B / CORR-65: "better in all repeats" is not a meaningful
+    claim from a single repeat (the EXPLORATORY stress plan) -- must
+    return None, never a trivially-true verdict from one data point."""
+
+    def test_single_repeat_each_side_returns_none_even_if_strictly_better(self):
+        assert av.is_better_in_all_repeats([1.0], [4.0], lower_is_better=True) is None
+
+    def test_single_repeat_tie_also_returns_none(self):
+        assert av.is_better_in_all_repeats([4.0], [4.0], lower_is_better=True) is None
+
+
+class TestWriteEvaluationTablesDescriptiveOnlyForSingleRepeat:
+    """V2 Phase 6B / CORR-65: when EVERY (profile, arm_id) cell has
+    n_repeats<=1, the table must switch to a descriptive-only, EXPLORATORY-
+    labelled format (no mean +/- sd framing, no verdict)."""
+
+    def test_single_repeat_everywhere_triggers_descriptive_labelling(self, tmp_path):
+        run_metrics = [
+            av.compute_run_metrics(av.normalize_run_series_from_dict(
+                _make_series_dict("r1", "stress_cpu_burst", "ppo_v2", 0, [100.0], [2]))),
+            av.compute_run_metrics(av.normalize_run_series_from_dict(
+                _make_series_dict("r2", "stress_cpu_burst", "hpa_v2_cpu_memory", 0, [200.0], [2]))),
+        ]
+        aggregated = av.aggregate_per_profile_arm(run_metrics)
+        result = av.write_evaluation_tables(aggregated, tmp_path)
+        md_text = result["md"].read_text()
+        assert "EXPLORATORY" in md_text
+        assert "descriptive only" in md_text.lower()
+        assert "mean ± sd" not in md_text
+        csv_text = result["csv"].read_text()
+        assert "mean_p95_latency_ms_value" in csv_text
+        assert "mean_p95_latency_ms_mean" not in csv_text
+        assert "mean_p95_latency_ms_sd" not in csv_text
+
+    def test_multi_repeat_campaign_keeps_existing_mean_sd_framing(self, tmp_path):
+        run_metrics = [
+            av.compute_run_metrics(av.normalize_run_series_from_dict(
+                _make_series_dict(f"r{i}", "eval_cpu_step", "ppo_v2", i, [v], [2])))
+            for i, v in enumerate([100.0, 200.0, 300.0])
+        ]
+        aggregated = av.aggregate_per_profile_arm(run_metrics)
+        result = av.write_evaluation_tables(aggregated, tmp_path)
+        md_text = result["md"].read_text()
+        assert "EXPLORATORY" not in md_text
+        assert "mean ± sd" in md_text
+        csv_text = result["csv"].read_text()
+        assert "mean_p95_latency_ms_mean" in csv_text
+        assert "mean_p95_latency_ms_sd" in csv_text
+
+
+class TestPlotEvaluationFiguresLabelsExploratoryForSingleRepeat:
+    def test_single_repeat_figure_title_is_labelled(self, tmp_path, monkeypatch):
+        import matplotlib.axes
+
+        titles = []
+        original_set_title = matplotlib.axes.Axes.set_title
+
+        def _capture_set_title(self, label, *args, **kwargs):
+            titles.append(label)
+            return original_set_title(self, label, *args, **kwargs)
+
+        monkeypatch.setattr(matplotlib.axes.Axes, "set_title", _capture_set_title)
+
+        run_metrics = [av.compute_run_metrics(av.normalize_run_series_from_dict(
+            _make_series_dict("r1", "p", "ppo_v2", 0, [100.0], [2])))]
+        aggregated = av.aggregate_per_profile_arm(run_metrics)
+        paths = av.plot_evaluation_figures(aggregated, tmp_path)
+        assert all(p.exists() for p in paths)
+        assert titles  # at least one figure was drawn
+        assert all("EXPLORATORY" in t for t in titles)
+
+    def test_multi_repeat_figure_title_is_not_labelled(self, tmp_path, monkeypatch):
+        import matplotlib.axes
+
+        titles = []
+        original_set_title = matplotlib.axes.Axes.set_title
+
+        def _capture_set_title(self, label, *args, **kwargs):
+            titles.append(label)
+            return original_set_title(self, label, *args, **kwargs)
+
+        monkeypatch.setattr(matplotlib.axes.Axes, "set_title", _capture_set_title)
+
+        run_metrics = [
+            av.compute_run_metrics(av.normalize_run_series_from_dict(_make_series_dict(f"r{i}", "p", "ppo_v2", i, [v], [2])))
+            for i, v in enumerate([100.0, 200.0, 300.0])
+        ]
+        aggregated = av.aggregate_per_profile_arm(run_metrics)
+        av.plot_evaluation_figures(aggregated, tmp_path)
+        assert titles
+        assert all("EXPLORATORY" not in t for t in titles)

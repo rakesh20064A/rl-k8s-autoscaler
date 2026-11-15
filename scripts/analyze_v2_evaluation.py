@@ -183,8 +183,15 @@ def is_better_in_all_repeats(values_a: Sequence[float], values_b: Sequence[float
     """Arm A is 'better' than arm B on this metric ONLY if, paired by
     repeat index, A beats B in EVERY repeat -- per the pre-registration's
     decision rule. Returns None if the repeat counts don't match (cannot
-    pair) or either side has no data."""
+    pair) or either side has no data.
+
+    V2 Phase 6B / CORR-65: also returns None if either side has fewer
+    than 2 repeats -- "better in all repeats" is not a meaningful claim
+    with only 1 repeat (e.g. the EXPLORATORY stress plan), and must never
+    be silently reported as a decidable verdict from a single observation."""
     if not values_a or not values_b or len(values_a) != len(values_b):
+        return None
+    if len(values_a) < 2:
         return None
     if lower_is_better:
         return all(a < b for a, b in zip(values_a, values_b))
@@ -222,16 +229,32 @@ def compare_arms_per_profile(run_metrics: List[Dict[str, Any]], arm_a: str, arm_
 
 
 def write_evaluation_tables(aggregated: Dict[tuple, Dict[str, Any]], output_dir: Path) -> Dict[str, Path]:
+    """V2 Phase 6B / CORR-65: if EVERY (profile, arm_id) cell has only 1
+    repeat (e.g. the EXPLORATORY stress plan: 1 repeat per profile x arm
+    by design), the "mean +/- sd over repeats" framing is actively
+    misleading (sd=0.0 from a single point looks like a measured spread)
+    and the pre-registration's "better in all 3 repeats" rule cannot be
+    applied -- emit a DESCRIPTIVE-only table (single `value` column per
+    metric, no sd, no verdict) explicitly labelled EXPLORATORY instead.
+    Mixed repeat counts (some cells 1, others >1) keep the existing
+    mean +/- sd framing unchanged -- this only triggers when the whole
+    campaign has n_repeats==1 everywhere, i.e. eval_final's own output is
+    byte-for-byte unchanged."""
     output_dir.mkdir(parents=True, exist_ok=True)
     csv_path = output_dir / "evaluation_summary.csv"
     md_path = output_dir / "evaluation_summary.md"
+
+    descriptive_only = bool(aggregated) and all(agg["n_repeats"] <= 1 for agg in aggregated.values())
 
     rows = []
     for (profile, arm_id), agg in sorted(aggregated.items()):
         row = {"profile": profile, "arm_id": arm_id, "n_repeats": agg["n_repeats"]}
         for metric in ALL_METRICS:
-            row[f"{metric}_mean"] = agg[metric]["mean"]
-            row[f"{metric}_sd"] = agg[metric]["sd"]
+            if descriptive_only:
+                row[f"{metric}_value"] = agg[metric]["mean"]
+            else:
+                row[f"{metric}_mean"] = agg[metric]["mean"]
+                row[f"{metric}_sd"] = agg[metric]["sd"]
         rows.append(row)
 
     if rows:
@@ -240,18 +263,41 @@ def write_evaluation_tables(aggregated: Dict[tuple, Dict[str, Any]], output_dir:
             writer.writeheader()
             writer.writerows(rows)
 
-    lines = ["# V2 Evaluation Summary (mean ± sd over repeats)", ""]
-    for (profile, arm_id), agg in sorted(aggregated.items()):
-        lines.append(f"## {profile} / {arm_id} (n_repeats={agg['n_repeats']})")
-        lines.append("")
-        lines.append("| metric | mean | sd |")
-        lines.append("|---|---|---|")
-        for metric in ALL_METRICS:
-            mean, sd = agg[metric]["mean"], agg[metric]["sd"]
-            mean_str = f"{mean:.4f}" if mean is not None else "n/a"
-            sd_str = f"{sd:.4f}" if sd is not None else "n/a"
-            lines.append(f"| {metric} | {mean_str} | {sd_str} |")
-        lines.append("")
+    if descriptive_only:
+        lines = [
+            "# V2 EXPLORATORY Evaluation Summary (n_repeats=1 per cell -- descriptive only)",
+            "",
+            "Each cell below has exactly 1 repeat. This is DESCRIPTIVE ONLY: the "
+            "pre-registration's \"better in all 3 repeats\" decision rule "
+            "(EVALUATION_PREREGISTRATION.json) cannot be applied and is NOT applied "
+            "here -- no verdict, no aggregate winner, no claim of statistical "
+            "significance. These results never supersede or merge into the "
+            "pre-registered eval_final results.",
+            "",
+        ]
+        for (profile, arm_id), agg in sorted(aggregated.items()):
+            lines.append(f"## {profile} / {arm_id} (n_repeats={agg['n_repeats']}, EXPLORATORY)")
+            lines.append("")
+            lines.append("| metric | value |")
+            lines.append("|---|---|")
+            for metric in ALL_METRICS:
+                value = agg[metric]["mean"]
+                value_str = f"{value:.4f}" if value is not None else "n/a"
+                lines.append(f"| {metric} | {value_str} |")
+            lines.append("")
+    else:
+        lines = ["# V2 Evaluation Summary (mean ± sd over repeats)", ""]
+        for (profile, arm_id), agg in sorted(aggregated.items()):
+            lines.append(f"## {profile} / {arm_id} (n_repeats={agg['n_repeats']})")
+            lines.append("")
+            lines.append("| metric | mean | sd |")
+            lines.append("|---|---|---|")
+            for metric in ALL_METRICS:
+                mean, sd = agg[metric]["mean"], agg[metric]["sd"]
+                mean_str = f"{mean:.4f}" if mean is not None else "n/a"
+                sd_str = f"{sd:.4f}" if sd is not None else "n/a"
+                lines.append(f"| {metric} | {mean_str} | {sd_str} |")
+            lines.append("")
     md_path.write_text("\n".join(lines), encoding="utf-8")
 
     return {"csv": csv_path, "md": md_path}
@@ -267,6 +313,12 @@ def plot_evaluation_figures(aggregated: Dict[tuple, Dict[str, Any]], output_dir:
     paths: List[Path] = []
     profiles = sorted({profile for profile, _ in aggregated})
 
+    # V2 Phase 6B / CORR-65: label figures EXPLORATORY when every cell has
+    # only 1 repeat (same detection rule as write_evaluation_tables()), so
+    # a figure from the stress plan can never be mistaken for eval_final's.
+    descriptive_only = bool(aggregated) and all(agg["n_repeats"] <= 1 for agg in aggregated.values())
+    title_prefix = "V2 EXPLORATORY evaluation" if descriptive_only else "V2 evaluation"
+
     for metric in PRIMARY_METRICS:
         fig, ax = plt.subplots(figsize=(8, 4.5))
         width = 0.25
@@ -279,7 +331,7 @@ def plot_evaluation_figures(aggregated: Dict[tuple, Dict[str, Any]], output_dir:
         ax.set_xticks([j + width for j in range(len(profiles))])
         ax.set_xticklabels(profiles, rotation=20, ha="right")
         ax.set_ylabel(metric)
-        ax.set_title(f"V2 evaluation: {metric} by profile/arm")
+        ax.set_title(f"{title_prefix}: {metric} by profile/arm")
         ax.legend()
         fig.tight_layout()
         path = output_dir / f"{metric}.png"

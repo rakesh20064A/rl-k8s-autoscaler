@@ -1,0 +1,51 @@
+# configs/traffic_profiles/v2_stress/stress_memory_ramp.yaml
+# V2 Phase 6B / CORR-65: EXPLORATORY, POST-HOC stress profile -- decided
+# and designed AFTER eval_final's results were already analyzed and
+# reported (Phase 6A). NOT a member of
+# autoscaler.src.rl_env.training_contract_v2.V2_TRAINING_PROFILE_ALLOWLIST
+# -- the live training schedule can never select it, by the same
+# construction-level proof pattern as
+# tests/unit/test_v2_eval_profiles.py::TestTrainingFirewall. Distinct
+# from every configs/traffic_profiles/v2_eval/ and
+# configs/traffic_profiles/v2_demo/ profile name.
+#
+# Seed 9202 is not used by any V2 training profile (seed: 42) nor any
+# v2_eval profile (9101-9103).
+#
+# Shape: memory-only resource mode, gradual ramp up to a ~45 RPS
+# plateau, hold, then gradual ramp down -- three phases summing exactly
+# to 1200s (matching the unified-schema convention already used by
+# configs/traffic_profiles/v2_eval/eval_memory_ramp.yaml, not the
+# legacy flat-ramp schema's known inconsistency noted there). Peak RPS
+# (45) sits between training's constant_memory peak (20) and
+# ramp_mixed's own ramp peak (60) -- within the training envelope,
+# never beyond it. memory_mb=16 / memory_safe_max_in_flight=8 reuse the
+# same safety ceiling already validated live for every V2 memory/mixed
+# profile.
+
+profile: stress_memory_ramp
+description: "V2 Phase 6B exploratory stress: memory-only, ramp to ~45 RPS plateau then back down"
+seed: 9202
+
+intensity: 3
+endpoint: /work
+
+resource_mode: memory
+memory_mb: 16
+memory_safe_max_in_flight: 8
+
+phases:
+  - type: ramp
+    name: ramp_up
+    duration_seconds: 500
+    start_rps: 3
+    end_rps: 45
+  - type: constant
+    name: hold
+    duration_seconds: 200
+    target_rps: 45
+  - type: ramp
+    name: ramp_down
+    duration_seconds: 500
+    start_rps: 45
+    end_rps: 3

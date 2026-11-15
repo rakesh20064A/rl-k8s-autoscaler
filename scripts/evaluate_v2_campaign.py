@@ -84,8 +84,18 @@ from scripts.eval_v2_episodes import (  # noqa: E402
 EVAL_PROFILE_DIR = PROJECT_ROOT / "configs" / "traffic_profiles" / "v2_eval"
 EVAL_PROFILE_ALLOWLIST = ("eval_cpu_step", "eval_memory_ramp", "eval_mixed_burst")
 
+# V2 Phase 6B / CORR-65: the 3 EXPLORATORY, POST-HOC stress profiles ONLY --
+# same firewall pattern as EVAL_PROFILE_DIR/EVAL_PROFILE_ALLOWLIST above,
+# a completely separate allowlist/directory, structurally unable to select
+# any training or held-out-evaluation profile.
+STRESS_PROFILE_DIR = PROJECT_ROOT / "configs" / "traffic_profiles" / "v2_stress"
+STRESS_PROFILE_ALLOWLIST = ("stress_cpu_burst", "stress_memory_ramp", "stress_mixed_burst")
+
 PREREGISTRATION_PATH = (
     PROJECT_ROOT / "persistent-data" / "rl_training_v2" / "final_min2" / "EVALUATION_PREREGISTRATION.json"
+)
+STRESS_PLAN_PATH = (
+    PROJECT_ROOT / "persistent-data" / "rl_training_v2" / "final_min2" / "EXPLORATORY_STRESS_PLAN.json"
 )
 EVAL_OUTPUT_ROOT = PROJECT_ROOT / "persistent-data" / "evaluation_v2"
 
@@ -116,6 +126,25 @@ def resolve_eval_profile_metadata(profile_name: str) -> "to.ProfileMetadata":
     )
 
 
+def resolve_stress_profile_metadata(profile_name: str) -> "to.ProfileMetadata":
+    """V2 Phase 6B / CORR-65: the EXPLORATORY stress-test equivalent of
+    `resolve_eval_profile_metadata()` -- fails closed against
+    `STRESS_PROFILE_ALLOWLIST`/`STRESS_PROFILE_DIR`, structurally unable to
+    select any training or held-out-evaluation profile (different
+    allowlist, different directory)."""
+    if profile_name not in STRESS_PROFILE_ALLOWLIST:
+        raise EvalProfileFirewallViolation(f"{profile_name!r} is not in STRESS_PROFILE_ALLOWLIST {STRESS_PROFILE_ALLOWLIST}")
+    path = STRESS_PROFILE_DIR / f"{profile_name}.yaml"
+    if not path.exists():
+        raise EvalProfileFirewallViolation(f"authorized stress profile file missing on disk: {path}")
+    actual_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+    profile = parse_traffic_profile(path)
+    return to.ProfileMetadata(
+        name=profile_name, path=path, sha256=actual_sha256, seed=profile.seed,
+        duration_seconds=profile.total_duration, n_phases=len(profile.phases),
+    )
+
+
 @dataclass
 class V2EvalTrafficOrchestrator(to.TrafficOrchestrator):
     """V2 Phase 5B: overrides ONLY `start_episode_traffic` to resolve
@@ -123,10 +152,17 @@ class V2EvalTrafficOrchestrator(to.TrafficOrchestrator):
     frozen V1 six-name registry -- every other method (route lifecycle,
     drain, provenance, cleanup) is inherited unmodified, exactly the same
     pattern `v2_traffic_orchestrator.V2TrafficOrchestrator` already uses
-    for V2 training."""
+    for V2 training.
+
+    V2 Phase 6B / CORR-65: `profile_resolver` is injectable (defaults to
+    the existing `resolve_eval_profile_metadata`) so the SAME orchestrator
+    class also drives the EXPLORATORY stress plan (`resolve_stress_profile_metadata`)
+    without any behavior change for the existing eval_final path."""
+
+    profile_resolver: Callable[[str], "to.ProfileMetadata"] = field(default=resolve_eval_profile_metadata)
 
     def start_episode_traffic(self, profile_name: str, episode_id: str) -> "to.GeneratorHandle":
-        profile = resolve_eval_profile_metadata(profile_name)
+        profile = self.profile_resolver(profile_name)
         run_id = to.resolve_next_available_run_id(episode_id, self.traffic_base_dir)
         route = self.ensure_route_established(run_id)
         if not to.verify_route_alive(route, self.http_get):
@@ -222,6 +258,53 @@ def write_run_plan(
 
 
 # ---------------------------------------------------------------------------
+# V2 Phase 6B / CORR-65: EXPLORATORY stress plan (1 repeat, descriptive only)
+# ---------------------------------------------------------------------------
+
+
+def load_exploratory_stress_plan(path: Path = STRESS_PLAN_PATH) -> Dict[str, Any]:
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def build_stress_run_plan(stress_plan: Dict[str, Any]) -> List[RunRecord]:
+    """Same cyclic-Latin-square rotation logic as `build_run_plan()`, but
+    over the 3 EXPLORATORY stress profiles with exactly 1 repeat per
+    profile x arm (9 runs total, not 27) -- reuses `build_run_plan()`
+    unchanged against a preregistration-shaped dict built from the stress
+    plan's own `design.profiles`, so the rotation logic itself is never
+    duplicated."""
+    profiles = [p["name"] for p in stress_plan["design"]["profiles"]]
+    synthetic_preregistration = {"workloads": {"profiles": profiles, "repeats_per_profile_per_arm": 1}}
+    return build_run_plan(synthetic_preregistration)
+
+
+def write_stress_run_plan(
+    runs: List[RunRecord], campaign_id: str, stress_plan: Dict[str, Any], output_path: Path,
+) -> Dict[str, Any]:
+    stress_plan_sha256 = hashlib.sha256(STRESS_PLAN_PATH.read_bytes()).hexdigest()
+    plan = {
+        "campaign_id": campaign_id,
+        "exploratory": True,
+        "created_utc": datetime.now(timezone.utc).isoformat(),
+        "stress_plan_path": str(STRESS_PLAN_PATH.relative_to(PROJECT_ROOT)),
+        "stress_plan_sha256": stress_plan_sha256,
+        "corr_id": stress_plan.get("corr_id"),
+        "arms": list(ARM_IDS),
+        "profiles": sorted({r.profile for r in runs}),
+        "repeats_per_profile_per_arm": 1,
+        "n_blocks": len({r.block_index for r in runs}),
+        "n_runs": len(runs),
+        "order_rule": "cyclic Latin square: block b's arm order = ARM_IDS rotated left by b % len(ARM_IDS)",
+        "runs": [r.to_dict() for r in runs],
+    }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(plan, f, indent=2)
+    return plan
+
+
+# ---------------------------------------------------------------------------
 # Ledger / run_status (resumable, append-only)
 # ---------------------------------------------------------------------------
 
@@ -280,6 +363,11 @@ class CampaignContext:
     settle_seconds: float = 120.0
     runs_dir: Path = field(default_factory=lambda: EVAL_OUTPUT_ROOT / "_unset" / "runs")
     cpu_only_episode_fn: Optional[Callable[["to.ProfileMetadata", str], Dict[str, Any]]] = None
+    # V2 Phase 6B / CORR-65: injectable so the SAME run_one_attempt() also
+    # drives the EXPLORATORY stress plan (resolve_stress_profile_metadata)
+    # -- defaults to the existing eval-plan resolver, no behavior change
+    # for eval_final.
+    profile_resolver_fn: Callable[[str], "to.ProfileMetadata"] = field(default=resolve_eval_profile_metadata)
 
 
 def _safe_cleanup(ctx: CampaignContext) -> Dict[str, Any]:
@@ -325,7 +413,7 @@ def run_one_attempt(run_record: RunRecord, ctx: CampaignContext, attempt_number:
             # that constant in makes this call succeed with NO code change.
             resolve_cpu_only_controller_identity()
 
-        profile_meta = resolve_eval_profile_metadata(run_record.profile)
+        profile_meta = ctx.profile_resolver_fn(run_record.profile)
         handle = ctx.orchestrator.start_episode_traffic(run_record.profile, episode_id)
         try:
             if run_record.arm_id == "ppo_v2":
@@ -377,9 +465,15 @@ def run_one_attempt(run_record: RunRecord, ctx: CampaignContext, attempt_number:
 
 def run_campaign(
     campaign_id: str, ctx: CampaignContext, output_root: Path = EVAL_OUTPUT_ROOT,
-    preregistration: Optional[Dict[str, Any]] = None,
+    preregistration: Optional[Dict[str, Any]] = None, plan: str = "eval",
 ) -> Dict[str, Any]:
-    preregistration = preregistration or load_preregistration()
+    """V2 Phase 6B / CORR-65: `plan="stress"` builds and resumes the
+    EXPLORATORY stress plan (campaign_id defaults to `stress_explore` by
+    convention at the CLI layer) instead of the pre-registered eval_final
+    plan -- same ledger/resume/retry/cleanup control flow, unchanged."""
+    if plan not in ("eval", "stress"):
+        raise ValueError(f"plan must be 'eval' or 'stress', got {plan!r}")
+
     campaign_dir = output_root / campaign_id
     plan_path = campaign_dir / "RUN_PLAN.json"
     ledger_path = campaign_dir / "ledger.jsonl"
@@ -388,11 +482,16 @@ def run_campaign(
 
     if plan_path.exists():
         with open(plan_path, encoding="utf-8") as f:
-            plan = json.load(f)
-        runs = [RunRecord(**{k: v for k, v in r.items() if k != "run_id"}) for r in plan["runs"]]
+            run_plan = json.load(f)
+        runs = [RunRecord(**{k: v for k, v in r.items() if k != "run_id"}) for r in run_plan["runs"]]
+    elif plan == "stress":
+        stress_plan = load_exploratory_stress_plan()
+        runs = build_stress_run_plan(stress_plan)
+        run_plan = write_stress_run_plan(runs, campaign_id, stress_plan, plan_path)
     else:
+        preregistration = preregistration or load_preregistration()
         runs = build_run_plan(preregistration)
-        plan = write_run_plan(runs, campaign_id, preregistration, plan_path)
+        run_plan = write_run_plan(runs, campaign_id, preregistration, plan_path)
 
     ledger = load_ledger(ledger_path)
     done = completed_run_ids(ledger)
@@ -443,13 +542,14 @@ class _FakeOrchestrator:
     command runner (which `to.TrafficOrchestrator.ensure_route_established()`
     needs for real). Records every call for test assertions."""
 
-    def __init__(self) -> None:
+    def __init__(self, profile_resolver: Callable[[str], "to.ProfileMetadata"] = resolve_eval_profile_metadata) -> None:
         self.started: List[tuple] = []
         self.stopped: List[tuple] = []
         self.drained = 0
+        self.profile_resolver = profile_resolver
 
     def start_episode_traffic(self, profile_name: str, episode_id: str):
-        resolve_eval_profile_metadata(profile_name)  # still exercises the real firewall/parser
+        self.profile_resolver(profile_name)  # still exercises the real firewall/parser
         self.started.append((profile_name, episode_id))
         return {"profile_name": profile_name, "episode_id": episode_id, "fake_handle": True}
 
@@ -486,13 +586,22 @@ def _fake_episode_samples(arm_id: str, profile_name: str, n_decisions: int, base
     return samples
 
 
-def build_dry_run_context(campaign_id: str) -> CampaignContext:
+def build_dry_run_context(campaign_id: str, plan: str = "eval") -> CampaignContext:
     """Every cluster-touching dependency is a fake: no subprocess, no real
     HTTP, no real sleep, no Kubernetes/Prometheus access -- proves the
     planning/resume/retry/cleanup/fail-closed control flow entirely
-    offline."""
+    offline.
+
+    V2 Phase 6B / CORR-65: `plan="stress"` wires the SAME fakes to the
+    EXPLORATORY stress-profile resolver/firewall instead -- the fake
+    episode functions below are already generic over profile name/
+    duration, so no change is needed there."""
+    if plan not in ("eval", "stress"):
+        raise ValueError(f"plan must be 'eval' or 'stress', got {plan!r}")
+    profile_resolver = resolve_eval_profile_metadata if plan == "eval" else resolve_stress_profile_metadata
+
     sleep_recorder = _NoopSleepRecorder()
-    orchestrator = _FakeOrchestrator()
+    orchestrator = _FakeOrchestrator(profile_resolver=profile_resolver)
 
     def fake_ppo_episode(profile_meta: "to.ProfileMetadata", episode_id: str) -> Dict[str, Any]:
         n = int(profile_meta.duration_seconds // 30)
@@ -531,6 +640,7 @@ def build_dry_run_context(campaign_id: str) -> CampaignContext:
         cleanup_fn=lambda: {"restored": True, "fake": True},
         settle_fn=sleep_recorder,
         settle_seconds=120.0,
+        profile_resolver_fn=profile_resolver,
     )
 
 
@@ -592,10 +702,21 @@ def live_preflight_check() -> Dict[str, Any]:
     return {"ok": ok, "lock": lock, "hpa_names": hpas}
 
 
-def build_live_context(model_path: Path, epsilon: float, settle_seconds: float = 120.0) -> CampaignContext:
+def build_live_context(
+    model_path: Path, epsilon: float, settle_seconds: float = 120.0, plan: str = "eval",
+) -> CampaignContext:
     """V2 Phase 5D: wires the SAME control flow to the REAL, unified
     per-arm episode functions in scripts/eval_v2_episodes.py (all three
-    arms now measured identically)."""
+    arms now measured identically).
+
+    V2 Phase 6B / CORR-65: `plan="stress"` wires the SAME control flow to
+    the EXPLORATORY stress-profile resolver/firewall instead -- the
+    per-arm episode functions themselves (`run_ppo_v2_eval_episode` etc.)
+    are already generic over profile name/duration, so no change is
+    needed there; only profile resolution/firewall differs."""
+    if plan not in ("eval", "stress"):
+        raise ValueError(f"plan must be 'eval' or 'stress', got {plan!r}")
+    profile_resolver = resolve_eval_profile_metadata if plan == "eval" else resolve_stress_profile_metadata
 
     def _http_get(url: str, timeout: float):
         """Real HTTP GET -- identical implementation to
@@ -624,6 +745,7 @@ def build_live_context(model_path: Path, epsilon: float, settle_seconds: float =
     # customized here.
     orchestrator = V2EvalTrafficOrchestrator(
         ledger_path=EVAL_OUTPUT_ROOT / "traffic_provenance_ledger_eval_v2.jsonl",
+        profile_resolver=profile_resolver,
     )
     orchestrator.http_get = _http_get
 
@@ -671,6 +793,7 @@ def build_live_context(model_path: Path, epsilon: float, settle_seconds: float =
         orchestrator=orchestrator, preflight_fn=live_preflight_check, ppo_episode_fn=ppo_episode,
         hpa_episode_fn=hpa_episode, cpu_only_episode_fn=cpu_only_episode, cleanup_fn=restore_canonical_idle_state,
         settle_fn=__import__("time").sleep, settle_seconds=settle_seconds,
+        profile_resolver_fn=profile_resolver,
     )
 
 
@@ -754,9 +877,15 @@ def main(argv: Optional[List[str]] = None) -> int:
              "Requires --corr-id.",
     )
     parser.add_argument("--corr-id", default=None, help="The CORR-NN id this --rerun-after-fix is authorized under.")
+    parser.add_argument(
+        "--plan", choices=["eval", "stress"], default="eval",
+        help="V2 Phase 6B / CORR-65: 'eval' (default) runs the pre-registered eval_final plan (27 runs); "
+             "'stress' runs the EXPLORATORY, POST-HOC stress plan (9 runs, 1 repeat, descriptive only).",
+    )
     args = parser.parse_args(argv)
 
-    campaign_id = args.campaign_id or f"campaign_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+    default_campaign_id = "stress_explore" if args.plan == "stress" else f"campaign_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+    campaign_id = args.campaign_id or default_campaign_id
     output_root = Path(args.output_root)
 
     if args.rerun_after_fix:
@@ -777,16 +906,16 @@ def main(argv: Optional[List[str]] = None) -> int:
         with open(args.epsilon_calibration_path, encoding="utf-8") as f:
             calibration = json.load(f)
         epsilon = calibration["epsilon"]
-        ctx = build_live_context(Path(args.model_path), epsilon)
+        ctx = build_live_context(Path(args.model_path), epsilon, plan=args.plan)
     else:
-        ctx = build_dry_run_context(campaign_id)
+        ctx = build_dry_run_context(campaign_id, plan=args.plan)
 
     if args.rerun_after_fix:
         result = rerun_run_after_fix(campaign_id, args.rerun_after_fix, ctx, args.corr_id, output_root=output_root)
         print(json.dumps(result, indent=2, default=str))
         return 0 if result["ok"] else 1
 
-    result = run_campaign(campaign_id, ctx, output_root=output_root)
+    result = run_campaign(campaign_id, ctx, output_root=output_root, plan=args.plan)
     print(json.dumps(result, indent=2, default=str))
     return 0 if result["ok"] else 1
 

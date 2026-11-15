@@ -1,0 +1,42 @@
+# configs/traffic_profiles/v2_stress/stress_mixed_burst.yaml
+# V2 Phase 6B / CORR-65: EXPLORATORY, POST-HOC stress profile -- decided
+# and designed AFTER eval_final's results were already analyzed and
+# reported (Phase 6A). NOT a member of
+# autoscaler.src.rl_env.training_contract_v2.V2_TRAINING_PROFILE_ALLOWLIST
+# -- the live training schedule can never select it, by the same
+# construction-level proof pattern as
+# tests/unit/test_v2_eval_profiles.py::TestTrainingFirewall. Distinct
+# from every configs/traffic_profiles/v2_eval/ and
+# configs/traffic_profiles/v2_demo/ profile name.
+#
+# Seed 9203 is not used by any V2 training profile (seed: 42) nor any
+# v2_eval profile (9101-9103).
+#
+# Shape: mixed CPU+memory resource mode, repeated bursts. Baseline/
+# burst/timing values are IDENTICAL to the training profile
+# configs/traffic_profiles/v2/burst_mixed.yaml (baseline_rps=5,
+# burst_rps=70, burst_duration_seconds=30,
+# inter_burst_interval_seconds=120, intensity=4, memory_mb=16,
+# memory_safe_max_in_flight=8) -- this is deliberately the SAME peak the
+# model and HPA manifests were already validated against live during
+# training, never a harder regime.
+
+profile: stress_mixed_burst
+description: "V2 Phase 6B exploratory stress: mixed CPU+memory, repeated bursts at training-level peak (70 RPS)"
+seed: 9203
+
+intensity: 4
+endpoint: /work
+
+resource_mode: mixed
+memory_mb: 16
+memory_safe_max_in_flight: 8
+
+phases:
+  - type: burst
+    name: burst
+    duration_seconds: 1200
+    baseline_rps: 5
+    burst_rps: 70
+    burst_duration_seconds: 30
+    inter_burst_interval_seconds: 120

@@ -559,3 +559,106 @@ class TestRestoreCanonicalIdleStateDeletesExtraHpas:
         campaign_mod.restore_canonical_idle_state()
         hpa_names = captured["backend"]._kubectl.list_hpa_names()
         assert hpa_names == ["demo-app-hpa-v2"]
+
+
+# ---------------------------------------------------------------------------
+# V2 Phase 6B / CORR-65: --plan stress (EXPLORATORY, 1 repeat, 9 runs)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def stress_plan():
+    return campaign_mod.load_exploratory_stress_plan()
+
+
+class TestStressRunPlanConstruction:
+    def test_9_runs_total(self, stress_plan):
+        runs = campaign_mod.build_stress_run_plan(stress_plan)
+        assert len(runs) == 9
+
+    def test_3_blocks_of_3_arms(self, stress_plan):
+        runs = campaign_mod.build_stress_run_plan(stress_plan)
+        blocks = {r.block_index for r in runs}
+        assert len(blocks) == 3
+        for b in blocks:
+            arms_in_block = {r.arm_id for r in runs if r.block_index == b}
+            assert arms_in_block == set(campaign_mod.ARM_IDS)
+
+    def test_exactly_1_repeat_per_profile_per_arm(self, stress_plan):
+        runs = campaign_mod.build_stress_run_plan(stress_plan)
+        from collections import Counter
+
+        counts = Counter((r.profile, r.arm_id) for r in runs)
+        assert all(c == 1 for c in counts.values())
+
+    def test_profiles_match_stress_plan_design(self, stress_plan):
+        runs = campaign_mod.build_stress_run_plan(stress_plan)
+        expected = {p["name"] for p in stress_plan["design"]["profiles"]}
+        assert {r.profile for r in runs} == expected
+
+    def test_run_ids_are_unique(self, stress_plan):
+        runs = campaign_mod.build_stress_run_plan(stress_plan)
+        assert len({r.run_id for r in runs}) == 9
+
+
+class TestWriteStressRunPlan:
+    def test_plan_written_is_labelled_exploratory(self, tmp_path, stress_plan):
+        runs = campaign_mod.build_stress_run_plan(stress_plan)
+        plan_path = tmp_path / "RUN_PLAN.json"
+        plan = campaign_mod.write_stress_run_plan(runs, "stress_explore_test", stress_plan, plan_path)
+        assert plan_path.exists()
+        assert plan["n_runs"] == 9
+        assert plan["exploratory"] is True
+        assert plan["corr_id"] == "CORR-65"
+        with open(plan_path, encoding="utf-8") as f:
+            reloaded = json.load(f)
+        assert reloaded["campaign_id"] == "stress_explore_test"
+        assert reloaded["exploratory"] is True
+        assert len(reloaded["runs"]) == 9
+
+
+class TestStressProfileFirewall:
+    def test_resolves_a_real_stress_profile(self):
+        meta = campaign_mod.resolve_stress_profile_metadata("stress_cpu_burst")
+        assert meta.name == "stress_cpu_burst"
+        assert meta.duration_seconds == 1200.0
+
+    def test_refuses_an_eval_profile_name(self):
+        with pytest.raises(campaign_mod.EvalProfileFirewallViolation):
+            campaign_mod.resolve_stress_profile_metadata("eval_cpu_step")
+
+    def test_refuses_a_training_profile_name(self):
+        with pytest.raises(campaign_mod.EvalProfileFirewallViolation):
+            campaign_mod.resolve_stress_profile_metadata("constant_cpu")
+
+    def test_refuses_an_unknown_name(self):
+        with pytest.raises(campaign_mod.EvalProfileFirewallViolation):
+            campaign_mod.resolve_stress_profile_metadata("not_a_real_profile")
+
+    def test_eval_resolver_refuses_a_stress_profile_name(self):
+        # Cross-check: the EVAL firewall must not accept a stress name either.
+        with pytest.raises(campaign_mod.EvalProfileFirewallViolation):
+            campaign_mod.resolve_eval_profile_metadata("stress_cpu_burst")
+
+
+class TestDryRunStressCampaign:
+    def test_full_stress_campaign_completes_with_9_runs(self, tmp_path):
+        ctx = campaign_mod.build_dry_run_context("stress_dr1", plan="stress")
+        result = campaign_mod.run_campaign("stress_dr1", ctx, output_root=tmp_path, plan="stress")
+        assert result["ok"] is True
+        assert result["status"] == "COMPLETE"
+        assert result["n_runs"] == 9
+
+    def test_eval_plan_default_is_unchanged(self, tmp_path):
+        # Backward-compat: no plan= argument still runs the 27-run eval plan.
+        ctx = campaign_mod.build_dry_run_context("eval_dr1")
+        result = campaign_mod.run_campaign("eval_dr1", ctx, output_root=tmp_path)
+        assert result["ok"] is True
+        assert result["n_runs"] == 27
+
+    def test_invalid_plan_value_rejected(self, tmp_path):
+        with pytest.raises(ValueError):
+            campaign_mod.build_dry_run_context("bad", plan="not_a_plan")
+        with pytest.raises(ValueError):
+            ctx = campaign_mod.build_dry_run_context("bad")
+            campaign_mod.run_campaign("bad", ctx, output_root=tmp_path, plan="not_a_plan")

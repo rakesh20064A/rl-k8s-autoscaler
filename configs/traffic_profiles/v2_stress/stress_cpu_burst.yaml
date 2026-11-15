@@ -1,0 +1,43 @@
+# configs/traffic_profiles/v2_stress/stress_cpu_burst.yaml
+# V2 Phase 6B / CORR-65: EXPLORATORY, POST-HOC stress profile -- decided
+# and designed AFTER eval_final's results were already analyzed and
+# reported (Phase 6A). NOT a member of
+# autoscaler.src.rl_env.training_contract_v2.V2_TRAINING_PROFILE_ALLOWLIST
+# -- the live training schedule can never select it, by the same
+# construction-level proof pattern as
+# tests/unit/test_v2_eval_profiles.py::TestTrainingFirewall. Distinct
+# from every configs/traffic_profiles/v2_eval/ and
+# configs/traffic_profiles/v2_demo/ profile name.
+#
+# Seed 9201 is not used by any V2 training profile (seed: 42) nor any
+# v2_eval profile (9101-9103).
+#
+# Shape: repeated bursts, CPU-only resource mode. Baseline/burst/timing
+# values are IDENTICAL to the training profile
+# configs/traffic_profiles/v2/burst_mixed.yaml (baseline_rps=5,
+# burst_rps=70, burst_duration_seconds=30,
+# inter_burst_interval_seconds=120, intensity=4) -- this is deliberately
+# the SAME peak the model and HPA manifests were already validated
+# against live during training, never a harder regime. Peak RPS (70) and
+# intensity (4) are both <= what training's own burst_mixed profile
+# already covers (EXPLORATORY_STRESS_PLAN.json's own
+# within_training_envelope ceiling).
+
+profile: stress_cpu_burst
+description: "V2 Phase 6B exploratory stress: CPU-only, repeated bursts at training-level peak (70 RPS)"
+seed: 9201
+
+intensity: 4
+endpoint: /work
+
+resource_mode: cpu
+memory_mb: 0
+
+phases:
+  - type: burst
+    name: burst
+    duration_seconds: 1200
+    baseline_rps: 5
+    burst_rps: 70
+    burst_duration_seconds: 30
+    inter_burst_interval_seconds: 120
