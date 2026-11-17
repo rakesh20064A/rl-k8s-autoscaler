@@ -1,0 +1,80 @@
+\chapter{Cost Analysis}
+\label{ch:cost}
+
+\section{Hardware Requirements}
+
+Table~\ref{tab:cost-hardware} lists the hardware used to build and run this
+project. No hardware was purchased specifically for this project; the
+laptop was already owned before the project began.
+
+\begin{table}[H]
+\centering
+\caption{Hardware requirements.}
+\label{tab:cost-hardware}
+\begin{tabular}{lll}
+\toprule
+Item & Specification & Status \\
+\midrule
+Laptop & MacBook Air, Apple M1, 8\,GB RAM, 256\,GB SSD & Already owned \\
+Internet connection & Broadband, for package/image downloads & Already available \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Software Requirements}
+
+Table~\ref{tab:cost-software} lists the software this project depends on.
+Every item is open-source and free to use; none required a paid licence
+or subscription.
+
+\begin{table}[H]
+\centering
+\caption{Software requirements.}
+\label{tab:cost-software}
+\begin{tabular}{lll}
+\toprule
+Item & Role & Licence cost \\
+\midrule
+Docker Desktop & Container runtime for Minikube & Free (personal use) \\
+Minikube & Single-node Kubernetes cluster & Free, open source \\
+kubectl, Helm & Cluster administration & Free, open source \\
+kube-prometheus-stack & Prometheus and Grafana & Free, open source \\
+Python 3.10 & Runtime for all project code & Free, open source \\
+Stable-Baselines3, Gymnasium, PyTorch & RL training/inference & Free, open source \\
+FastAPI, Uvicorn & Benchmark service & Free, open source \\
+Streamlit, Plotly & Demo UI & Free, open source \\
+Matplotlib, Graphviz & Figures and diagrams & Free, open source \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Component-Wise Cost}
+
+Table~\ref{tab:cost-total} itemizes cost by component. Because the laptop
+was already owned and every software component is open source, the
+project's total out-of-pocket cost is Rs.~0. The real cost of this project
+was not monetary; it was wall-clock time, since every training and
+evaluation step runs against a live cluster at a fixed 30-second decision
+interval and cannot be sped up the way a simulator-based project could be.
+The full V2 training campaign alone consumed 12,288 real decision steps
+across 48 sessions.
+
+\begin{table}[H]
+\centering
+\caption{Component-wise cost summary.}
+\label{tab:cost-total}
+\begin{tabular}{p{4.3cm}p{8.5cm}p{1.6cm}}
+\toprule
+Component & Basis & Cost (Rs.) \\
+\midrule
+Laptop (hardware) & Already owned, not purchased for this project & 0 \\
+Docker Desktop & Free for personal/educational use & 0 \\
+Minikube, kubectl, Helm & Open source & 0 \\
+kube-prometheus-stack & Open source & 0 \\
+Python and all pinned libraries (Table~\ref{tab:software-stack}) & Open source & 0 \\
+Cloud compute & None used; cluster is local & 0 \\
+\midrule
+\textbf{Total} & & \textbf{0} \\
+\bottomrule
+\end{tabular}
+\end{table}
