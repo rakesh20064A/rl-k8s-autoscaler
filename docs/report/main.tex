@@ -1,0 +1,132 @@
+\documentclass[12pt,a4paper]{report}
+
+% ---------- Page geometry ----------
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{setspace}
+\onehalfspacing
+
+% ---------- Fonts ----------
+\usepackage[T1]{fontenc}
+\usepackage{newtxtext,newtxmath} % Times-like
+
+% ---------- Core packages ----------
+\usepackage{microtype} % font expansion/protrusion: reduces overfull/underfull hbox warnings
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{amsmath}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{tocloft}
+\usepackage{fancyhdr}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xurl} % allow URLs (in references) to break at any character, avoiding overfull hboxes
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{rotating}
+\usepackage{pdflscape}
+
+% ---------- Page numbering bottom centre ----------
+\pagestyle{plain}
+\fancyhf{}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\pagestyle{fancy}
+
+% ---------- Chapter / section heading style (centred CHAPTER N) ----------
+\titleformat{\chapter}[display]
+  {\centering\bfseries}
+  {\MakeUppercase{\chaptertitlename} \thechapter}
+  {4pt}
+  {\centering\MakeUppercase}
+\titlespacing*{\chapter}{0pt}{0pt}{18pt}
+
+\titleformat{\section}
+  {\bfseries\large}{\thesection}{1em}{}
+\titleformat{\subsection}
+  {\bfseries\normalsize}{\thesubsection}{1em}{}
+
+% ---------- Captions ----------
+\captionsetup[figure]{labelfont=bf,font=small,name=Figure,skip=4pt}
+\captionsetup[table]{labelfont=bf,font=small,name=Table,skip=4pt}
+
+% ---------- Tighter float spacing (reduces page count with many figures) ----------
+\setlength{\textfloatsep}{8pt plus 1pt minus 2pt}
+\setlength{\intextsep}{6pt plus 1pt minus 1pt}
+\setlength{\floatsep}{6pt plus 1pt minus 1pt}
+
+% ---------- Listings ----------
+\definecolor{codegray}{rgb}{0.95,0.95,0.95}
+\lstset{
+  basicstyle=\ttfamily\scriptsize,
+  backgroundcolor=\color{codegray},
+  frame=single,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  breaklines=true,
+  breakatwhitespace=false,
+  showstringspaces=false,
+  columns=flexible,
+  keepspaces=true,
+  captionpos=b,
+  tabsize=2,
+  aboveskip=4pt,
+  belowskip=4pt,
+}
+
+% ---------- Compact (single) spacing inside listings ----------
+% \onehalfspacing above is meant for body prose; applying it inside code
+% listings as well makes every listing far longer than necessary.
+\AtBeginEnvironment{lstlisting}{\singlespacing}
+
+% ---------- TOC depth ----------
+\setcounter{tocdepth}{1}
+\setcounter{secnumdepth}{3}
+
+% Allow a line break after every literal underscore (used throughout for
+% file paths, config keys, and code identifiers) so long identifiers like
+% experimental_design_corrections.md do not overflow the line.
+\let\origunderscore\_
+\renewcommand{\_}{\origunderscore\allowbreak}
+
+\newcommand{\checkitem}{\textbf{[CHECK]}}
+\renewcommand{\cite}[1]{[\ref{#1}]}
+
+\begin{document}
+
+% ================= FRONT MATTER (roman numerals) =================
+\pagenumbering{roman}
+
+\input{chapters/00_titlepage}
+\input{chapters/00_certificate}
+\input{chapters/00_acknowledgements}
+\input{chapters/00_abstract}
+
+\begingroup
+\singlespacing
+\tableofcontents
+\clearpage
+\listoffigures
+\clearpage
+\listoftables
+\endgroup
+\clearpage
+\input{chapters/00_abbreviations}
+
+% ================= MAIN MATTER (arabic numerals) =================
+\clearpage
+\pagenumbering{arabic}
+
+\input{chapters/01_introduction}
+\input{chapters/02_methodology}
+\input{chapters/03_cost_analysis}
+\input{chapters/04_results}
+\input{chapters/05_conclusion}
+\input{chapters/06_appendix}
+\input{chapters/07_references}
+
+\end{document}

@@ -1,0 +1,50 @@
+\chapter*{\centering ACKNOWLEDGEMENTS}
+\addcontentsline{toc}{chapter}{Acknowledgements}
+
+We would like to thank our guide, Dr. Sheela Jayachandran, Associate
+Professor Grade-1, School of Computer Science and Engineering, VIT-AP
+University, for the steady direction she gave this project from its first,
+much smaller proposal through to the two-generation redesign described in
+this report. Her insistence that every claim be checked against the actual
+cluster, and not against what we expected the cluster to do, shaped the
+project's whole approach to evidence and is the reason this report can trace
+every number back to a file in our repository.
+
+We thank the Dean, School of Computer Science and Engineering, and the
+Program Chair, B.Tech. Computer Science and Engineering, for approving this
+topic and for the laboratory and infrastructure support that let us run a
+live Kubernetes cluster for training and evaluation over several weeks. We
+also thank the faculty and staff of the School who reviewed our proposal and
+gave feedback at the proposal and mid-term review stages; several of the
+checks built into our experimental design, in particular the pre-registration
+of the evaluation protocol before any evaluation run, came directly out of
+questions raised in those reviews.
+
+This project would not have been possible without the open-source projects it
+is built on. We thank the Kubernetes and Minikube projects for a container
+orchestration platform and a local single-node cluster that behaves closely
+enough to a production cluster to make the comparison in this report
+meaningful; the Prometheus and kube-prometheus-stack maintainers for the
+telemetry our RL agent and both HPA baselines depend on; the Stable-Baselines3
+and Gymnasium maintainers for a well-tested PPO implementation and a standard
+environment interface that let us focus on the Kubernetes-specific parts of
+the problem rather than re-implementing PPO from scratch; the PyTorch project,
+which Stable-Baselines3 is built on; the FastAPI maintainers, whose framework
+runs our benchmark service; and the Streamlit, Plotly, Matplotlib, and
+Graphviz projects, which we used respectively for our demonstration console
+and for the figures and diagrams in this report. Docker and Docker Desktop
+made it practical to run all of this on a single laptop.
+
+AI assistants were used for code-generation support and language editing; the
+experimental design, all experiments, data and conclusions are our own.
+
+Finally, we thank our families for their patience during the weeks this
+project's training and evaluation campaigns ran on a laptop that could not be
+used for much else while a live cluster was being measured.
+
+\vspace{1.0cm}
+\noindent
+Dandamudi Rakesh\\
+Kotapuri Sathvik\\
+Rachumallu Viswanadh\\
+Botlagunta Thoushik

@@ -1,0 +1,19 @@
+\begin{tabular}{ll}
+\hline
+parameter & value \\
+\hline
+learning\_rate & 0.0003 \\
+n\_steps & 2048 \\
+batch\_size & 64 \\
+n\_epochs & 10 \\
+gamma & 0.99 \\
+gae\_lambda & 0.95 \\
+clip\_range & 0.2 \\
+ent\_coef & 0.01 \\
+vf\_coef & 0.5 \\
+max\_grad\_norm & 0.5 \\
+policy & MlpPolicy \\
+net\_arch & [128, 128] \\
+training\_budget & 48 sessions x 256 steps/session = 12288 total timesteps (final\_min2 campaign) \\
+\hline
+\end{tabular}
