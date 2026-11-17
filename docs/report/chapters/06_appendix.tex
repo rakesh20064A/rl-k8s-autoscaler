@@ -1,0 +1,628 @@
+\chapter{Appendix}
+\label{ch:appendix}
+
+\section{Observation Builder}
+
+Listing~\ref{lst:observation} shows the core branching logic of the
+observation builder, from \texttt{autoscaler/\allowbreak \allowbreak src/\allowbreak \allowbreak rl\_\allowbreak env/\allowbreak \allowbreak observation.py},
+lines 192-233. This is the function responsible for turning raw Prometheus
+and Kubernetes telemetry into the eleven-feature vector described in
+Table~\ref{tab:observation-features}, including the missing-data handling
+rules of Section~\ref{sec:invalid-telemetry}.
+
+\begin{lstlisting}[language=Python,caption={Core observation-building logic (\texttt{autoscaler/\allowbreak \allowbreak src/\allowbreak \allowbreak rl\_\allowbreak env/\allowbreak \allowbreak observation.py}, lines 192-233).},label={lst:observation}]
+def build_observation(
+    metrics: RawMetricSnapshot,
+    replicas: ReplicaState,
+    seconds_since_last_effective_action: float,
+    history: HistoryState,
+    previous_normalized: Optional[List[float]],
+    config: ObservationConfig = ObservationConfig(),
+) -> ObservationBuildResult:
+    validity = determine_validity(metrics)
+    ready = replicas.ready
+
+    if previous_normalized is None:
+        # Episode-start fallback: raw-range midpoint (0.5 after normalization
+        # for symmetric-around-midpoint ranges) per sec.7.
+        previous_normalized = [0.5, 0.0, 0.5, 0.5, 0.5, 0.0, 0.5, 0.0, 0.0, 0.5, 0.5]
+
+    out = list(previous_normalized)
+    raw: dict = {name: None for name in FEATURE_NAMES}
+
+    if not validity.sample_valid:
+        # Structurally invalid step: hold every level/trend feature except
+        # the two controller-tracked ones (ready_replica_norm always comes
+        # straight from the Deployment's own replica-count fields ...)
+        out[9] = _norm(float(ready), config.min_replicas, config.max_replicas)
+        out[10] = _norm(seconds_since_last_effective_action, 0.0, config.seconds_since_scale_cap_s)
+        return ObservationBuildResult(out, raw, validity, ready)
+
+    cpu_raw, mem_raw, inprog_raw = per_replica_ratios(metrics, ready)
+    latency_ms = effective_latency_ms(metrics, validity.latency_observation_state)
+    request_rate = metrics.request_rate_rps
+    error_rate = 0.0 if metrics.error_rate_rps is None else (
+        metrics.error_rate_rps / request_rate if request_rate else 0.0
+    )
+    # ... (remaining normalization and EWMA-trend assignment omitted here;
+    # full function continues in the project repository.)
+\end{lstlisting}
+
+\section{V2 Reward Implementation}
+
+Listing~\ref{lst:reward-v2} shows \texttt{compute\_\allowbreak reward\_\allowbreak v2}, from
+\texttt{autoscaler/\allowbreak \allowbreak src/\allowbreak \allowbreak rl\_\allowbreak env/\allowbreak \allowbreak reward\_\allowbreak v2.py}, lines 199-262, implementing
+Equation~\ref{eq:v2-reward} and Table~\ref{tab:reward-components}.
+
+\begin{lstlisting}[language=Python,caption={V2 reward computation (\texttt{autoscaler/\allowbreak \allowbreak src/\allowbreak \allowbreak rl\_\allowbreak env/\allowbreak \allowbreak reward\_\allowbreak v2.py}, lines 199-262).},label={lst:reward-v2}]
+def compute_reward_v2(
+    *,
+    decision_state_valid: bool,
+    outcome_state_valid: bool,
+    p95_latency_ms: Optional[float],
+    error_rate: Optional[float],
+    deployment_current_replicas: Optional[int],
+    cpu_per_replica: Optional[float],
+    memory_per_replica: Optional[float],
+    requested_delta: int,
+    effective_delta: int,
+    override_reason: str,
+    is_reversal: bool,
+    config: RewardConfigV2 = RewardConfigV2(),
+) -> RewardResultV2:
+    if not decision_state_valid:
+        components = {
+            "reliability": config.w_reliability * _clip01(error_rate) if error_rate is not None else 0.0,
+            "sla": 0.0, "pressure": 0.0, "waste": 0.0,
+            "action": 0.0, "reversal": 0.0, "boundary": 0.0,
+        }
+        total = -sum(v for k, v in components.items())
+        return RewardResultV2(total, components, REWARD_VALIDITY_PARTIAL)
+
+    action_side = _action_side_components(requested_delta, effective_delta, override_reason, is_reversal, config)
+
+    if not outcome_state_valid:
+        components = {
+            "reliability": config.w_reliability * _clip01(error_rate) if error_rate is not None else 0.0,
+            "sla": 0.0, "pressure": 0.0, "waste": 0.0,
+            **action_side,
+        }
+        total = -sum(v for k, v in components.items())
+        return RewardResultV2(total, components, REWARD_VALIDITY_PARTIAL)
+
+    reliability = config.w_reliability * _clip01(error_rate if error_rate is not None else 0.0)
+
+    excess = max(0.0, (p95_latency_ms - config.sla_p95_target_ms) / config.sla_p95_target_ms)
+    sla = config.w_sla * _clip01(excess ** 2)
+
+    pressure_cpu = _pressure(cpu_per_replica, config.cpu_safe_high, config.cpu_hard_limit)
+    pressure_mem = _pressure(memory_per_replica, config.mem_safe_high, config.mem_hard_limit)
+    pressure = config.w_pressure * max(pressure_cpu, pressure_mem)
+
+    waste_applies = (
+        deployment_current_replicas is not None
+        and deployment_current_replicas > config.min_replicas
+        and cpu_per_replica is not None and cpu_per_replica < config.cpu_waste_threshold
+        and memory_per_replica is not None and memory_per_replica < config.mem_waste_threshold
+        and p95_latency_ms < config.sla_p95_target_ms
+        and (error_rate is None or error_rate == 0.0)
+    )
+    waste = config.w_waste if waste_applies else 0.0
+
+    components = {
+        "reliability": reliability, "sla": sla, "pressure": pressure, "waste": waste,
+        **action_side,
+    }
+    total = -sum(v for k, v in components.items())
+    return RewardResultV2(total, components, REWARD_VALIDITY_FULL)
+\end{lstlisting}
+
+\section{Safety Gating Logic}
+
+Listing~\ref{lst:gating} shows \texttt{compute\_\allowbreak effective\_\allowbreak action} in full,
+from \texttt{autoscaler/\allowbreak \allowbreak src/\allowbreak \allowbreak rl\_\allowbreak env/\allowbreak \allowbreak gating.py}, lines 43-77, implementing
+the replica-bound clamp, the pending-scale gate, and the asymmetric
+scale-down cooldown described in Section~\ref{sec:safety-layer}.
+
+\begin{lstlisting}[language=Python,caption={Deterministic safety gating (\texttt{autoscaler/\allowbreak \allowbreak src/\allowbreak \allowbreak rl\_\allowbreak env/\allowbreak \allowbreak gating.py}, lines 43-77).},label={lst:gating}]
+def compute_effective_action(
+    requested_delta: int,
+    current_desired: int,
+    current_ready: int,
+    seconds_since_last_effective_action: Optional[float],
+    config: GatingConfig = GatingConfig(),
+) -> GatingResult:
+    if requested_delta == 0:
+        return GatingResult(0, OVERRIDE_NONE, bound_clamped=False, pending_scale=False)
+
+    candidate = current_desired + requested_delta
+    if candidate < config.min_replicas or candidate > config.max_replicas:
+        return GatingResult(0, OVERRIDE_REPLICA_BOUND_CLAMP, bound_clamped=True, pending_scale=False)
+
+    if current_desired != current_ready:
+        return GatingResult(0, OVERRIDE_PENDING_SCALE_GATE, bound_clamped=False, pending_scale=True)
+
+    if requested_delta > 0:
+        return GatingResult(requested_delta, OVERRIDE_NONE, bound_clamped=False, pending_scale=False)
+
+    # requested_delta < 0: SCALE_DOWN, subject to the 60s cooldown.
+    if (
+        seconds_since_last_effective_action is not None
+        and seconds_since_last_effective_action < config.scale_down_cooldown_seconds
+    ):
+        return GatingResult(0, OVERRIDE_SCALE_DOWN_COOLDOWN, bound_clamped=False, pending_scale=False)
+
+    return GatingResult(requested_delta, OVERRIDE_NONE, bound_clamped=False, pending_scale=False)
+\end{lstlisting}
+\texttt{GatingConfig} is parameterized with \texttt{min\_\allowbreak replicas=2},
+\texttt{max\_\allowbreak replicas=8} (V2), and \texttt{scale\_\allowbreak down\_\allowbreak cooldown\_\allowbreak seconds=60.0}.
+
+\section{Safety-Aware Tie-Break Selector}
+
+Listing~\ref{lst:tiebreak} shows \texttt{select\_\allowbreak safety\_\allowbreak aware\_\allowbreak action}
+from \texttt{autoscaler/\allowbreak \allowbreak src/\allowbreak \allowbreak rl\_\allowbreak env/\allowbreak \allowbreak action\_\allowbreak selection.py}, lines 171-241,
+implementing rules R1-R6 of Section~\ref{sec:tie-break} and
+Figure~\ref{fig:tie-break-flow}.
+
+\begin{lstlisting}[language=Python,caption={Safety-aware tie-break selector (\texttt{autoscaler/\allowbreak \allowbreak src/\allowbreak \allowbreak rl\_\allowbreak env/\allowbreak \allowbreak action\_\allowbreak selection.py}, lines 171-241).},label={lst:tiebreak}]
+def select_safety_aware_action(
+    probabilities: Sequence[float],
+    epsilon: float = DEFAULT_NEAR_TIE_EPSILON,
+    stressed: Optional[bool] = None,
+    stress_reasons: Tuple[str, ...] = (),
+) -> SafetyAwareActionResult:
+    if epsilon < 0:
+        raise ValueError(f"epsilon must be >= 0, got {epsilon}")
+
+    probs = np.asarray(probabilities, dtype=float)
+    if probs.shape != (EXPECTED_NUM_ACTIONS,):
+        raise ValueError(f"expected exactly {EXPECTED_NUM_ACTIONS} probabilities, got shape {probs.shape}")
+    if not np.all(np.isfinite(probs)):
+        raise ValueError(f"probabilities must all be finite, got {probs.tolist()}")
+    if np.any(probs < 0):
+        raise ValueError(f"probabilities must be non-negative, got {probs.tolist()}")
+
+    max_p = float(probs.max())
+    within_epsilon = set(np.flatnonzero(probs >= max_p - epsilon).tolist())
+    tie_set_names = tuple(ACTION_NAMES[i] for i in sorted(within_epsilon))
+
+    if len(within_epsilon) == 1:
+        chosen = next(iter(within_epsilon))
+        return SafetyAwareActionResult(
+            action_index=chosen, action_name=ACTION_NAMES[chosen], is_tie=False,
+            probabilities=tuple(probs.tolist()), epsilon=epsilon, tie_set=tie_set_names,
+            tie_rule_applied=TIE_RULE_CLEAR_WINNER, stressed=None, stress_reasons=(),
+        )
+
+    if DOWN_ACTION_INDEX in within_epsilon:
+        rule = TIE_RULE_DOWN_INVOLVES_UP if UP_ACTION_INDEX in within_epsilon else TIE_RULE_DOWN_HOLD
+        return SafetyAwareActionResult(
+            action_index=HOLD_ACTION_INDEX, action_name=ACTION_NAMES[HOLD_ACTION_INDEX], is_tie=True,
+            probabilities=tuple(probs.tolist()), epsilon=epsilon, tie_set=tie_set_names,
+            tie_rule_applied=rule, stressed=None, stress_reasons=(),
+        )
+
+    # Only {HOLD, UP} remains (the only other possible 2-way tie with 3 actions).
+    if stressed is None:
+        return SafetyAwareActionResult(
+            action_index=HOLD_ACTION_INDEX, action_name=ACTION_NAMES[HOLD_ACTION_INDEX], is_tie=True,
+            probabilities=tuple(probs.tolist()), epsilon=epsilon, tie_set=tie_set_names,
+            tie_rule_applied=TIE_RULE_UNKNOWN_STRESS_FALLBACK, stressed=None, stress_reasons=(),
+        )
+
+    chosen = UP_ACTION_INDEX if stressed else HOLD_ACTION_INDEX
+    return SafetyAwareActionResult(
+        action_index=chosen, action_name=ACTION_NAMES[chosen], is_tie=True,
+        probabilities=tuple(probs.tolist()), epsilon=epsilon, tie_set=tie_set_names,
+        tie_rule_applied=TIE_RULE_HOLD_UP_STRESS_DEPENDENT, stressed=stressed,
+        stress_reasons=stress_reasons if stressed else (),
+    )
+\end{lstlisting}
+
+\section{Trainer Session Loop}
+
+Listing~\ref{lst:trainer} shows the setup portion of
+\texttt{run\_\allowbreak one\_\allowbreak final\_\allowbreak session}, from
+\texttt{scripts/\allowbreak \allowbreak train\_\allowbreak ppo\_\allowbreak final\_\allowbreak v2.py}, lines 604-693 (abridged), which
+runs one 256-step training session: it resolves the session's attempt
+directory, loads the V2 environment configuration, constructs the live
+Kubernetes backend and the Gymnasium environment, and wraps it with an
+episode ledger recorder before training begins.
+
+\begin{lstlisting}[language=Python,caption={Training session setup (\texttt{scripts/\allowbreak \allowbreak train\_\allowbreak ppo\_\allowbreak final\_\allowbreak v2.py}, lines 604-693, abridged).},label={lst:trainer}]
+def run_one_final_session(
+    session_index: int,
+    campaign_state: Dict[str, Any],
+    seed: int = FINAL_TRAINING_SEED,
+) -> Dict[str, Any]:
+    from stable_baselines3 import PPO
+    from autoscaler.src.rl_env.live_backend import LiveKubernetesBackend
+    from collectors.metrics_collector import PrometheusClient
+    from scripts.v2_pilot_safety import PROMETHEUS_URL, PilotSafetyCallback, get_pod_health
+    from scripts.v2_traffic_orchestrator import V2TrafficOrchestrator, V2TrafficSyncedWrapper
+
+    session_dir = resolve_session_attempt_dir(session_index)
+    physical_attempt_number = physical_attempt_number_for_dir(session_dir)
+    model_path = session_dir / SB3_CHECKPOINT_NAME
+    rng_path = session_dir / RNG_STATE_NAME
+    metadata_path = session_dir / SESSION_METADATA_NAME
+    metrics_path = session_dir / SESSION_TRAINING_METRICS_NAME
+    telemetry_path = session_dir / SESSION_TELEMETRY_NAME
+
+    assert_final_namespace_isolated([model_path, FINAL_LEDGER_PATH])
+    session_dir.mkdir(parents=True, exist_ok=False)
+
+    env_config_v2 = load_env_config_v2_from_yaml()
+    backend = LiveKubernetesBackend(
+        prometheus_url=PROMETHEUS_URL,
+        min_replicas=env_config_v2.gating.min_replicas,
+        initial_replicas=env_config_v2.initial_replicas,
+    )
+    baseline_pods = get_pod_health("autoscaler-app", "app=demo-app")
+    baseline_restart_counts = {p.name: p.restart_count for p in baseline_pods}
+
+    raw_env = KubernetesAutoscalerEnvV2(
+        backend=backend, episode_duration_s=600.0, config=env_config_v2,
+    )
+    controller_code_hash = hashlib.sha256(
+        (PROJECT_ROOT / "autoscaler/src/rl_env/environment_v2.py").read_bytes()
+        + (PROJECT_ROOT / "autoscaler/src/rl_env/reward_v2.py").read_bytes()
+    ).hexdigest()
+    config_hash = hashlib.sha256(
+        (PROJECT_ROOT / "configs/rl_v2.yaml").read_bytes() + (PROJECT_ROOT / "configs/reward_v2.yaml").read_bytes()
+    ).hexdigest()
+    ledgered_env = LedgeredEpisodeWrapper(
+        raw_env, ledger_path=FINAL_LEDGER_PATH, traffic_profile="PENDING_FIRST_RESET",
+        profile_hash="PENDING_FIRST_RESET", seed=seed, controller_code_hash=controller_code_hash,
+        config_hash=config_hash, role="v2_final_training",
+    )
+    # ... (environment reset, PPO.learn() call, checkpoint/metadata writing,
+    # and the session's own post-hoc self-verification continue below; see
+    # scripts/train_ppo_final_v2.py in the project repository.)
+\end{lstlisting}
+
+\section{Evaluation Runner Core}
+
+Listing~\ref{lst:evalrunner} shows \texttt{run\_\allowbreak one\_\allowbreak attempt} in full, from
+\texttt{scripts/\allowbreak \allowbreak evaluate\_\allowbreak v2\_\allowbreak campaign.py}, lines 392-460, the function
+that runs exactly one evaluation or stress-test attempt end to end:
+preflight, controller acquisition, traffic start/stop, the arm-specific
+episode function, cleanup, and result persistence.
+
+\begin{lstlisting}[language=Python,caption={Evaluation/stress attempt runner (\texttt{scripts/\allowbreak \allowbreak evaluate\_\allowbreak v2\_\allowbreak campaign.py}, lines 392-460).},label={lst:evalrunner}]
+def run_one_attempt(run_record: RunRecord, ctx: CampaignContext, attempt_number: int) -> Dict[str, Any]:
+    episode_id = f"{run_record.run_id}__attempt{attempt_number}"
+    started_utc = datetime.now(timezone.utc).isoformat()
+    entry: Dict[str, Any] = {
+        "attempt_id": str(uuid.uuid4()), "run_id": run_record.run_id, "run_index": run_record.run_index,
+        "profile": run_record.profile, "repeat_index": run_record.repeat_index, "arm_id": run_record.arm_id,
+        "attempt_number": attempt_number, "episode_id": episode_id, "started_utc": started_utc,
+    }
+    handle = None
+    try:
+        preflight = ctx.preflight_fn()
+        if not preflight.get("ok"):
+            raise ToolingFailureError(f"preflight failed: {preflight}")
+
+        if run_record.arm_id == "hpa_v2_cpu_only":
+            resolve_cpu_only_controller_identity()
+
+        profile_meta = ctx.profile_resolver_fn(run_record.profile)
+        handle = ctx.orchestrator.start_episode_traffic(run_record.profile, episode_id)
+        try:
+            if run_record.arm_id == "ppo_v2":
+                result = ctx.ppo_episode_fn(profile_meta, episode_id)
+            elif run_record.arm_id == "hpa_v2_cpu_only":
+                result = ctx.cpu_only_episode_fn(profile_meta, episode_id)
+            else:
+                result = ctx.hpa_episode_fn(profile_meta, episode_id)
+        finally:
+            ctx.orchestrator.stop_episode_traffic(handle, episode_id)
+            ctx.orchestrator.drain_server_side_requests()
+
+        cleanup_result = ctx.cleanup_fn()
+        ctx.settle_fn(ctx.settle_seconds)
+        entry.update({"status": "VALID", "result": result, "cleanup": cleanup_result})
+
+    except CpuOnlyArmNotYetSupportedError as exc:
+        cleanup_result = _safe_cleanup(ctx)
+        entry.update({"status": "FAILED_CLOSED", "error": str(exc), "cleanup": cleanup_result})
+    except SafetyTerminationError as exc:
+        cleanup_result = _safe_cleanup(ctx)
+        entry.update({"status": "SAFETY_TERMINATION", "error": str(exc), "cleanup": cleanup_result})
+    except ToolingFailureError as exc:
+        cleanup_result = _safe_cleanup(ctx)
+        entry.update({"status": "TOOLING_FAILURE", "error": str(exc), "cleanup": cleanup_result})
+    except Exception as exc:  # noqa: BLE001
+        cleanup_result = _safe_cleanup(ctx)
+        entry.update({"status": "TOOLING_FAILURE", "error": f"unclassified: {exc}", "cleanup": cleanup_result})
+
+    entry["ended_utc"] = datetime.now(timezone.utc).isoformat()
+    run_dir = ctx.runs_dir / f"{run_record.run_id}__attempt{attempt_number}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    with open(run_dir / "attempt.json", "w", encoding="utf-8") as f:
+        json.dump(entry, f, indent=2, default=str)
+
+    if entry["status"] == "VALID" and isinstance(entry.get("result"), dict) and "samples" in entry["result"]:
+        series_dict = episode_result_to_run_series_dict(entry["result"], run_record.run_id, run_record.repeat_index)
+        with open(run_dir / "normalized_series.json", "w", encoding="utf-8") as f:
+            json.dump(series_dict, f, indent=2, default=str)
+
+    return entry
+\end{lstlisting}
+
+\section{Configuration File Excerpts}
+
+Listing~\ref{lst:hpa-cm} and Listing~\ref{lst:hpa-cpu} show the two V2 HPA
+manifests, \texttt{k8s/\allowbreak \allowbreak hpa/\allowbreak \allowbreak hpa\_\allowbreak v2\_\allowbreak cpu\_\allowbreak memory.yaml} and
+\texttt{k8s/\allowbreak \allowbreak hpa/\allowbreak \allowbreak hpa\_\allowbreak v2\_\allowbreak cpu\_\allowbreak only\_\allowbreak min2.yaml}. Both share the same
+replica bounds (2-8) and scaling behaviour (immediate scale-up, a 120-second
+scale-down stabilization window), differing only in which metric(s) drive
+the scaling decision -- exactly the isolation CORR-60/CORR-62 were designed
+to produce.
+
+\begin{lstlisting}[caption={\texttt{k8s/\allowbreak \allowbreak hpa/\allowbreak \allowbreak hpa\_\allowbreak v2\_\allowbreak cpu\_\allowbreak memory.yaml} -- the HPA CPU+Memory (resource baseline) arm.},label={lst:hpa-cm}]
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: demo-app-hpa-v2
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: demo-app
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 260
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 120
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+\end{lstlisting}
+
+\begin{lstlisting}[caption={\texttt{k8s/\allowbreak \allowbreak hpa/\allowbreak \allowbreak hpa\_\allowbreak v2\_\allowbreak cpu\_\allowbreak only\_\allowbreak min2.yaml} -- the HPA CPU-only (CPU baseline) arm (CORR-62).},label={lst:hpa-cpu}]
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: demo-app-hpa-v2-cpu
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: demo-app
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 260
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+\end{lstlisting}
+
+Listing~\ref{lst:reward-config} shows the key fields of
+\texttt{configs/\allowbreak \allowbreak reward\_\allowbreak v2.yaml}, the frozen configuration underlying the
+V2 reward of Equation~\ref{eq:v2-reward} and Table~\ref{tab:reward-components}.
+
+\begin{lstlisting}[caption={Key fields of \texttt{configs/\allowbreak \allowbreak reward\_\allowbreak v2.yaml}.},label={lst:reward-config}]
+reward_contract_version: 2
+weights:
+  w_reliability: 6.0
+  w_sla: 4.0
+  w_pressure: 2.0
+  w_waste: 0.3
+  w_action: 0.1
+  w_reversal: 0.5
+  w_boundary: 0.2
+sla:
+  p95_target_ms: 1000      # raised from 300ms, CORR-57
+pressure:
+  cpu_safe_high: 3.0
+  cpu_hard_limit: 5.0
+  memory_safe_high: 1.2
+  memory_hard_limit: 4.0
+waste:
+  cpu_waste_threshold: 1.0   # raised from 0.3, CORR-57
+  memory_waste_threshold: 1.0  # raised from 0.7, CORR-57
+reversal_window_seconds: 120
+\end{lstlisting}
+
+Listing~\ref{lst:rl-config} shows the key fields of
+\texttt{configs/\allowbreak \allowbreak rl\_\allowbreak v2.yaml}, including the V2 replica floor (CORR-55) and
+the provisional tie-break epsilon later superseded, for evaluation
+purposes only, by the calibrated value of Section~\ref{sec:tie-break}.
+
+\begin{lstlisting}[caption={Key fields of \texttt{configs/\allowbreak \allowbreak rl\_\allowbreak v2.yaml}.},label={lst:rl-config}]
+rl_contract_version: 2
+action_map:
+  0: -1   # SCALE_DOWN_ONE
+  1: 0    # HOLD
+  2: 1    # SCALE_UP_ONE
+ppo:
+  learning_rate: 0.0003
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 0.5
+  net_arch: [128, 128]
+scaling_v2:
+  min_replicas: 2     # CORR-55 (V2 floor raised from 1)
+  max_replicas: 8
+  initial_replicas: 2
+safe_action:
+  near_tie_epsilon: 0.05
+  epsilon_status: provisional_unvalidated
+\end{lstlisting}
+
+\section{Correction Log Summary}
+
+Table~\ref{tab:corr-summary} lists every entry of the project's append-only
+design-correction log (\texttt{docs/\allowbreak \allowbreak experimental\_\allowbreak design\_\allowbreak corrections.md}),
+CORR-1 through CORR-65, one line per entry. Entries CORR-49 through CORR-54
+are a known, acknowledged documentation gap: the correction log's own
+CORR-55 entry states that these numbers were consumed in code (for
+example, \texttt{scripts/\allowbreak \allowbreak run\_\allowbreak dynamics\_\allowbreak calibration\_\allowbreak slot.py}) but were
+never written up as entries in this document; we report this gap rather
+than inventing content for it. CORR-1 through CORR-26 concern the
+project's pre-V2 calibration and HPA-tuning phases (Minikube resource
+accounting, workload calibration, and the counterbalanced study that
+selected the 260\% CPU target used by both V2 HPA baselines); CORR-27
+onward concern the frozen MDP contract and the V2 multi-metric controller
+redesign discussed throughout Chapter~\ref{ch:methodology} and
+Chapter~\ref{ch:results}.
+
+\begingroup
+\small\singlespacing
+\begin{longtable}{p{1.6cm}p{11.5cm}}
+\caption{Correction log summary (CORR-1 through CORR-65).}
+\label{tab:corr-summary}\\
+\toprule
+Entry & Title \\
+\midrule
+\endfirsthead
+\toprule
+Entry & Title \\
+\midrule
+\endhead
+CORR-1 & Minikube Resource-Accounting Mismatch \\
+CORR-2 & HPA Metric-Resolution Fairness for Benchmark \\
+CORR-3 & CPU Limits and maxReplicas (Phase 6A correction) \\
+CORR-4 & RL Agent Metric Source \\
+CORR-5 & Workload Generation Isolation (Phase 6C Diagnostic Run Invalidation) \\
+CORR-6 & Application Metric Label Collision with Prometheus Target Labels \\
+CORR-7 & Status of \texttt{demo\_\allowbreak app\_\allowbreak last\_\allowbreak work\_\allowbreak intensity} Diagnostic Gauge \\
+CORR-8 & Host Resource Isolation, Pod Lifecycle Resilience, and Cluster Headroom Guidelines \\
+CORR-9 & Scientific Telemetry Collection Integrity, Target Health, and Runtime Provenance \\
+CORR-10 & Workload Computation Reality, Host Sharing, and Planned Schedule Replay \\
+CORR-11 & Dispatch Lag vs.\ Latency Attribution and Profile Duration Boundaries \\
+CORR-12 & Stage-1 Calibration Artifact Validity, CPU Rate Terminology, and Throttling Definitions \\
+CORR-13 & Canonical Workload Window and Telemetry Summary Methodology \\
+CORR-14 & Empirical Capacity Boundaries, Workload-Window Dispatch Rate, and CFS Throttling Deltas \\
+CORR-15 & Single-Replica Capacity Calibration Closure and Capacity Statement \\
+CORR-16 & Initial HPA Baseline Implementation and Metrics Server Research Configuration \\
+CORR-17 & HPA Tuning Methodology, Exact-Replay Capability, and Precommitted Selection Criteria \\
+CORR-18 & HPA Tuning Methodology Hardening, Repetition/Order Protocol, Numeric SLA \\
+CORR-19 & Event Baselining, Evidence Hierarchy, and Conditional 6-RPS Interpretation \\
+CORR-20 & Corrected HPA Average-Utilization Semantics; Reconciliation of First Official 220\% Trial \\
+CORR-21 & Corrected Multi-Replica Traffic-Delivery Path (\texttt{kubectl port-forward} Does Not Load-Balance) \\
+CORR-22 & Eliminated Duplicate Prometheus Scraping; Fresh-Connection Discriminator Fix \\
+CORR-23 & Fine-Grained Final-Path HPA-Relevant CPU Map \\
+CORR-24 & Redesigned HPA Candidate Family (200/230/260) and Canonical Tuning Schedule v2 \\
+CORR-25 & Standardized Exact-Interval Replica-Trajectory Integration \\
+CORR-26 & Official HPA Tuning Dataset Closed; 260\% Selected as the Frozen Baseline \\
+CORR-27 & RL MDP Contract V2: CPU-Clip, HPA-Coupling, Gating, and Held-Out-Leakage Corrections \\
+CORR-28 & RL Runtime Dependency Compatibility and Pre-Environment Readiness Freeze \\
+CORR-29 & RL Gymnasium Environment Mechanics and Pluggable-Backend Contract \\
+CORR-30 & RL Transition-Reward Validity Decomposition and Deterministic Episode-Reset Control Age \\
+CORR-31 & Empirical RL Dynamics Calibration Protocol Freeze \\
+CORR-32 & RL Empirical-Dynamics Calibration Protocol Integrity Corrections \\
+CORR-33 & Final RL Dynamics-Calibration Execution-Readiness Clarifications \\
+CORR-34 & Global Calibration Run Order and Exhaustive Routing-Integrity Classification \\
+CORR-35 & Exposure-Weighted Routing Opportunity and Transition-Safe Per-Pod Integrity Analysis \\
+CORR-36 & Steady-State Ready-Count Invariant Can Be Violated by Overload-Induced Readiness Loss \\
+CORR-37 & Post-First-Run Separation of Execution Validity and Fitting Eligibility \\
+CORR-38 & Post-Data Expansion to Complete Relevant-Pod Observability \\
+CORR-39 & Unverified External Workload-Delivery-Path Integrity During a Sustained Connection-Error Block \\
+CORR-40 & Stable Host-to-Kubernetes Workload Transport Transition \\
+CORR-41 & Kubernetes-Dataplane Workload-Ingress Evidence \\
+CORR-42 & Temporal Dataplane-Evidence Acquisition Coverage \\
+CORR-43 & Deterministic Short-Trailing-Window Evidence Partitioning \\
+CORR-44 & Replica-Transition Materiality/Scored-Window Operationalization \\
+CORR-45 & Replica-Transition Scale-Down Lag Target-State Operationalization \\
+CORR-46 & Transition Collector Transient-Timeout Resilience \\
+CORR-47 & Workload-Transition Pre-First-Use Operationalization \\
+CORR-48 & Workload-Transition Trajectory Traffic-Window Boundary \\
+CORR-49--54 & \textit{Documentation gap -- consumed in code but never written up as log entries (acknowledged in CORR-55).} \\
+CORR-55 & V2 Replica Floor Raised 1 $\to$ 2 for Both V2 Controllers \\
+CORR-56 & Idle (Zero-Traffic) Samples Incorrectly Classified Invalid \\
+CORR-57 & V2 SLA Target and Waste Thresholds Recalibrated \\
+CORR-58 & Safety-Aware Asymmetric Tie-Breaking for V2 Deterministic Inference \\
+CORR-59 & Pre-Registered Budget Amendment, 5{,}120 $\to$ 12{,}288 Timesteps \\
+CORR-60 & V2 Evaluation Pre-Registration \\
+CORR-61 & Evaluation Safety/Termination Clarification \\
+CORR-62 & CPU-Only HPA Arm Added (Post-Training) \\
+CORR-63 & CPU-Only HPA Arm Blocked by Leftover \texttt{demo-app-hpa-v2} (Code Defect) \\
+CORR-64 & \texttt{restore\_\allowbreak canonical\_\allowbreak idle\_\allowbreak state()} Left \texttt{demo-app-hpa-v2-cpu} Behind (Code Defect) \\
+CORR-65 & Exploratory Post-Hoc Stress Test at Training-Level Peaks \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+\section{Supplementary Data Tables}
+
+Table~\ref{tab:training-summary-appendix} gives the full training-summary
+statistics underlying the discussion of the V2 training campaign in
+Chapter~\ref{ch:results}, including minimum and maximum values across all
+48 sessions, not only the first/last values discussed in the main text.
+
+\begin{table}[H]
+\centering
+\caption{V2 training summary statistics (48 analyzed sessions).}
+\label{tab:training-summary-appendix}
+\input{tables/training_summary.tex}
+\end{table}
+
+Table~\ref{tab:eval-secondary-appendix} gives the full secondary-metrics
+table for the pre-registered \texttt{eval\_\allowbreak final} campaign, and
+Table~\ref{tab:stress-descriptive-appendix} the full descriptive table for
+the exploratory \texttt{stress\_\allowbreak explore} campaign, both reproduced here in
+landscape orientation because of their column count.
+
+\begin{landscape}
+\begin{table}[H]
+\centering
+\caption{\texttt{eval\_\allowbreak final} secondary metrics, mean $\pm$ standard deviation over 3 repeats per (profile, arm) cell.}
+\label{tab:eval-secondary-appendix}
+\tiny
+\resizebox{\linewidth}{!}{\input{tables/eval_final_secondary_metrics.tex}}
+\end{table}
+\end{landscape}
+
+\begin{landscape}
+\begin{table}[H]
+\centering
+\caption{\texttt{stress\_\allowbreak explore} descriptive metrics, 1 repeat per (profile, arm) cell -- exploratory, CORR-65, never subject to the pre-registered decision rule.}
+\label{tab:stress-descriptive-appendix}
+\tiny
+\resizebox{\linewidth}{!}{\input{tables/stress_explore_descriptive_metrics.tex}}
+\end{table}
+\end{landscape}
