@@ -1,0 +1,78 @@
+\chapter{Conclusion and Future Work}
+\label{ch:conclusion}
+
+\section{Conclusion}
+
+This project set out to answer a narrow, specific question: can a PPO
+agent, trained in real time against a live Kubernetes cluster, match or
+improve on a correctly tuned Horizontal Pod Autoscaler on held-out traffic,
+under a decision rule fixed before any evaluation result exists? Across two
+generations of design, the honest answer is that we cannot declare a
+winner, and we think that answer is itself a useful result rather than a
+disappointing one, for three reasons.
+
+First, V1's failure was informative, not just negative. One of three
+required valid PPO repeats completing is not "PPO lost a close contest";
+it is a sign that the controller's own reward function and replica floor
+made it structurally fragile in a way the evaluation correctly exposed. We
+traced that fragility to two specific, nameable design decisions -- an
+unconditional per-replica resource cost and a replica floor of one -- and
+built V2 specifically to remove them, rather than retraining V1's design
+for longer and hoping the problem would go away on its own.
+
+Second, V2's pre-registered evaluation is a genuinely negative result for
+the strong form of the hypothesis ("RL beats HPA"), not because PPO
+performed badly, but because the evaluation's own traffic load was light
+enough that the primary latency objective sat at or near its floor for
+every arm, and the metric that did discriminate between arms, cost, did not
+favour any single arm across all three profiles. We regard this as the
+evaluation doing its job rather than as an inconclusive accident: the
+pre-registered decision rule was built specifically to stop us from
+declaring a winner on weak or profile-dependent evidence, and it did
+exactly that, on our own result.
+
+Third, the exploratory stress test, run at training-level peak loads where
+the latency objective does separate arms, still found no controller that
+was uniformly better across all three stress profiles -- PPO was cheapest
+and had the lowest latency under a CPU burst, but had the highest
+SLA-violation rate under a mixed burst, the opposite ordering from the CPU
+case. This is consistent with a picture in which each controller's
+relative strength depends on which resource dimension (CPU or memory) is
+actually under pressure, which is a more specific and more useful finding
+than either "RL wins" or "RL loses" would have been.
+
+We also want to state plainly what this report does \emph{not} claim. It
+does not claim that RL-based autoscaling cannot outperform HPA in general;
+our evaluation loads were light relative to training-level peaks, our
+sample sizes were small (three repeats for the pre-registered campaign, one
+repeat per cell for the exploratory stress test), and our testbed was a
+single-node cluster on a laptop. It does not claim that the V2 controller
+is production-ready; no safety termination occurred in either the
+pre-registered evaluation or the stress test, but that absence of failure
+over 36 total runs is not the same as a guarantee over a much longer
+operational horizon. What it does claim is that we built and ran a
+complete, live, pre-registered comparison end to end, including the
+failures along the way, and reported what actually happened rather than
+what we had hoped would happen.
+
+\section{Future Work}
+
+Several directions follow directly from the limitations in
+Section~\ref{sec:limitations}. A pre-registered evaluation at
+training-level peak loads, with the same three-repeats-per-cell discipline
+used for \texttt{eval\_\allowbreak final} rather than the single-repeat, descriptive
+design of \texttt{stress\_\allowbreak explore}, would let the decision rule actually be
+applied at the load levels where the primary metric is not stuck at its
+floor. A longer training budget, beyond the 12,288 timesteps used here,
+would let us check whether explained variance and entropy, which were still
+trending in the expected direction at the end of training rather than
+having clearly plateaued, continue to improve with more experience. Running
+the same comparison on a multi-node cluster, where node-level resource
+contention and pod scheduling behave differently from a single-node
+Minikube cluster, would test whether our findings transfer beyond the
+testbed used here. Finally, the histogram-bucket artefact at 975~ms that we
+flag throughout Chapter~\ref{ch:results} points to a concrete, fixable
+instrumentation improvement -- a finer-grained latency histogram, or a
+summary-based latency estimator -- that would let future work report p95
+latency on these memory- and mixed-mode profiles with less ambiguity than
+our own figures currently can.
