@@ -139,7 +139,15 @@ def render_run_selector() -> "tuple[Optional[Dict[str, Any]], bool]":
     run_ids = list(by_id.keys())
     active = experiment_store.active_run()
     active_id = active["run_id"] if (active is not None and active.get("generation") == "v2") else None
-    default_id = active_id if active_id in by_id else run_ids[0]
+    # Task sec.3: an `invalid_no_traffic` run is still fully selectable
+    # here (its record/samples are kept exactly as they are), but it must
+    # never be the auto-selected DEFAULT -- prefer the first run that
+    # isn't one, falling back to `run_ids[0]` only if every selectable
+    # run happens to be invalidated.
+    default_id = active_id if active_id in by_id else next(
+        (rid for rid in run_ids if by_id[rid].get("status") != experiment_store.INVALID_NO_TRAFFIC),
+        run_ids[0],
+    )
     selected_id = st.selectbox(
         "Run", run_ids, index=run_ids.index(default_id),
         format_func=lambda rid: run_selector_label(by_id[rid]), key="du_v2_live_details_run_selector",

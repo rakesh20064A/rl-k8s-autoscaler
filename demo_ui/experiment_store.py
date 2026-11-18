@@ -46,7 +46,20 @@ STORE_PATH = STORE_DIR / "runs.json"
 _LEGACY_STORE_PATH = Path(__file__).resolve().parent / ".run_store" / "runs.json"
 
 STALE_STATUS = "INTERRUPTED (stale)"
-TERMINAL_STATUSES = {"completed", "error", "exited", "stopped", "refused", STALE_STATUS}
+# Task sec.3: a run whose own telemetry shows it never actually received
+# traffic (every decision/step sample's `request_rate_rps` is zero/absent
+# throughout) -- e.g. every demo run before the sec.1 traffic-path fix.
+# TERMINAL (the run ended, its record/files are kept exactly as they
+# are -- `invalidate_zero_traffic_runs()` below never deletes anything),
+# but deliberately NOT "completed": it must never be offered as a
+# Comparison pairing candidate (`latest_compatible_pair()` already
+# requires `status == "completed"`, unchanged) and never be the Live
+# Details run selector's DEFAULT pick (see `live_details_v2.
+# render_run_selector()`), while still showing up in History/the run
+# selector's own list -- the record is real, its outcome just cannot be
+# trusted as a scientific measurement.
+INVALID_NO_TRAFFIC = "invalid_no_traffic"
+TERMINAL_STATUSES = {"completed", "error", "exited", "stopped", "refused", STALE_STATUS, INVALID_NO_TRAFFIC}
 
 # Terminal outcomes a run's OWN status file (written by
 # `scripts/run_demo_episode_v2.py`, surviving under `persistent-data/`
@@ -405,6 +418,45 @@ def completed_runs(path: Optional[Path] = None) -> List[Dict[str, Any]]:
     records = [r for r in _load(path) if r.get("status") in TERMINAL_STATUSES]
     records.sort(key=lambda r: r.get("completed_at") or r["started_at"], reverse=True)
     return records
+
+
+def is_zero_traffic_run(rec: Dict[str, Any]) -> bool:
+    """Task sec.3: True if `rec`'s own recorded samples show NO real
+    traffic ever arrived -- every sample's `request_rate_rps` is `None`
+    or `<= 0` throughout the whole run (the systemic bug this phase's
+    sec.1 fix addresses: before it, `scripts/run_demo_episode_v2.py`
+    never started any traffic generator at all, so every decision of
+    every run showed 0 req/s). A run with NO samples at all (e.g. refused
+    before a single decision, or stopped before the first one) is NOT
+    considered a zero-traffic run by this check -- there is nothing to
+    invalidate; that outcome is already correctly reflected by its own
+    status (refused/stopped/error)."""
+    samples = (rec.get("summary") or {}).get("samples") or []
+    if not samples:
+        return False
+    rates = [s.get("request_rate_rps") for s in samples]
+    return all(r is None or r <= 0 for r in rates)
+
+
+def invalidate_zero_traffic_runs(path: Optional[Path] = None) -> List[str]:
+    """Task sec.3: scans every TERMINAL-status run already in the store
+    and marks any run whose own samples show zero/near-zero traffic
+    throughout as `INVALID_NO_TRAFFIC` -- keeps the record and every file
+    it references exactly as they are (never deletes anything); only the
+    `status`/`stage` fields change. Idempotent: a record already
+    `INVALID_NO_TRAFFIC` (or still `"running"`/unknown -- never touches an
+    in-progress run) is skipped. Returns the list of run_ids it changed,
+    so a caller (a one-time migration script, or a test) can report
+    exactly what was invalidated."""
+    path = path if path is not None else STORE_PATH
+    records = _load(path)
+    changed_ids: List[str] = [
+        rec["run_id"] for rec in records
+        if rec.get("status") not in (None, "running", INVALID_NO_TRAFFIC) and is_zero_traffic_run(rec)
+    ]
+    for run_id in changed_ids:
+        update_run(run_id, path=path, status=INVALID_NO_TRAFFIC, stage="INVALID_NO_TRAFFIC")
+    return changed_ids
 
 
 def _same_workload(a: Dict[str, Any], b: Dict[str, Any]) -> bool:

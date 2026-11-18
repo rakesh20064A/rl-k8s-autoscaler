@@ -13,13 +13,18 @@ from demo_ui.models import PodState
 
 
 class _FakePrometheusClient:
-    def __init__(self, target_up=True, health_msg="up", query_values=None):
+    def __init__(self, target_up=True, health_msg="up", query_values=None, ready=True, ready_msg="Ready"):
         self._target_up = target_up
         self._health_msg = health_msg
         self._query_values = query_values or {}
+        self._ready = ready
+        self._ready_msg = ready_msg
 
     def check_target_health(self, namespace, app_name):
         return self._target_up, self._health_msg
+
+    def check_readiness(self):
+        return self._ready, self._ready_msg
 
     def query(self, promql):
         for key, val in self._query_values.items():
@@ -64,6 +69,20 @@ class TestPrometheusMetricsProvider:
         # port-forward lifecycle management.
         forbidden = {"start_port_forward", "stop_port_forward", "establish_route"}
         assert forbidden.isdisjoint(dir(PrometheusMetricsProvider))
+
+    def test_check_prometheus_reachable_true_when_ready(self):
+        client = _FakePrometheusClient(ready=True, ready_msg="Ready")
+        provider = PrometheusMetricsProvider(client=client)
+        reachable, message = provider.check_prometheus_reachable()
+        assert reachable is True
+        assert message == "Ready"
+
+    def test_check_prometheus_reachable_false_with_reason_when_down(self):
+        client = _FakePrometheusClient(ready=False, ready_msg="Connection failed: refused")
+        provider = PrometheusMetricsProvider(client=client)
+        reachable, message = provider.check_prometheus_reachable()
+        assert reachable is False
+        assert "refused" in message
 
 
 def _fake_pods_json(names_states):

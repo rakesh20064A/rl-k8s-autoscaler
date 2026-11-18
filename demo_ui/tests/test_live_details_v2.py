@@ -166,6 +166,26 @@ class TestRunSelectorDefaultsAndNoRedundantPanels:
         selector = at.selectbox(key="du_v2_live_details_run_selector")
         assert selector.value == active_id
 
+    def test_selector_never_defaults_to_an_invalid_no_traffic_run(self, tmp_path, monkeypatch):
+        """Task sec.3: an `invalid_no_traffic` run must never be the
+        auto-selected default, even when it is the most recently
+        completed run and no run is currently active."""
+        monkeypatch.setattr(experiment_store, "STORE_PATH", tmp_path / "runs.json")
+        valid_id = experiment_store.start_run("ppo_v2", "demo_memory_short")
+        experiment_store.update_run(valid_id, generation="v2", status="completed", summary={})
+        invalid_id = experiment_store.start_run("hpa_v2_cpu_memory", "demo_cpu_short")
+        experiment_store.update_run(invalid_id, generation="v2", status=experiment_store.INVALID_NO_TRAFFIC, summary={})
+
+        at = AppTest.from_file(APP_PATH, default_timeout=30)
+        at.run()
+        at.sidebar.radio[0].set_value("Live Details").run()
+        assert not at.exception
+        selector = at.selectbox(key="du_v2_live_details_run_selector")
+        assert selector.value == valid_id
+        # Still selectable -- just never the default.
+        assert any("invalid_no_traffic" in opt for opt in selector.options)
+        assert len(selector.options) == 2
+
     def test_no_not_available_panels_for_a_completed_ppo_run(self, tmp_path, monkeypatch):
         monkeypatch.setattr(experiment_store, "STORE_PATH", tmp_path / "runs.json")
         run_id = experiment_store.start_run("ppo_v2", "demo_cpu_short")

@@ -116,17 +116,43 @@ def _render_live_status_panel(real_ctrl: RealExperimentControllerV2) -> None:
         st.info("Run stopped by user.")
     elif status_label == experiment_store.STALE_STATUS:
         st.warning((rec or {}).get("error") or "Run was interrupted.")
+    elif status_label == experiment_store.INVALID_NO_TRAFFIC:
+        st.warning((rec or {}).get("error") or "Run invalidated: no traffic reached the app during this run.")
 
-    if status_label in experiment_store.TERMINAL_STATUSES and real_ctrl.is_running:
-        real_ctrl.is_running = False
-        st.session_state["du_v2_run_in_progress"] = False  # never read for the LIVE button anymore (see controls_v2.py), cleared so a later DEMO-mode run starts from a clean slate
-        # Default (app) scope: the WHOLE page reruns, not just this
-        # fragment -- `render()` recomputes `active_rec` fresh from the
-        # now-terminal store record (None) on that rerun, so the control
-        # strip's START/STOP button and this fragment's own `run_every`
-        # (task sec.3) both pick up the terminal state on this one
-        # rerun, with no further periodic ticking needed afterward.
-        st.rerun()
+    # Task sec.5: the REAL root cause of "STOP/selects stuck after
+    # COMPLETED" -- `reconcile()` at the top of this function is almost
+    # always the FIRST thing to discover a status-file transition to
+    # terminal (it runs before `real_ctrl.status()` below ever gets a
+    # chance to), which means `active_rec_now` is ALREADY `None` and line
+    # ~80 above has ALREADY set `real_ctrl.is_running = False` by the time
+    # this point is reached -- in the SAME tick. Gating the one-shot
+    # full-page `st.rerun()` on `real_ctrl.is_running` (its PRE-prior-line
+    # value, which this tick already overwrote) therefore almost never
+    # fires: the outer `render()`'s own `active_rec` (computed once per
+    # full-page rerun, BEFORE this fragment runs) stays stuck on the
+    # last-seen non-terminal value forever, which is exactly why the
+    # control strip kept showing STOP with all four selects still locked
+    # even though this panel already displayed COMPLETED/FAILED/etc.
+    # correctly. The fix derives the one-shot trigger from the STORE
+    # (`rec["run_id"]`/`status_label`) instead of that stale in-memory
+    # flag: a run_id+status pair is synced (full-page rerun fired) EXACTLY
+    # ONCE -- the session_state key here is a pure debounce guard against
+    # looping, never a competing source of truth for whether controls are
+    # locked (that is still `active_rec is not None`, re-derived from the
+    # store on every rerun in `render()`/`controls_v2.render_controls_v2`).
+    if rec is not None and status_label in experiment_store.TERMINAL_STATUSES:
+        sync_key = f"{rec['run_id']}:{status_label}"
+        if st.session_state.get("du_v2_last_synced_terminal") != sync_key:
+            st.session_state["du_v2_last_synced_terminal"] = sync_key
+            real_ctrl.is_running = False
+            st.session_state["du_v2_run_in_progress"] = False  # never read for the LIVE button anymore (see controls_v2.py), cleared so a later DEMO-mode run starts from a clean slate
+            # Default (app) scope: the WHOLE page reruns, not just this
+            # fragment -- `render()` recomputes `active_rec` fresh from the
+            # now-terminal store record (None) on that rerun, so the control
+            # strip's START/STOP button and this fragment's own `run_every`
+            # (task sec.3) both pick up the terminal state on this one
+            # rerun, with no further periodic ticking needed afterward.
+            st.rerun()
 
     # Task sec.2: last ~30 lines, read fresh from the log file every tick
     # above (never only once the run has finished) -- `recent_log_lines()`

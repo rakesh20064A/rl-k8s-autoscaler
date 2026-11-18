@@ -1,0 +1,31 @@
+# configs/traffic_profiles/v2_demo/demo_smoke_bursts_cpu.yaml
+# TEST-ONLY smoke profile -- DEMO ONLY, NOT evaluation evidence. Added
+# alongside the task sec.1/sec.2 traffic-path fix so sec.7's mandatory
+# real end-to-end live verification has a SHORT (120s), fast-to-run
+# profile to launch two real demo runs (PPO + HPA) against, rather than
+# one of the ~8-minute catalog profiles. Mirrors
+# demo_bursts_cpu_high.yaml's exact schema/fields (burst phase, cpu
+# resource_mode) -- only the duration and rates are scaled down.
+# Firewalled from autoscaler.src.rl_env.training_contract_v2.
+# V2_TRAINING_PROFILE_ALLOWLIST and scripts.evaluate_v2_campaign.
+# EVAL_PROFILE_ALLOWLIST / STRESS_PROFILE_ALLOWLIST (different directory,
+# different allowlist); allowlisted only in
+# scripts/run_demo_episode_v2.py's own DEMO_SMOKE_TEST_PROFILE_NAMES.
+# pattern=bursts resource=cpu load=smoke seed=424242
+
+profile: demo_smoke_bursts_cpu
+description: 'DEMO ONLY (not evaluation evidence): smoke-test bursts traffic, cpu resource
+  pressure, low load (peak ~40 req/s), 2 min'
+seed: 424242
+intensity: 4
+endpoint: /work
+resource_mode: cpu
+memory_mb: 0
+phases:
+- type: burst
+  name: burst
+  duration_seconds: 120.0
+  baseline_rps: 8.0
+  burst_rps: 40.0
+  burst_duration_seconds: 20
+  inter_burst_interval_seconds: 40

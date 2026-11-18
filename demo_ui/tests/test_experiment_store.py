@@ -203,6 +203,76 @@ class TestCompatiblePairing:
         assert hpa["arm"] == "HPA"
 
 
+class TestInvalidNoTrafficStatus:
+    """Task sec.3: `invalid_no_traffic` is TERMINAL (History/the Live
+    Details run selector still show it) but never a Comparison pairing
+    candidate and never the Live Details default-selected run."""
+
+    def _completed_with_samples(self, store_path, controller, profile, rates, h="h1", seed=42, dur=120.0):
+        rid = es.start_run(controller, profile, path=store_path)
+        samples = [{"time_s": float(i) * 30.0, "request_rate_rps": r} for i, r in enumerate(rates)]
+        es.update_run(
+            rid, status="completed", workload_hash=h, workload_seed=seed, workload_duration_s=dur,
+            summary={"samples": samples}, path=store_path,
+        )
+        return es.get_run(rid, store_path)
+
+    def test_is_zero_traffic_run_true_when_every_sample_is_zero_or_none(self, store_path):
+        rec = self._completed_with_samples(store_path, "ppo_v2", "demo_cpu_short", [0.0, None, 0.0])
+        assert es.is_zero_traffic_run(rec) is True
+
+    def test_is_zero_traffic_run_false_when_any_sample_has_real_traffic(self, store_path):
+        rec = self._completed_with_samples(store_path, "ppo_v2", "demo_cpu_short", [0.0, 12.5, 0.0])
+        assert es.is_zero_traffic_run(rec) is False
+
+    def test_is_zero_traffic_run_false_when_no_samples_at_all(self, store_path):
+        rid = es.start_run("ppo_v2", "demo_cpu_short", path=store_path)
+        es.update_run(rid, status="error", summary={}, path=store_path)
+        rec = es.get_run(rid, store_path)
+        assert es.is_zero_traffic_run(rec) is False
+
+    def test_invalidate_zero_traffic_runs_marks_only_the_zero_traffic_ones(self, store_path):
+        zero = self._completed_with_samples(store_path, "ppo_v2", "demo_cpu_short", [0.0, 0.0])
+        real = self._completed_with_samples(store_path, "hpa_v2_cpu_memory", "demo_cpu_short", [5.0, 6.0])
+
+        changed = es.invalidate_zero_traffic_runs(store_path)
+
+        assert changed == [zero["run_id"]]
+        assert es.get_run(zero["run_id"], store_path)["status"] == es.INVALID_NO_TRAFFIC
+        assert es.get_run(real["run_id"], store_path)["status"] == "completed"
+
+    def test_invalidate_zero_traffic_runs_never_touches_a_running_record(self, store_path):
+        rid = es.start_run("ppo_v2", "demo_cpu_short", path=store_path)
+        es.update_run(rid, summary={"samples": [{"time_s": 0.0, "request_rate_rps": 0.0}]}, path=store_path)
+        changed = es.invalidate_zero_traffic_runs(store_path)
+        assert changed == []
+        assert es.get_run(rid, store_path)["status"] == "running"
+
+    def test_invalidate_zero_traffic_runs_is_idempotent(self, store_path):
+        zero = self._completed_with_samples(store_path, "ppo_v2", "demo_cpu_short", [0.0])
+        first = es.invalidate_zero_traffic_runs(store_path)
+        second = es.invalidate_zero_traffic_runs(store_path)
+        assert first == [zero["run_id"]]
+        assert second == []
+
+    def test_invalidate_zero_traffic_runs_never_deletes_the_record_or_summary(self, store_path):
+        zero = self._completed_with_samples(store_path, "ppo_v2", "demo_cpu_short", [0.0])
+        es.invalidate_zero_traffic_runs(store_path)
+        rec = es.get_run(zero["run_id"], store_path)
+        assert rec is not None
+        assert rec["summary"]["samples"]
+
+    def test_invalid_no_traffic_is_terminal_but_never_a_pairing_candidate(self, store_path):
+        ppo = self._completed_with_samples(store_path, "ppo_v2", "demo_cpu_short", [0.0])
+        es.update_run(ppo["run_id"], status=es.INVALID_NO_TRAFFIC, path=store_path)
+        hpa = self._completed_with_samples(store_path, "hpa_v2_cpu_memory", "demo_cpu_short", [5.0])
+
+        assert es.get_run(ppo["run_id"], store_path) in es.completed_runs(store_path)  # still in History
+        pair = es.latest_compatible_pair(hpa, store_path)
+        assert pair["hpa"]["run_id"] == hpa["run_id"]
+        assert pair["ppo"] is None  # the invalidated run must never be offered as the counterpart
+
+
 class TestActiveRunLiveness:
     """Covers the "Mac restarted, /tmp wiped" bug: a `"running"` record
     whose process is actually dead must never lock the Experiment page's

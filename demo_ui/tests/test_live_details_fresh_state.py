@@ -64,6 +64,54 @@ class TestNoIndependentControlsInPrimaryPath:
         assert "data_source" not in src
 
 
+class TestCurrentClusterStatePrometheusCheck:
+    """Task sec.6: the old static "requires an already-running,
+    externally-managed Prometheus port-forward" disclaimer must never
+    print anywhere -- replaced with a REAL check
+    (`PrometheusMetricsProvider.check_prometheus_reachable()`) and an
+    actionable fallback message naming the exact port-forward command
+    when Prometheus is not reachable."""
+
+    def test_old_static_disclaimer_text_never_appears(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(experiment_store, "STORE_PATH", tmp_path / "runs.json")
+        at = AppTest.from_file(APP_PATH, default_timeout=30)
+        at.run()
+        at.sidebar.radio[0].set_value("Live Details").run()
+        assert not at.exception, at.exception
+        text = (
+            "".join(m.value for m in at.markdown) + "".join(w.value for w in at.warning)
+            + "".join(c.value for c in at.caption)
+        )
+        assert "This page never starts or stops one." not in text
+
+    def test_shows_actionable_port_forward_command_when_unreachable(self, tmp_path, monkeypatch):
+        from demo_ui.live_providers import PrometheusMetricsProvider
+
+        monkeypatch.setattr(experiment_store, "STORE_PATH", tmp_path / "runs.json")
+        monkeypatch.setattr(
+            PrometheusMetricsProvider, "check_prometheus_reachable",
+            lambda self: (False, "Connection failed: refused"),
+        )
+        at = AppTest.from_file(APP_PATH, default_timeout=30)
+        at.run()
+        at.sidebar.radio[0].set_value("Live Details").run()
+        assert not at.exception, at.exception
+        warnings_text = "".join(w.value for w in at.warning)
+        assert "kubectl port-forward -n monitoring svc/kube-prom-stack-kube-prome-prometheus 9090:9090" in warnings_text
+        assert "refused" in warnings_text
+
+    def test_no_port_forward_warning_when_reachable(self, tmp_path, monkeypatch):
+        from demo_ui.live_providers import PrometheusMetricsProvider
+
+        monkeypatch.setattr(experiment_store, "STORE_PATH", tmp_path / "runs.json")
+        monkeypatch.setattr(PrometheusMetricsProvider, "check_prometheus_reachable", lambda self: (True, "Ready"))
+        at = AppTest.from_file(APP_PATH, default_timeout=30)
+        at.run()
+        at.sidebar.radio[0].set_value("Live Details").run()
+        assert not at.exception, at.exception
+        assert all("port-forward" not in w.value for w in at.warning)
+
+
 class TestFreshStoreRendering:
     @pytest.fixture(autouse=True)
     def _fresh_store(self, tmp_path, monkeypatch):

@@ -16,6 +16,90 @@ import scripts.run_demo_episode_v2 as runner
 from autoscaler.src.rl_env.controller_exclusivity import CONTROLLER_NONE
 
 
+class _FakeGeneratorProcess:
+    """Mirrors the `.poll()` surface of a real `subprocess.Popen` handle --
+    `None` while "alive", an int once "exited" -- nothing else of
+    `GeneratorHandle.process` is touched by `run_demo_episode_v2()` or
+    `confirm_traffic_arriving()`."""
+
+    def __init__(self, exit_code: "int | None" = None) -> None:
+        self._exit_code = exit_code
+
+    def poll(self):
+        return self._exit_code
+
+
+class _FakeGeneratorHandle:
+    def __init__(self, exit_code: "int | None" = None) -> None:
+        self.process = _FakeGeneratorProcess(exit_code)
+
+
+class _FakeDemoOrchestrator:
+    """Task sec.1/sec.2/sec.8: a fully offline fake for the demo traffic
+    orchestrator -- no subprocess, no Docker, no real network -- mirrors
+    `scripts.evaluate_v2_campaign._FakeOrchestrator`'s own shape for the
+    exact 4 methods `run_demo_episode_v2()` actually calls on an
+    orchestrator (`start_episode_traffic`/`stop_episode_traffic`/
+    `drain_server_side_requests`/`force_cleanup`). Records every call for
+    test assertions; `exit_code` lets a test simulate a generator that
+    dies immediately (sec.8's traffic-guard-failure regression test)."""
+
+    def __init__(self, exit_code: "int | None" = None) -> None:
+        self.started: list = []
+        self.stopped: list = []
+        self.drained = 0
+        self.force_cleaned = 0
+        self._exit_code = exit_code
+
+    def start_episode_traffic(self, profile_name, episode_id):
+        self.started.append((profile_name, episode_id))
+        return _FakeGeneratorHandle(self._exit_code)
+
+    def stop_episode_traffic(self, handle, episode_id):
+        self.stopped.append(episode_id)
+
+    def drain_server_side_requests(self):
+        self.drained += 1
+        return 0.0
+
+    def force_cleanup(self):
+        self.force_cleaned += 1
+
+
+@pytest.fixture(autouse=True)
+def _offline_traffic_by_default(monkeypatch):
+    """Task sec.1/sec.2: every test in this file predates the REAL
+    traffic-orchestrator wiring added this phase (the fix for "every demo
+    run showed 0 req/s" -- see `scripts.run_demo_episode_v2.
+    V2DemoTrafficOrchestrator`'s own docstring). None of these tests
+    should touch a real Docker container, subprocess, or network call
+    just because they call `run_demo_episode_v2()` without explicitly
+    caring about traffic -- so this autouse fixture patches the
+    function's OWN bound default values (`__defaults__`) to a fully
+    offline fake generator + an always-confirmed request rate + a no-op
+    sleep. Monkeypatching the module-level `runner.build_demo_traffic_
+    orchestrator` name would NOT work here: a function's default argument
+    values are captured at `def`-time, not re-looked-up per call, so the
+    default must be patched directly. Any test that explicitly cares
+    about traffic (sec.8's new tests below) passes its own
+    `orchestrator_factory`/`prom_query_fn`/`sleep_fn` keyword arguments,
+    which always override this fixture's default."""
+    import inspect
+
+    params_with_defaults = [
+        p for p in inspect.signature(runner.run_demo_episode_v2).parameters.values()
+        if p.default is not inspect.Parameter.empty
+    ]
+    param_names = [p.name for p in params_with_defaults]
+    overrides = {
+        "orchestrator_factory": lambda: _FakeDemoOrchestrator(),
+        "prom_query_fn": lambda: (5.0, None),
+        "sleep_fn": lambda seconds: None,
+    }
+    fake_defaults = tuple(overrides.get(name, p.default) for name, p in zip(param_names, params_with_defaults))
+    monkeypatch.setattr(runner.run_demo_episode_v2, "__defaults__", fake_defaults)
+
+
 def _fake_episode_result(arm_id: str, profile_name: str, episode_id: str) -> dict:
     """Minimal fake in the exact shape `eval_v2_episodes.py`'s real
     recorders return (and `EpisodeSample.to_dict()` produces) -- enough
@@ -430,7 +514,8 @@ class TestLiveLogLines:
 
         out = capsys.readouterr().out
         assert "Preflight OK" in out
-        assert "Traffic started:" in out
+        assert "Traffic generator started:" in out
+        assert "Traffic confirmed:" in out
         assert "Decision 1" in out and "HOLD" in out and "replicas 2→2" in out
         assert "Decision 2" in out
         assert "Run finished: status=completed" in out
@@ -485,6 +570,184 @@ class TestLiveLogLines:
 
     def test_traffic_description_falls_back_for_legacy_short_profile(self):
         assert runner._traffic_description("demo_cpu_short") == "demo_cpu_short"
+
+
+class TestTrafficGuard:
+    """Task sec.2: the traffic guard must stop everything and end the run
+    FAILED (never proceed blind) if requests never arrive, or the
+    generator dies before any were confirmed. All fakes -- no real
+    cluster/Docker/subprocess access (the generator-dies case explicitly
+    overrides the autouse fixture's `orchestrator_factory` with one that
+    returns an already-exited fake process)."""
+
+    def _ok_protection(self):
+        return {"ok": True, "reasons": []}
+
+    def test_run_fails_closed_when_request_rate_never_confirms(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(runner, "remove_hpa_before_ppo_start", lambda: [])
+        monkeypatch.setattr(runner, "restore_canonical_idle_state", lambda: {"restored": True})
+        monkeypatch.setattr(runner, "clear_lock", lambda: None)
+        episode_calls = []
+        monkeypatch.setattr(
+            runner, "run_ppo_v2_eval_episode",
+            lambda *a, **k: episode_calls.append(1) or _fake_episode_result("ppo_v2", "demo_cpu_short", "ep1"),
+        )
+        status_file = tmp_path / "status.json"
+
+        with pytest.raises(runner.ToolingFailureError, match="traffic not reaching the app"):
+            runner.run_demo_episode_v2(
+                "ppo_v2", "demo_cpu_short", status_file=status_file, samples_jsonl=None,
+                protection_check_fn=self._ok_protection,
+                orchestrator_factory=lambda: _FakeDemoOrchestrator(),
+                prom_query_fn=lambda: (0.0, None),  # never confirms -- always below TRAFFIC_CONFIRM_MIN_RPS
+                sleep_fn=lambda seconds: None,  # no real waiting -- the guard's own deadline check still ends it
+            )
+
+        assert episode_calls == []  # the episode never ran blind with zero confirmed traffic
+        final = json.loads(status_file.read_text())
+        assert final["status"] == "error"
+        assert "traffic not reaching the app" in final["error"]
+        assert final["cleanup"] == {"restored": True}  # idle state still restored -- never left mid-run
+
+    def test_run_fails_closed_when_generator_exits_before_confirming(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(runner, "remove_hpa_before_ppo_start", lambda: [])
+        monkeypatch.setattr(runner, "restore_canonical_idle_state", lambda: {"restored": True})
+        monkeypatch.setattr(runner, "clear_lock", lambda: None)
+        episode_calls = []
+        monkeypatch.setattr(
+            runner, "run_ppo_v2_eval_episode",
+            lambda *a, **k: episode_calls.append(1) or _fake_episode_result("ppo_v2", "demo_cpu_short", "ep1"),
+        )
+        status_file = tmp_path / "status.json"
+
+        with pytest.raises(runner.ToolingFailureError, match="generator process exited early"):
+            runner.run_demo_episode_v2(
+                "ppo_v2", "demo_cpu_short", status_file=status_file, samples_jsonl=None,
+                protection_check_fn=self._ok_protection,
+                orchestrator_factory=lambda: _FakeDemoOrchestrator(exit_code=1),
+                prom_query_fn=lambda: (0.0, None),
+                sleep_fn=lambda seconds: None,
+            )
+
+        assert episode_calls == []
+        final = json.loads(status_file.read_text())
+        assert final["status"] == "error"
+        assert "generator process exited early" in final["error"]
+
+    def test_confirmed_traffic_logs_observed_rate_and_stops_generator(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(runner, "remove_hpa_before_ppo_start", lambda: [])
+        monkeypatch.setattr(runner, "restore_canonical_idle_state", lambda: {"restored": True})
+        monkeypatch.setattr(runner, "clear_lock", lambda: None)
+        monkeypatch.setattr(
+            runner, "run_ppo_v2_eval_episode",
+            lambda *a, **k: _fake_episode_result("ppo_v2", "demo_cpu_short", "ep1"),
+        )
+        orchestrator = _FakeDemoOrchestrator()
+        status_file = tmp_path / "status.json"
+
+        runner.run_demo_episode_v2(
+            "ppo_v2", "demo_cpu_short", status_file=status_file, samples_jsonl=None,
+            protection_check_fn=self._ok_protection,
+            orchestrator_factory=lambda: orchestrator,
+            prom_query_fn=lambda: (12.5, None),
+            sleep_fn=lambda seconds: None,
+        )
+
+        assert len(orchestrator.started) == 1
+        assert len(orchestrator.stopped) == 1
+        assert orchestrator.drained == 1
+        assert orchestrator.force_cleaned == 1
+        final = json.loads(status_file.read_text())
+        assert final["status"] == "completed"
+
+
+class TestBeforeAfterReplicaLogging:
+    """Task sec.4: the before->after replica count in a PPO decision's log
+    line must reflect the REAL pre-decision ("before") and post-decision
+    ("after") counts -- never the same post-action value printed twice
+    (the observed "3->3" bug). `decision_record_v2.py`'s own
+    `current_replicas` field is itself bugged (populated from the same
+    post-step info key `desired_replicas` is), so this test drives TWO
+    decisions with genuinely DIFFERENT replica counts and asserts the
+    printed "before" for decision 2 is decision 1's real "after" -- the
+    fix this phase makes entirely on the `run_demo_episode_v2.py` side."""
+
+    def _ok_protection(self):
+        return {"ok": True, "reasons": []}
+
+    def test_before_after_replicas_track_the_real_resulting_count_across_decisions(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setattr(runner, "remove_hpa_before_ppo_start", lambda: [])
+        monkeypatch.setattr(runner, "restore_canonical_idle_state", lambda: {"restored": True})
+        monkeypatch.setattr(runner, "clear_lock", lambda: None)
+
+        def fake_run_ppo(model_path, epsilon, profile_name, episode_duration_s, episode_id, on_sample=None, **kwargs):
+            # Decision 1: SCALE_UP_ONE, 2 -> 3. Decision 2: SCALE_UP_ONE, 3 -> 4.
+            # `decision_record_v2`'s own (bugged) current_replicas/desired_replicas
+            # are BOTH hard-coded to the post-action value here, exactly
+            # reproducing the real bug's data shape -- proving the fix does
+            # not rely on that field being correct.
+            for after in (3, 4):
+                sample = runner.EpisodeSample(
+                    decision_index=after - 3, t_s=float(after) * 30.0, timestamp_utc="fake", profile=profile_name,
+                    arm_id="ppo_v2", normalized_observation=[0.5], raw_observation={"cpu_per_replica": 2.3, "memory_per_replica": 0.9},
+                    sample_valid=True, p95_latency_ms=612.0, error_rate=0.0, request_rate_rps=41.0,
+                    desired_replicas=after, ready_replicas=after, max_per_pod_memory_mib=80.0, pod_restart_counts={},
+                    hpa_status=None, ppo_decision={
+                        "effective_action_name": "SCALE_UP_ONE", "current_replicas": after, "desired_replicas": after,
+                        "tie_rule_applied": None,
+                    },
+                )
+                on_sample(sample)
+            return _fake_episode_result("ppo_v2", profile_name, episode_id)
+
+        monkeypatch.setattr(runner, "run_ppo_v2_eval_episode", fake_run_ppo)
+
+        runner.run_demo_episode_v2(
+            "ppo_v2", "demo_cpu_short", status_file=tmp_path / "status.json", samples_jsonl=None,
+            protection_check_fn=self._ok_protection,
+        )
+
+        out = capsys.readouterr().out
+        # Decision 1's real "before" is the episode's initial replica
+        # count (2, per configs/experiment.yaml's own initial_replicas) --
+        # never the bugged "3->3".
+        assert "Decision 1" in out
+        decision1_line = next(line for line in out.splitlines() if "Decision 1" in line)
+        assert "replicas 2→3" in decision1_line
+        # Decision 2's real "before" is decision 1's real resulting count
+        # (3) -- carried forward across the `on_sample` closure, never
+        # re-reading the (bugged) `current_replicas` field.
+        decision2_line = next(line for line in out.splitlines() if "Decision 2" in line)
+        assert "replicas 3→4" in decision2_line
+
+
+class TestNoSampleDumpOnStdout:
+    """Task sec.4: `main()`'s own terminal print must never dump the full
+    per-decision `samples` list (every EpisodeSample) to stdout -- that
+    stream is redirected verbatim into the run's human-readable log file
+    by `live_execution_adapter.py`, so a full samples dump there is
+    exactly the observed "huge JSON blob at the end of the log" bug."""
+
+    def test_main_prints_a_compact_summary_without_the_samples_list(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setattr(
+            runner, "run_demo_episode_v2",
+            lambda *a, **k: {
+                "episode_id": "ep1", "arm": "ppo_v2", "profile": "demo_cpu_short",
+                "n_samples": 2, "demo_only": True, "partial": False,
+                "samples": [{"decision_index": i, "t_s": float(i), "normalized_observation": [0.1, 0.2, 0.3]} for i in range(2)],
+            },
+        )
+
+        rc = runner.main(["--arm", "ppo_v2", "--profile", "demo_cpu_short"])
+
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "normalized_observation" not in out  # never a per-sample field dumped to the log
+        assert '"decision_index"' not in out
+        printed = json.loads(out)
+        assert printed["n_samples"] == 2
+        assert "samples" not in printed
+        assert printed["episode_id"] == "ep1"
 
 
 class TestMainSignalAndAtexitSetup:

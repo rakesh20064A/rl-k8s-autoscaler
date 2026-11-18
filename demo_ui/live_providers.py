@@ -85,6 +85,16 @@ class PrometheusMetricsProvider:
         self.route = route
         self._client = client or PrometheusClient(base_url=base_url)
 
+    def check_prometheus_reachable(self) -> "tuple[bool, str]":
+        """Task sec.6: a REAL check against Prometheus's own `/-/ready`
+        endpoint (`PrometheusClient.check_readiness()`, already tested,
+        reused rather than reinvented) -- never a static assumption that
+        an externally-managed port-forward happens to be up. Returns
+        `(True, "Ready")` when reachable, else `(False, <reason>)` so the
+        caller can show an actionable message instead of a generic
+        disclaimer."""
+        return self._client.check_readiness()
+
     def get_live_snapshot(self) -> LiveMetricsSnapshot:
         target_up, message = self._client.check_target_health(
             namespace=self.app_namespace, app_name=self.deployment

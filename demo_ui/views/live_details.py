@@ -46,10 +46,25 @@ def _render_current_cluster_state() -> None:
     just explicitly scoped so it can never be mistaken for the run's own
     historical measurements."""
     st.markdown('<div class="du-section-label" style="margin-top:0.8rem;">Current Cluster State</div>', unsafe_allow_html=True)
-    st.caption("Requires an already-running, externally-managed Prometheus port-forward on localhost:9090. This page never starts or stops one.")
 
     k8s = KubernetesClusterProvider()
     prom = PrometheusMetricsProvider()
+
+    # Task sec.6: a REAL check (Prometheus's own `/-/ready` endpoint),
+    # never the old static "requires an already-running port-forward"
+    # disclaimer text -- when reachable, the rest of this section already
+    # shows real live state below; when NOT reachable, this is the ONE
+    # place that message is shown, and it names the EXACT command to run
+    # (never a generic "start a port-forward" hint).
+    prom_reachable, prom_ready_message = prom.check_prometheus_reachable()
+    if prom_reachable:
+        st.caption("Prometheus: reachable at localhost:9090 (live).")
+    else:
+        st.warning(
+            f"Prometheus is not reachable at localhost:9090 ({prom_ready_message}). "
+            "This page never starts or stops a port-forward itself -- start one, then refresh:\n\n"
+            "```\nkubectl port-forward -n monitoring svc/kube-prom-stack-kube-prome-prometheus 9090:9090\n```"
+        )
 
     dep = k8s.get_deployment_replica_state()
     hpa = k8s.get_hpa_snapshot()
@@ -57,12 +72,19 @@ def _render_current_cluster_state() -> None:
     restarts = k8s.get_pod_restart_counts()
     snap = prom.get_live_snapshot()
     events = k8s.get_recent_events()
+    try:
+        from autoscaler.src.rl_env.controller_exclusivity import read_lock
+
+        lock_state = read_lock()
+    except Exception:  # noqa: BLE001 -- a lock-file read failure must never crash this read-only page
+        lock_state = NOT_AVAILABLE
 
     ready_count = sum(1 for p in pods if p.state.value == "READY")
     render_metric_strip([
         ("Pods ready", f"{ready_count}/{len(pods)}" if pods else NOT_AVAILABLE),
         ("Deployment", f"{dep['desired']}/{dep['ready']}" if dep else NOT_AVAILABLE),
         ("HPA present", "Yes" if hpa is not None else "No"),
+        ("Controller lock", lock_state),
         ("Prometheus", "Reachable" if snap.target_up else f"DOWN: {snap.target_health_message}"),
     ])
 

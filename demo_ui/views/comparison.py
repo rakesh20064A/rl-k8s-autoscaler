@@ -40,8 +40,17 @@ def _fmt_metric(value) -> str:
 
 def _latest_current_system_run():
     """The most recently started completed run made by the current
-    system (never a run from a different generation)."""
-    candidates = [r for r in experiment_store.completed_runs() if r.get("generation") == "v2"]
+    system (never a run from a different generation). Task sec.3: an
+    `invalid_no_traffic` run (zero/near-zero traffic throughout -- never a
+    real measurement) is never chosen as the workload this section leads
+    with, even if it is the most recent terminal run -- falls back to the
+    next-most-recent genuinely-evaluable run, or `None` if every run so
+    far is invalidated (the empty state below, never a fabricated
+    comparison)."""
+    candidates = [
+        r for r in experiment_store.completed_runs()
+        if r.get("generation") == "v2" and r.get("status") != experiment_store.INVALID_NO_TRAFFIC
+    ]
     if not candidates:
         return None
     return max(candidates, key=lambda r: r["started_at"])
@@ -94,10 +103,17 @@ def _render_live_comparison() -> bool:
         if line:
             st.caption(line)
 
-    ts_hr, hr = experiment_store.extract_series(hpa_run, "replicas_desired")
-    ts_hl, hl = experiment_store.extract_series(hpa_run, "latency_p95_ms")
-    ts_pr, pr = experiment_store.extract_series(ppo_run, "replicas_desired")
-    ts_pl, pl = experiment_store.extract_series(ppo_run, "latency_p95_ms")
+    # Pre-existing field-name mismatch fixed in passing while verifying
+    # comparison pairing end-to-end (task sec.7): `EpisodeSample`/
+    # `scripts/run_demo_episode_v2.py`'s own per-decision sample schema
+    # names this field `desired_replicas` (see `_to_status_sample`), never
+    # `replicas_desired` -- the old key name here meant `extract_series()`
+    # always returned `([], [])` for the Replicas overlay chart even for a
+    # correctly-paired HPA/PPO run, silently empty rather than erroring.
+    ts_hr, hr = experiment_store.extract_series(hpa_run, "desired_replicas")
+    ts_hl, hl = experiment_store.extract_series(hpa_run, "p95_latency_ms")
+    ts_pr, pr = experiment_store.extract_series(ppo_run, "desired_replicas")
+    ts_pl, pl = experiment_store.extract_series(ppo_run, "p95_latency_ms")
 
     c1, c2 = st.columns(2)
     c1.plotly_chart(overlay_line_chart("Replicas", ts_hr, hr, "HPA", ts_pr, pr, "PPO", "replicas", empty_message="No comparison data", empty_detail="Run both arms with the same workload", empty_y_range=(0, 8)), use_container_width=True)
