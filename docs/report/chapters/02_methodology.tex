@@ -369,8 +369,8 @@ narrow intervention, not a mechanism that drives most decisions.
 \label{sec:reward-function}
 
 The reward combines seven independently weighted components, summarized in
-Table~\ref{tab:reward-components} and defined in full in
-\texttt{configs/\allowbreak \allowbreak reward\_\allowbreak v2.yaml} (Listing~\ref{lst:reward-config} in
+Table~\ref{tab:reward-components} and defined in full in the project's
+reward configuration file (Listing~\ref{lst:reward-config} in
 Appendix~\ref{ch:appendix}):
 \begin{equation}
 r_t = -\big(w_{\text{rel}}\rho_t + w_{\text{sla}}\,\mathrm{sla}_t + w_{\text{prs}}\,\mathrm{prs}_t + w_{\text{wst}}\,\mathbb{1}_{\text{waste}} + w_{\text{act}}\,\mathbb{1}_{\text{act}} + w_{\text{rev}}\,\mathbb{1}_{\text{rev}} + w_{\text{bnd}}\,\mathbb{1}_{\text{bnd}}\big)
@@ -469,7 +469,7 @@ evaluation specifically (replica floor, SLA/waste recalibration,
 tie-breaking, budget, pre-registration, and the stress test); earlier
 entries record the infrastructure, benchmark, and HPA-tuning calibration
 that this design is built on. The \textbf{pre-registration}
-(\texttt{docs/\allowbreak \allowbreak evaluation\_\allowbreak v2\_\allowbreak preregistration.md}, CORR-60) fixes the
+(the project's pre-registration document, CORR-60) fixes the
 evaluation's arms, traffic profiles, metrics, retry rules, and decision
 rule in writing before any evaluation episode ran -- before the final
 training checkpoint (session 47) even existed. We refer back to specific
@@ -724,9 +724,9 @@ two HPA configurations) scales the Deployment for the length of the
 episode; telemetry is recorded throughout; the generator is stopped and
 drained; the cluster is cleaned up and settled back to canonical idle
 state; and the attempt's full result, success or failure, is written to the
-run's own directory and to the campaign's ledger. The same orchestration
-code path, \texttt{scripts/\allowbreak \allowbreak evaluate\_\allowbreak v2\_\allowbreak campaign.py}, runs both the
-pre-registered held-out evaluation and the later exploratory stress test,
+run's own directory and to the campaign's ledger. The same
+evaluation-orchestration script runs both the pre-registered held-out
+evaluation and the later exploratory stress test,
 differing only in which traffic profiles and repeat counts are configured,
 which is part of why we can state confidently that the two campaigns are
 run under identical operational discipline even though their scientific

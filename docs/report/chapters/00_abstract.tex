@@ -26,7 +26,8 @@ report this as a genuine property of running training against a real
 cluster rather than omitting it. We then ran a pre-registered, 27-run
 held-out evaluation of this policy against an HPA configuration using CPU
 and memory and a CPU-only HPA baseline (the same 260\% CPU target and 2-8
-replica bounds as every other arm, not a stock Kubernetes default), across
+replica bounds as every other arm, not Kubernetes' unmodified factory
+settings), across
 three held-out traffic profiles, followed by a separately labelled,
 exploratory nine-run stress test at training-level peak loads. All 27
 pre-registered runs were valid; no controller was declared an overall

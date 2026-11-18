@@ -48,11 +48,11 @@ def build_observation(
     # full function continues in the project repository.)
 \end{lstlisting}
 
-\section{V2 Reward Implementation}
+\section{Reward Function Implementation}
 
 Listing~\ref{lst:reward-v2} shows \texttt{compute\_\allowbreak reward\_\allowbreak v2}, from
 \texttt{autoscaler/\allowbreak \allowbreak src/\allowbreak \allowbreak rl\_\allowbreak env/\allowbreak \allowbreak reward\_\allowbreak v2.py}, lines 199-262, implementing
-Equation~\ref{eq:v2-reward} and Table~\ref{tab:reward-components}.
+Equation~\ref{eq:reward} and Table~\ref{tab:reward-components}.
 
 \begin{lstlisting}[language=Python,caption={V2 reward computation (\texttt{autoscaler/\allowbreak \allowbreak src/\allowbreak \allowbreak rl\_\allowbreak env/\allowbreak \allowbreak reward\_\allowbreak v2.py}, lines 199-262).},label={lst:reward-v2}]
 def compute_reward_v2(
@@ -155,7 +155,7 @@ def compute_effective_action(
     return GatingResult(requested_delta, OVERRIDE_NONE, bound_clamped=False, pending_scale=False)
 \end{lstlisting}
 \texttt{GatingConfig} is parameterized with \texttt{min\_\allowbreak replicas=2},
-\texttt{max\_\allowbreak replicas=8} (V2), and \texttt{scale\_\allowbreak down\_\allowbreak cooldown\_\allowbreak seconds=60.0}.
+\texttt{max\_\allowbreak replicas=8}, and \texttt{scale\_\allowbreak down\_\allowbreak cooldown\_\allowbreak seconds=60.0}.
 
 \section{Safety-Aware Tie-Break Selector}
 
@@ -225,7 +225,7 @@ Listing~\ref{lst:trainer} shows the setup portion of
 \texttt{run\_\allowbreak one\_\allowbreak final\_\allowbreak session}, from
 \texttt{scripts/\allowbreak \allowbreak train\_\allowbreak ppo\_\allowbreak final\_\allowbreak v2.py}, lines 604-693 (abridged), which
 runs one 256-step training session: it resolves the session's attempt
-directory, loads the V2 environment configuration, constructs the live
+directory, loads the environment configuration, constructs the live
 Kubernetes backend and the Gymnasium environment, and wraps it with an
 episode ledger recorder before training begins.
 
@@ -353,7 +353,7 @@ def run_one_attempt(run_record: RunRecord, ctx: CampaignContext, attempt_number:
 
 \section{Configuration File Excerpts}
 
-Listing~\ref{lst:hpa-cm} and Listing~\ref{lst:hpa-cpu} show the two V2 HPA
+Listing~\ref{lst:hpa-cm} and Listing~\ref{lst:hpa-cpu} show the two HPA
 manifests, \texttt{k8s/\allowbreak \allowbreak hpa/\allowbreak \allowbreak hpa\_\allowbreak v2\_\allowbreak cpu\_\allowbreak memory.yaml} and
 \texttt{k8s/\allowbreak \allowbreak hpa/\allowbreak \allowbreak hpa\_\allowbreak v2\_\allowbreak cpu\_\allowbreak only\_\allowbreak min2.yaml}. Both share the same
 replica bounds (2-8) and scaling behaviour (immediate scale-up, a 120-second
@@ -437,7 +437,7 @@ spec:
 
 Listing~\ref{lst:reward-config} shows the key fields of
 \texttt{configs/\allowbreak \allowbreak reward\_\allowbreak v2.yaml}, the frozen configuration underlying the
-V2 reward of Equation~\ref{eq:v2-reward} and Table~\ref{tab:reward-components}.
+reward of Equation~\ref{eq:reward} and Table~\ref{tab:reward-components}.
 
 \begin{lstlisting}[caption={Key fields of \texttt{configs/\allowbreak \allowbreak reward\_\allowbreak v2.yaml}.},label={lst:reward-config}]
 reward_contract_version: 2
@@ -463,7 +463,7 @@ reversal_window_seconds: 120
 \end{lstlisting}
 
 Listing~\ref{lst:rl-config} shows the key fields of
-\texttt{configs/\allowbreak \allowbreak rl\_\allowbreak v2.yaml}, including the V2 replica floor (CORR-55) and
+\texttt{configs/\allowbreak \allowbreak rl\_\allowbreak v2.yaml}, including the replica floor (CORR-55) and
 the provisional tie-break epsilon later superseded, for evaluation
 purposes only, by the calibrated value of Section~\ref{sec:tie-break}.
 
@@ -485,7 +485,7 @@ ppo:
   vf_coef: 0.5
   net_arch: [128, 128]
 scaling_v2:
-  min_replicas: 2     # CORR-55 (V2 floor raised from 1)
+  min_replicas: 2     # CORR-55 (floor is 2, never 1)
   max_replicas: 8
   initial_replicas: 2
 safe_action:
@@ -495,134 +495,123 @@ safe_action:
 
 \section{Correction Log Summary}
 
-Table~\ref{tab:corr-summary} lists every entry of the project's append-only
-design-correction log (\texttt{docs/\allowbreak \allowbreak experimental\_\allowbreak design\_\allowbreak corrections.md}),
-CORR-1 through CORR-65, one line per entry. Entries CORR-49 through CORR-54
-are a known, acknowledged documentation gap: the correction log's own
-CORR-55 entry states that these numbers were consumed in code (for
-example, \texttt{scripts/\allowbreak \allowbreak run\_\allowbreak dynamics\_\allowbreak calibration\_\allowbreak slot.py}) but were
-never written up as entries in this document; we report this gap rather
-than inventing content for it. CORR-1 through CORR-26 concern the
-project's pre-V2 calibration and HPA-tuning phases (Minikube resource
-accounting, workload calibration, and the counterbalanced study that
-selected the 260\% CPU target used by both V2 HPA baselines); CORR-27
-onward concern the frozen MDP contract and the V2 multi-metric controller
-redesign discussed throughout Chapter~\ref{ch:methodology} and
-Chapter~\ref{ch:results}.
+The project keeps a single append-only design-correction log
+(\texttt{docs/\allowbreak \allowbreak experimental\_\allowbreak design\_\allowbreak corrections.md}), numbered CORR-1
+through CORR-65, covering the whole project's history: infrastructure and
+benchmark calibration, the HPA-tuning study that selected the 260\% CPU
+target used by every arm in this report, the frozen MDP contract, and the
+final controller's own design and evaluation. Table~\ref{tab:corr-summary}
+lists, in plain language, only the entries from CORR-55 onward -- the
+entries that describe the design and evaluation of the controller
+described in this report specifically, each stated as a short, factual
+record rather than a version-history note. Earlier entries (CORR-1 through
+CORR-54) record the infrastructure, benchmark, and HPA-tuning calibration
+this design is built on, and are not reproduced individually here.
 
-\begingroup
-\small\singlespacing
-\begin{longtable}{p{1.6cm}p{11.5cm}}
-\caption{Correction log summary (CORR-1 through CORR-65).}
-\label{tab:corr-summary}\\
+\begin{table}[H]
+\centering
+\caption[Correction log summary]{Correction log summary (final-system entries, CORR-55 through CORR-65).}
+\label{tab:corr-summary}
+\small
+\begin{tabular}{p{1.6cm}p{11.0cm}}
 \toprule
-Entry & Title \\
+Entry & What it records \\
 \midrule
-\endfirsthead
-\toprule
-Entry & Title \\
-\midrule
-\endhead
-CORR-1 & Minikube Resource-Accounting Mismatch \\
-CORR-2 & HPA Metric-Resolution Fairness for Benchmark \\
-CORR-3 & CPU Limits and maxReplicas (Phase 6A correction) \\
-CORR-4 & RL Agent Metric Source \\
-CORR-5 & Workload Generation Isolation (Phase 6C Diagnostic Run Invalidation) \\
-CORR-6 & Application Metric Label Collision with Prometheus Target Labels \\
-CORR-7 & Status of \texttt{demo\_\allowbreak app\_\allowbreak last\_\allowbreak work\_\allowbreak intensity} Diagnostic Gauge \\
-CORR-8 & Host Resource Isolation, Pod Lifecycle Resilience, and Cluster Headroom Guidelines \\
-CORR-9 & Scientific Telemetry Collection Integrity, Target Health, and Runtime Provenance \\
-CORR-10 & Workload Computation Reality, Host Sharing, and Planned Schedule Replay \\
-CORR-11 & Dispatch Lag vs.\ Latency Attribution and Profile Duration Boundaries \\
-CORR-12 & Stage-1 Calibration Artifact Validity, CPU Rate Terminology, and Throttling Definitions \\
-CORR-13 & Canonical Workload Window and Telemetry Summary Methodology \\
-CORR-14 & Empirical Capacity Boundaries, Workload-Window Dispatch Rate, and CFS Throttling Deltas \\
-CORR-15 & Single-Replica Capacity Calibration Closure and Capacity Statement \\
-CORR-16 & Initial HPA Baseline Implementation and Metrics Server Research Configuration \\
-CORR-17 & HPA Tuning Methodology, Exact-Replay Capability, and Precommitted Selection Criteria \\
-CORR-18 & HPA Tuning Methodology Hardening, Repetition/Order Protocol, Numeric SLA \\
-CORR-19 & Event Baselining, Evidence Hierarchy, and Conditional 6-RPS Interpretation \\
-CORR-20 & Corrected HPA Average-Utilization Semantics; Reconciliation of First Official 220\% Trial \\
-CORR-21 & Corrected Multi-Replica Traffic-Delivery Path (\texttt{kubectl port-forward} Does Not Load-Balance) \\
-CORR-22 & Eliminated Duplicate Prometheus Scraping; Fresh-Connection Discriminator Fix \\
-CORR-23 & Fine-Grained Final-Path HPA-Relevant CPU Map \\
-CORR-24 & Redesigned HPA Candidate Family (200/230/260) and Canonical Tuning Schedule v2 \\
-CORR-25 & Standardized Exact-Interval Replica-Trajectory Integration \\
-CORR-26 & Official HPA Tuning Dataset Closed; 260\% Selected as the Frozen Baseline \\
-CORR-27 & RL MDP Contract V2: CPU-Clip, HPA-Coupling, Gating, and Held-Out-Leakage Corrections \\
-CORR-28 & RL Runtime Dependency Compatibility and Pre-Environment Readiness Freeze \\
-CORR-29 & RL Gymnasium Environment Mechanics and Pluggable-Backend Contract \\
-CORR-30 & RL Transition-Reward Validity Decomposition and Deterministic Episode-Reset Control Age \\
-CORR-31 & Empirical RL Dynamics Calibration Protocol Freeze \\
-CORR-32 & RL Empirical-Dynamics Calibration Protocol Integrity Corrections \\
-CORR-33 & Final RL Dynamics-Calibration Execution-Readiness Clarifications \\
-CORR-34 & Global Calibration Run Order and Exhaustive Routing-Integrity Classification \\
-CORR-35 & Exposure-Weighted Routing Opportunity and Transition-Safe Per-Pod Integrity Analysis \\
-CORR-36 & Steady-State Ready-Count Invariant Can Be Violated by Overload-Induced Readiness Loss \\
-CORR-37 & Post-First-Run Separation of Execution Validity and Fitting Eligibility \\
-CORR-38 & Post-Data Expansion to Complete Relevant-Pod Observability \\
-CORR-39 & Unverified External Workload-Delivery-Path Integrity During a Sustained Connection-Error Block \\
-CORR-40 & Stable Host-to-Kubernetes Workload Transport Transition \\
-CORR-41 & Kubernetes-Dataplane Workload-Ingress Evidence \\
-CORR-42 & Temporal Dataplane-Evidence Acquisition Coverage \\
-CORR-43 & Deterministic Short-Trailing-Window Evidence Partitioning \\
-CORR-44 & Replica-Transition Materiality/Scored-Window Operationalization \\
-CORR-45 & Replica-Transition Scale-Down Lag Target-State Operationalization \\
-CORR-46 & Transition Collector Transient-Timeout Resilience \\
-CORR-47 & Workload-Transition Pre-First-Use Operationalization \\
-CORR-48 & Workload-Transition Trajectory Traffic-Window Boundary \\
-CORR-49--54 & \textit{Documentation gap -- consumed in code but never written up as log entries (acknowledged in CORR-55).} \\
-CORR-55 & V2 Replica Floor Raised 1 $\to$ 2 for Both V2 Controllers \\
-CORR-56 & Idle (Zero-Traffic) Samples Incorrectly Classified Invalid \\
-CORR-57 & V2 SLA Target and Waste Thresholds Recalibrated \\
-CORR-58 & Safety-Aware Asymmetric Tie-Breaking for V2 Deterministic Inference \\
-CORR-59 & Pre-Registered Budget Amendment, 5{,}120 $\to$ 12{,}288 Timesteps \\
-CORR-60 & V2 Evaluation Pre-Registration \\
-CORR-61 & Evaluation Safety/Termination Clarification \\
-CORR-62 & CPU-Only HPA Arm Added (Post-Training) \\
-CORR-63 & CPU-Only HPA Arm Blocked by Leftover \texttt{demo-app-hpa-v2} (Code Defect) \\
-CORR-64 & \texttt{restore\_\allowbreak canonical\_\allowbreak idle\_\allowbreak state()} Left \texttt{demo-app-hpa-v2-cpu} Behind (Code Defect) \\
-CORR-65 & Exploratory Post-Hoc Stress Test at Training-Level Peaks \\
+CORR-55 & Replica floor raised to 2 for every controller. \\
+CORR-56 & Idle (zero-traffic) samples were being incorrectly classified as invalid; corrected. \\
+CORR-57 & SLA target and waste thresholds recalibrated (SLA target set to 1000\,ms). \\
+CORR-58 & Safety-aware asymmetric tie-breaking rule adopted for deterministic inference. \\
+CORR-59 & Training budget amendment, 5{,}120 $\to$ 12{,}288 timesteps, recorded before any post-amendment session result existed. \\
+CORR-60 & Evaluation pre-registration: arms, profiles, metrics, retry rules, and decision rule fixed before any evaluation run. \\
+CORR-61 & Evaluation safety/termination rule clarified. \\
+CORR-62 & CPU-only HPA arm added, after training, to isolate whether the memory metric matters. \\
+CORR-63 & CPU-only HPA arm blocked by a leftover HPA object from a previous arm (code defect, fixed, retried). \\
+CORR-64 & Canonical-idle-state restoration left an HPA object behind (code defect, fixed, retried). \\
+CORR-65 & Exploratory, post-hoc stress test added at training-level peak loads. \\
 \bottomrule
-\end{longtable}
-\endgroup
+\end{tabular}
+\end{table}
 
 \section{Supplementary Data Tables}
 
 Table~\ref{tab:training-summary-appendix} gives the full training-summary
-statistics underlying the discussion of the V2 training campaign in
+statistics underlying the discussion of the training campaign in
 Chapter~\ref{ch:results}, including minimum and maximum values across all
 48 sessions, not only the first/last values discussed in the main text.
 
 \begin{table}[H]
 \centering
-\caption{V2 training summary statistics (48 analyzed sessions).}
+\caption[Training summary statistics]{Training summary statistics (48 analyzed sessions).}
 \label{tab:training-summary-appendix}
 \input{tables/training_summary.tex}
 \end{table}
 
 Table~\ref{tab:eval-secondary-appendix} gives the full secondary-metrics
-table for the pre-registered \texttt{eval\_\allowbreak final} campaign, and
-Table~\ref{tab:stress-descriptive-appendix} the full descriptive table for
-the exploratory \texttt{stress\_\allowbreak explore} campaign, both reproduced here in
-landscape orientation because of their column count.
+table for the pre-registered held-out evaluation campaign, and
+Table~\ref{tab:stress-descriptive-appendix} the equivalent table for the
+exploratory stress test. Both tables keep only the columns that vary
+across cells: error rate and pod-restart count were exactly 0 in every
+run of both campaigns and are reported as a sentence rather than as a
+column, and reversals were likewise 0 in every run. Standard deviation is
+shown only where it is nonzero. Arm names are abbreviated per the legend
+below each table.
 
-\begin{landscape}
 \begin{table}[H]
 \centering
-\caption{\texttt{eval\_\allowbreak final} secondary metrics, mean $\pm$ standard deviation over 3 repeats per (profile, arm) cell.}
+\caption[Held-out evaluation, full secondary metrics]{Held-out evaluation secondary metrics in full, mean $\pm$ sd over 3 repeats per cell. Error rate, pod restarts, and reversals were 0 in every one of the 27 runs.}
 \label{tab:eval-secondary-appendix}
-\tiny
-\resizebox{\linewidth}{!}{\input{tables/eval_final_secondary_metrics.tex}}
-\end{table}
-\end{landscape}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+Arm & Mean p95 (ms) & SLA@1000 & SLA@300 & Max mem (MiB) & Scaling acts.\ \\
+\midrule
+\multicolumn{6}{l}{\textit{CPU step}} \\
+HPA C+M & $271 \pm 36$ & 0.000 & $0.108 \pm 0.052$ & $48.5 \pm 9.6$ & 0.00 \\
+HPA CPU & $250 \pm 4$ & 0.000 & $0.067 \pm 0.014$ & $56.8 \pm 3.9$ & 0.00 \\
+PPO & $274 \pm 93$ & $0.008 \pm 0.014$ & $0.075 \pm 0.130$ & $51.6 \pm 10.3$ & 2.00 \\
+\midrule
+\multicolumn{6}{l}{\textit{Memory ramp}} \\
+HPA C+M & 975 & 0.000 & 1.000 & $123.8 \pm 10.8$ & 0.00 \\
+HPA CPU & 975 & 0.000 & 1.000 & $140.9 \pm 9.0$ & 0.00 \\
+PPO & 951 & 0.000 & 0.975 & $108.6 \pm 9.5$ & 1.00 \\
+\midrule
+\multicolumn{6}{l}{\textit{Mixed bursts}} \\
+HPA C+M & 975 & 0.000 & 1.000 & $97.6 \pm 18.4$ & 0.00 \\
+HPA CPU & 975 & 0.000 & 1.000 & $119.0 \pm 0.2$ & 0.00 \\
+PPO & 951 & 0.000 & 0.975 & $108.2 \pm 9.0$ & $1.33 \pm 0.58$ \\
+\bottomrule
+\end{tabular}
 
-\begin{landscape}
+\vspace{4pt}
+\footnotesize Legend: HPA C+M = HPA CPU+Memory; HPA CPU = HPA CPU-only (CPU baseline); PPO = PPO (multi-metric). SLA@1000/SLA@300 are the SLA-violation rate at the 1000\,ms and 300\,ms reference targets. Invalid-sample counts (not shown) were 0 in every cell except HPA CPU on CPU step ($0.33\pm0.58$) and HPA C+M on mixed bursts ($0.33\pm0.58$).
+\end{table}
+
 \begin{table}[H]
 \centering
-\caption{\texttt{stress\_\allowbreak explore} descriptive metrics, 1 repeat per (profile, arm) cell -- exploratory, CORR-65, never subject to the pre-registered decision rule.}
+\caption[Stress test, full descriptive metrics]{Stress-test descriptive metrics in full, 1 repeat per cell -- exploratory, CORR-65. Error rate and pod restarts were 0 in every one of the 9 runs; no standard deviation applies with 1 repeat.}
 \label{tab:stress-descriptive-appendix}
-\tiny
-\resizebox{\linewidth}{!}{\input{tables/stress_explore_descriptive_metrics.tex}}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+Arm & Mean p95 (ms) & SLA@1000 & SLA@300 & Max mem (MiB) & Scaling acts.\ \\
+\midrule
+\multicolumn{6}{l}{\textit{CPU bursts}} \\
+HPA C+M & 1820 & 0.526 & 0.605 & 43.1 & 0 \\
+HPA CPU & 1703 & 0.525 & 0.625 & 43.9 & 0 \\
+PPO & 1568 & 0.500 & 0.775 & 44.7 & 3 \\
+\midrule
+\multicolumn{6}{l}{\textit{Memory ramp}} \\
+HPA C+M & 975 & 0.000 & 1.000 & 119.5 & 0 \\
+HPA CPU & 975 & 0.000 & 1.000 & 152.3 & 0 \\
+PPO & 951 & 0.000 & 0.975 & 120.1 & 1 \\
+\midrule
+\multicolumn{6}{l}{\textit{Mixed bursts}} \\
+HPA C+M & 980 & 0.000 & 1.000 & 88.2 & 0 \\
+HPA CPU & 1041 & 0.100 & 1.000 & 103.8 & 0 \\
+PPO & 1092 & 0.200 & 0.975 & 87.7 & 2 \\
+\bottomrule
+\end{tabular}
+
+\vspace{4pt}
+\footnotesize Legend: HPA C+M = HPA CPU+Memory; HPA CPU = HPA CPU-only (CPU baseline); PPO = PPO (multi-metric). Invalid-sample counts (not shown) were 0 in every cell except HPA C+M on CPU bursts (2) and HPA C+M on mixed bursts (1).
 \end{table}
-\end{landscape}
