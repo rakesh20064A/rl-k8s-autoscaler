@@ -15,7 +15,8 @@ chosen number.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 import streamlit as st
 
@@ -60,21 +61,102 @@ def _fmt(value, suffix: str = "", digits: int = 1) -> str:
     return "—" if value is None else f"{value:.{digits}f}{suffix}"
 
 
+def _traffic_label(profile_name: Optional[str]) -> str:
+    """"Pattern / Resource / Load" (Title Case, " / " separators) for a
+    36-catalog profile name; falls back to a title-cased version of the
+    raw name for a legacy `demo_*_short` profile, which has no such
+    decomposition. The ONE place this formatting happens in this module
+    (`render_run_banner`/`render_telemetry`/the run selector all share
+    it), so a profile is never described two different ways on the same
+    page."""
+    if not profile_name:
+        return "—"
+    combo = parse_profile_name(profile_name)
+    if combo is None:
+        return profile_name.replace("_", " ").title()
+    pattern, resource, load = combo
+    return (
+        f"{PATTERN_LABELS.get(pattern, pattern)} / {RESOURCE_LABELS.get(resource, resource)} / "
+        f"{LOAD_LABELS.get(load, load)}"
+    )
+
+
+def run_selector_label(rec: Dict[str, Any]) -> str:
+    """Task sec.4's exact format: "PPO · Bursts / CPU / High · 18 Nov
+    12:40 · completed" -- controller family (the short "PPO"/"HPA" label,
+    never the raw `ppo_v2`/`hpa_v2_cpu_memory` id) · traffic description
+    (Title Case, " / " separators) · day-month-time (no leading zero on
+    the day) · status (lowercase, whatever `experiment_store` currently
+    has for it -- "running"/"completed"/"error"/"stopped"/`STALE_STATUS`/
+    "refused")."""
+    arm = display_arm_label(rec.get("controller"))
+    traffic = _traffic_label(rec.get("profile_name"))
+    started_at = rec.get("started_at")
+    try:
+        when = f"{datetime.fromtimestamp(started_at).day} {datetime.fromtimestamp(started_at).strftime('%b %H:%M')}"
+    except (TypeError, ValueError, OSError):
+        when = "—"
+    status = str(rec.get("status") or "unknown").lower()
+    return f"{arm} · {traffic} · {when} · {status}"
+
+
+def _selectable_v2_runs() -> List[Dict[str, Any]]:
+    """Every v2 run worth offering in the Live Details run selector,
+    newest-first, with the currently active run (if any) always first
+    regardless of its `started_at` (it is, almost by definition, the most
+    recently started) -- the active run plus every TERMINAL-status run
+    `experiment_store.completed_runs()` already tracks (never a
+    duplicate: a run that just went active->terminal between two calls is
+    de-duplicated by `run_id`). A run from a different generation (V1) is
+    never offered here."""
+    active = experiment_store.active_run()
+    if active is not None and active.get("generation") != "v2":
+        active = None
+    runs: List[Dict[str, Any]] = [active] if active is not None else []
+    seen = {active["run_id"]} if active is not None else set()
+    for rec in experiment_store.completed_runs():
+        if rec.get("generation") != "v2" or rec["run_id"] in seen:
+            continue
+        runs.append(rec)
+        seen.add(rec["run_id"])
+    return runs
+
+
+def render_run_selector() -> "tuple[Optional[Dict[str, Any]], bool]":
+    """Task sec.4: the run selector at the top of Live Details. Returns
+    `(selected_rec_or_None, is_active)`. Defaults to the active run if one
+    exists, else the latest completed run (`_selectable_v2_runs()`'s own
+    ordering already puts exactly that option first) -- Streamlit's own
+    widget-state persistence (keyed on `run_id`, a stable identity across
+    a running->terminal transition) keeps a user's explicit pick sticky
+    across reruns without any extra bookkeeping here. Returns `(None,
+    False)` with no widget at all if there is nothing to select -- the
+    caller renders the "no run yet" empty state instead."""
+    runs = _selectable_v2_runs()
+    if not runs:
+        return None, False
+    by_id = {r["run_id"]: r for r in runs}
+    run_ids = list(by_id.keys())
+    active = experiment_store.active_run()
+    active_id = active["run_id"] if (active is not None and active.get("generation") == "v2") else None
+    default_id = active_id if active_id in by_id else run_ids[0]
+    selected_id = st.selectbox(
+        "Run", run_ids, index=run_ids.index(default_id),
+        format_func=lambda rid: run_selector_label(by_id[rid]), key="du_v2_live_details_run_selector",
+    )
+    selected = by_id.get(selected_id, by_id[default_id])
+    return selected, selected["run_id"] == active_id
+
+
 def render_run_banner(rec: Optional[Dict[str, Any]], is_active: bool) -> None:
     if rec is None:
         st.markdown(
             '<div class="du-panel mono" style="margin-bottom:0.6rem;">No experiment has been run yet.</div>',
             unsafe_allow_html=True,
         )
+        st.info("Start a run on the Experiment page")
         return
-    profile_label = rec["profile_name"].replace("_", " ").title()
-    combo = parse_profile_name(rec["profile_name"])
-    if combo is not None:
-        pattern, resource, load = combo
-        profile_label = (
-            f"{PATTERN_LABELS.get(pattern, pattern)} / {RESOURCE_LABELS.get(resource, resource)} / "
-            f"{LOAD_LABELS.get(load, load)}"
-        )
+    profile_label = _traffic_label(rec["profile_name"])
     prefix = "Current run" if is_active else "Latest run"
     data_source = rec.get("data_source", "LIVE")
     status_label = (rec.get("stage") or rec.get("status", "unknown")).upper()
@@ -107,17 +189,7 @@ def render_telemetry(rec: Optional[Dict[str, Any]]) -> None:
     ts_q, rps = experiment_store.extract_series(rec, "request_rate_rps")
     ts_e, err = experiment_store.extract_series(rec, "error_rate")
 
-    traffic_label = "—"
-    if rec is not None:
-        combo = parse_profile_name(rec["profile_name"])
-        if combo is not None:
-            pattern, resource, load = combo
-            traffic_label = (
-                f"{PATTERN_LABELS.get(pattern, pattern)} / {RESOURCE_LABELS.get(resource, resource)} / "
-                f"{LOAD_LABELS.get(load, load)}"
-            )
-        else:
-            traffic_label = rec["profile_name"].replace("_", " ").title()
+    traffic_label = _traffic_label(rec["profile_name"]) if rec is not None else "—"
 
     render_metric_strip([
         ("Arm", display_arm_label(rec["controller"]) if rec is not None else "—"),
@@ -134,6 +206,7 @@ def render_telemetry(rec: Optional[Dict[str, Any]]) -> None:
                    empty_message=empty_primary, empty_detail=empty_detail, empty_y_range=_REPLICAS_EMPTY_RANGE),
         width="stretch",
     )
+    c1.caption("Desired replica count the controller issued, over the run's elapsed time.")
     p95_fig = line_chart("P95 Latency vs. SLA target", ts_l, {"p95": p95}, "ms",
                           empty_message=empty_primary, empty_detail=empty_detail, empty_y_range=_LATENCY_EMPTY_RANGE)
     p95_fig.add_hline(
@@ -141,6 +214,7 @@ def render_telemetry(rec: Optional[Dict[str, Any]]) -> None:
         annotation_text="SLA target: p95 ≤ 1 s", annotation_position="top left",
     )
     c2.plotly_chart(p95_fig, width="stretch")
+    c2.caption("p95 latency; dashed line = 1s target.")
 
     c3, c4 = st.columns(2)
     c3.plotly_chart(
@@ -148,11 +222,13 @@ def render_telemetry(rec: Optional[Dict[str, Any]]) -> None:
                    empty_message=empty_primary, empty_detail=empty_detail, empty_y_range=_MEMORY_EMPTY_RANGE),
         width="stretch",
     )
+    c3.caption("Peak memory used by any one pod, in MiB.")
     c4.plotly_chart(
         line_chart("Request rate & errors", ts_q, {"rps": rps, "error_rate": err}, "req/s",
                    empty_message=empty_primary, empty_detail=empty_detail),
         width="stretch",
     )
+    c4.caption("Incoming request rate and error rate the workload observed, in req/s.")
 
 
 def _action_probabilities_as_dict(decision: Dict[str, Any]) -> Dict[str, float]:
@@ -259,17 +335,48 @@ def _render_hpa_panel(rec: Dict[str, Any]) -> None:
 
 
 def render_decision_or_hpa_panel(rec: Optional[Dict[str, Any]]) -> None:
+    """Task sec.4: exactly ONE panel, matching the selected run's
+    controller family -- never both, never the "HPA not available"/"PPO
+    not available" pair this replaces. Uses `experiment_store.
+    _controller_family()` (substring, not exact-match) so this stays
+    correct for any future controller id containing "ppo"/"hpa", same as
+    Comparison pairing and the `arm` backfill already do."""
     if rec is None:
         return
-    if rec.get("controller") == "ppo_v2":
+    family = experiment_store._controller_family(rec.get("controller"))
+    if family == "ppo":
         _render_ppo_decision_panel(rec)
-    else:
+    elif family == "hpa":
         _render_hpa_panel(rec)
 
 
 def render(rec: Optional[Dict[str, Any]], is_active: bool) -> None:
-    """Entry point called by `views/live_details.py` once it determines
-    the active/latest run is a V2 run (`rec.get("generation") == "v2"`)."""
+    """Renders ONE run (banner + telemetry + its single decision/HPA
+    panel). Called directly by `_render_sample_data_dashboard()` (DEMO
+    fixtures, never persisted to `experiment_store`) with an already-
+    resolved `rec`; the primary LIVE path goes through `render_primary()`
+    below instead, which resolves `rec` itself via the run selector."""
     render_run_banner(rec, is_active)
     render_telemetry(rec)
     render_decision_or_hpa_panel(rec)
+
+
+def render_primary() -> None:
+    """Entry point called by `views/live_details.py` for the primary
+    (store-backed) LIVE path -- task sec.4's run selector lives here:
+    resolves which run to show (defaulting to the active run, else the
+    latest completed one) before rendering it exactly like `render()`
+    does for a DEMO fixture.
+
+    Task sec.3: the selected run's banner/telemetry/decision panel are
+    rendered inside an `st.fragment(run_every=...)`, applied FUNCTIONALLY
+    (same technique as `views/experiment.py`'s live status panel) so the
+    interval is ~4s while the SELECTED run is the active one and `None`
+    (no periodic reruns) otherwise -- a completed run's data can never
+    change, so there is nothing to poll for. The selector widget itself
+    stays OUTSIDE this fragment: picking a different run is a normal
+    full-page rerun, which recomputes `is_active` (and therefore whether
+    to keep polling) for whichever run is now selected."""
+    rec, is_active = render_run_selector()
+    run_every = 4 if is_active else None
+    st.fragment(run_every=run_every)(render)(rec, is_active)

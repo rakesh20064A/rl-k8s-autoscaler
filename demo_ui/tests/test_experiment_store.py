@@ -25,6 +25,57 @@ def _mark_alive(run_id: str, store_path: Path, status_path: "Path | None" = None
     es.update_run(run_id, path=store_path, **fields)
 
 
+class TestArmFieldBackfill:
+    """Task sec.5: `arm` is derived from `controller` via the same
+    `_controller_family()` substring logic Comparison pairing uses --
+    written for every NEW run (`start_run`/`update_run`) and backfilled
+    once for records written before this phase."""
+
+    def test_start_run_writes_arm_from_controller(self, store_path):
+        run_id = es.start_run("ppo_v2", "demo_cpu_short", path=store_path)
+        assert es.get_run(run_id, store_path)["arm"] == "PPO"
+
+    def test_update_run_setting_controller_also_sets_arm(self, store_path):
+        run_id = es.start_run("unknown_controller", "demo_cpu_short", path=store_path)
+        assert es.get_run(run_id, store_path)["arm"] is None
+        es.update_run(run_id, controller="hpa_v2_cpu_memory", path=store_path)
+        assert es.get_run(run_id, store_path)["arm"] == "HPA"
+
+    def test_update_run_without_controller_never_touches_arm(self, store_path):
+        run_id = es.start_run("ppo_v2", "demo_cpu_short", path=store_path)
+        es.update_run(run_id, stage="EPISODE_RUNNING", path=store_path)
+        assert es.get_run(run_id, store_path)["arm"] == "PPO"
+
+    def test_backfill_fills_existing_none_arm_records_from_controller(self, store_path):
+        """Simulates records written before this phase (every one has
+        `arm=None`, same shape `start_run` used to produce) -- the
+        one-time migration must fill them in place, never touching any
+        other field (task sec.5: mutates RECORDS only, never
+        `summary`/samples content)."""
+        store_path.write_text(json.dumps([
+            {"run_id": "r1", "controller": "ppo_v2", "arm": None, "summary": {"n_samples": 3}},
+            {"run_id": "r2", "controller": "hpa_v2_cpu_memory", "arm": None, "summary": None},
+            {"run_id": "r3", "controller": "some_future_hpa_controller", "arm": None, "summary": None},
+            {"run_id": "r4", "controller": "unrecognized", "arm": None, "summary": None},
+            {"run_id": "r5", "controller": "ppo_v2", "arm": "PPO", "summary": None},  # already set -- untouched
+        ]))
+        es._backfill_arm_field_once(store_path)
+        records = {r["run_id"]: r for r in es._load(store_path)}
+        assert records["r1"]["arm"] == "PPO"
+        assert records["r1"]["summary"] == {"n_samples": 3}  # untouched
+        assert records["r2"]["arm"] == "HPA"
+        assert records["r3"]["arm"] == "HPA"  # forward-compatible substring match
+        assert records["r4"]["arm"] is None  # unrecognized controller -- never fabricated
+        assert records["r5"]["arm"] == "PPO"
+
+    def test_backfill_is_idempotent_and_a_noop_on_an_already_backfilled_store(self, store_path):
+        run_id = es.start_run("ppo_v2", "demo_cpu_short", path=store_path)
+        before = es._load(store_path)
+        es._backfill_arm_field_once(store_path)
+        assert es._load(store_path) == before
+        assert es.get_run(run_id, store_path)["arm"] == "PPO"
+
+
 class TestLifecycle:
     def test_start_run_creates_running_record(self, store_path):
         run_id = es.start_run("HPA", "constant", path=store_path)
@@ -136,6 +187,20 @@ class TestCompatiblePairing:
         pair = es.latest_compatible_pair(ppo, store_path)
         assert pair["ppo"]["run_id"] == ppo["run_id"]
         assert pair["hpa"]["run_id"] == hpa["run_id"]
+
+    def test_pair_members_both_have_the_arm_field_populated(self, store_path):
+        """Task sec.5/6: pairing itself keys off `controller`, never
+        `arm`, but every record pairing produces must still carry a
+        correct, populated `arm` label (never `None`) -- this is what
+        Comparison and any other view render wherever they want the
+        short "PPO"/"HPA" label instead of the raw controller id."""
+        ppo = self._completed(store_path, "ppo_v2", "demo_cpu_short", "h1", 42, 40.0)
+        hpa = self._completed(store_path, "hpa_v2_cpu_memory", "demo_cpu_short", "h1", 42, 40.0)
+        pair = es.latest_compatible_pair(ppo, store_path)
+        assert pair["ppo"]["arm"] == "PPO"
+        assert pair["hpa"]["arm"] == "HPA"
+        assert ppo["arm"] == "PPO"
+        assert hpa["arm"] == "HPA"
 
 
 class TestActiveRunLiveness:

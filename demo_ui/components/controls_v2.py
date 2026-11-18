@@ -66,18 +66,24 @@ def render_controls_v2(
     `live_disabled_reason` -- DEMO mode (is_live=False) is never affected.
 
     `already_running` (shows STOP instead of START, and the RUNNING badge)
-    is derived from `active_rec` -- the SAME `experiment_store`-backed
-    signal that disables the selects below -- whenever one is live
-    (`is_live=True`), never from the `du_v2_run_in_progress` session key
-    alone. That key is per-browser-session and defaults to False on a
-    fresh session, which used to leave START visible/enabled (with the
-    selects correctly greyed out) for a run a DIFFERENT session started
-    and this one simply reattached to after a Streamlit restart -- the
-    session key still drives the DEMO (is_live=False, no `active_rec`
-    ever exists) START/STOP toggle for a loaded sample fixture, which has
-    no persisted record of its own."""
+    is derived ONLY from `active_rec` -- the SAME `experiment_store`-backed
+    signal that disables the selects below -- whenever live (`is_live=
+    True`), NEVER from the `du_v2_run_in_progress` session key for that
+    case. This is the fix for the STOP-persists-after-completion bug
+    (task sec.3): that session key is set once, at START-click time, and
+    was never reset when a run finished on its own (only an explicit STOP
+    click reset it) -- so `already_running = controls_disabled or
+    session_state[...]` stayed True forever after any live run completed
+    naturally, even on a full-app rerun that correctly recomputed
+    `active_rec` back to `None`. For DEMO mode (`is_live=False`), there is
+    no persisted record at all (a loaded sample fixture is pure
+    session_state), so the session key is still the only signal available
+    and is used as before."""
     controls_disabled = active_rec is not None
-    already_running = controls_disabled or st.session_state.get("du_v2_run_in_progress", False)
+    if is_live:
+        already_running = controls_disabled
+    else:
+        already_running = st.session_state.get("du_v2_run_in_progress", False)
 
     st.session_state.setdefault("du_v2_selected_arm", "ppo_v2")
     st.session_state.setdefault("du_v2_selected_pattern", DEFAULT_PATTERN)

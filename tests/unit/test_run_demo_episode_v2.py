@@ -388,6 +388,105 @@ class TestTerminalStatusWrittenAfterCleanup:
         assert final["summary"]["partial"] is True
 
 
+class TestLiveLogLines:
+    """V2 Phase 9G task sec.1: timestamped, human-readable progress lines
+    to stdout (captured verbatim into the run's log file by
+    `live_execution_adapter.py`'s `stdout=log_handle`/
+    `stderr=subprocess.STDOUT` redirection), flushed as they are written
+    -- never batched until the process exits. `capsys` captures stdout
+    synchronously per `print()` call, so these assertions also prove the
+    lines are written DURING the run (interleaved with the specific
+    progress milestones below), not only once at the very end."""
+
+    def _ok_protection(self):
+        return {"ok": True, "reasons": []}
+
+    def test_decision_lines_appear_before_completion_for_ppo(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setattr(runner, "remove_hpa_before_ppo_start", lambda: [])
+        monkeypatch.setattr(runner, "restore_canonical_idle_state", lambda: {"restored": True})
+        monkeypatch.setattr(runner, "clear_lock", lambda: None)
+
+        def fake_run_ppo(model_path, epsilon, profile_name, episode_duration_s, episode_id, on_sample=None, **kwargs):
+            for i in range(2):
+                sample = runner.EpisodeSample(
+                    decision_index=i, t_s=float(i) * 30.0, timestamp_utc="fake", profile=profile_name,
+                    arm_id="ppo_v2", normalized_observation=[0.5], raw_observation={"cpu_per_replica": 2.3, "memory_per_replica": 0.9},
+                    sample_valid=True, p95_latency_ms=612.0, error_rate=0.0, request_rate_rps=41.0,
+                    desired_replicas=2, ready_replicas=2, max_per_pod_memory_mib=80.0, pod_restart_counts={},
+                    hpa_status=None, ppo_decision={
+                        "effective_action_name": "HOLD", "current_replicas": 2, "desired_replicas": 2,
+                        "tie_rule_applied": None,
+                    },
+                )
+                on_sample(sample)
+            return _fake_episode_result("ppo_v2", profile_name, episode_id)
+
+        monkeypatch.setattr(runner, "run_ppo_v2_eval_episode", fake_run_ppo)
+
+        runner.run_demo_episode_v2(
+            "ppo_v2", "demo_cpu_short", status_file=tmp_path / "status.json", samples_jsonl=None,
+            protection_check_fn=self._ok_protection,
+        )
+
+        out = capsys.readouterr().out
+        assert "Preflight OK" in out
+        assert "Traffic started:" in out
+        assert "Decision 1" in out and "HOLD" in out and "replicas 2→2" in out
+        assert "Decision 2" in out
+        assert "Run finished: status=completed" in out
+        # The decision lines must appear BEFORE the run-finished line --
+        # i.e. written incrementally as the episode progresses, never
+        # held back and dumped only at the very end.
+        assert out.index("Decision 1") < out.index("Run finished")
+
+    def test_hpa_step_lines_use_hpa_format(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setattr(runner, "restore_canonical_idle_state", lambda: {"restored": True})
+        monkeypatch.setattr(runner, "clear_lock", lambda: None)
+
+        def fake_run_hpa(profile_name, episode_duration_s, episode_id, on_sample=None, **kwargs):
+            sample = runner.EpisodeSample(
+                decision_index=0, t_s=0.0, timestamp_utc="fake", profile=profile_name, arm_id="hpa_v2_cpu_memory",
+                normalized_observation=[0.5], raw_observation={"cpu_per_replica": 2.8, "memory_per_replica": 0.95},
+                sample_valid=True, p95_latency_ms=830.0, error_rate=0.0, request_rate_rps=50.0,
+                desired_replicas=4, ready_replicas=3, max_per_pod_memory_mib=90.0, pod_restart_counts={},
+                hpa_status={"hpa_name": "demo-app-hpa-v2", "applied": True}, ppo_decision=None,
+            )
+            on_sample(sample)
+            return _fake_episode_result("hpa_v2_cpu_memory", profile_name, episode_id)
+
+        monkeypatch.setattr(runner, "run_hpa_v2_cpu_memory_eval_episode", fake_run_hpa)
+
+        runner.run_demo_episode_v2(
+            "hpa_v2_cpu_memory", "demo_cpu_short", status_file=tmp_path / "status.json", samples_jsonl=None,
+            protection_check_fn=self._ok_protection,
+        )
+
+        out = capsys.readouterr().out
+        assert "Step 1" in out
+        assert "HPA desired 4, current 3" in out
+        assert "CPU 280%/260%" in out
+        assert "memory 95%/120%" in out
+
+    def test_preflight_failure_logged_with_reason(self, tmp_path, capsys):
+        def failing_protection():
+            return {"ok": False, "reasons": ["controller lock is 'ppo', not 'none'"]}
+
+        with pytest.raises(runner.DemoRefusedError):
+            runner.run_demo_episode_v2(
+                "ppo_v2", "demo_cpu_short", status_file=tmp_path / "status.json", samples_jsonl=None,
+                protection_check_fn=failing_protection,
+            )
+        out = capsys.readouterr().out
+        assert "Preflight FAILED" in out
+        assert "controller lock is 'ppo', not 'none'" in out
+
+    def test_traffic_description_uses_pattern_resource_load_catalog_profile(self):
+        assert runner._traffic_description("demo_bursts_cpu_high") == "Bursts / CPU / High"
+
+    def test_traffic_description_falls_back_for_legacy_short_profile(self):
+        assert runner._traffic_description("demo_cpu_short") == "demo_cpu_short"
+
+
 class TestMainSignalAndAtexitSetup:
     """V2 Phase 9F: SIGINT handling and an `atexit` cleanup safety net,
     alongside the pre-existing SIGTERM handling."""

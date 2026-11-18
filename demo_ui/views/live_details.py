@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import streamlit as st
 
-from demo_ui import experiment_store
 from demo_ui.components.controller_status import render_hpa_panel
 from demo_ui.components.controls_v2 import display_arm_label
 from demo_ui.components.layout import render_metric_strip, render_topbar
@@ -37,14 +36,6 @@ from scripts.generate_demo_profiles import (
     RESOURCES,
     profile_slug,
 )
-
-
-def _only_current_system(rec: dict | None) -> dict | None:
-    """A run from a different generation must never be shown as the
-    current/latest run on this page."""
-    if rec is not None and rec.get("generation") != "v2":
-        return None
-    return rec
 
 
 def _render_current_cluster_state() -> None:
@@ -75,17 +66,20 @@ def _render_current_cluster_state() -> None:
         ("Prometheus", "Reachable" if snap.target_up else f"DOWN: {snap.target_health_message}"),
     ])
 
-    col1, col2 = st.columns(2)
-    with col1:
+    # Task sec.4: the confusing "HPA not available"/"PPO not available"
+    # pair this section used to ALWAYS show side by side (one or the
+    # other -- often both -- unavailable depending on which controller
+    # happened to hold the cluster right now) is removed. The run-
+    # specific decision/HPA panel for whichever controller actually
+    # produced the SELECTED run lives in `live_details_v2.render_primary()`
+    # above, which already shows exactly one, correctly labeled panel --
+    # this section is scoped to the live cluster's CURRENT raw state only
+    # (see the module docstring), so it shows the real HPA snapshot when
+    # one happens to be present and nothing else.
+    if hpa is not None:
         st.markdown('<div class="du-section-label" style="margin-top:0.5rem;">HPA</div>', unsafe_allow_html=True)
-        if hpa is not None:
-            render_hpa_panel(hpa)
-        else:
-            st.markdown(f'<div class="du-panel mono">{NOT_AVAILABLE}</div>', unsafe_allow_html=True)
-        st.markdown('<div class="du-section-label" style="margin-top:0.5rem;">PPO</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="du-panel mono">{NOT_AVAILABLE} — no live PPO decision feed wired up in this phase</div>', unsafe_allow_html=True)
-    with col2:
-        render_pod_panel(pods, restarts=restarts)
+        render_hpa_panel(hpa)
+    render_pod_panel(pods, restarts=restarts)
 
     st.markdown('<div class="du-section-label" style="margin-top:0.5rem;">Recent Kubernetes Events</div>', unsafe_allow_html=True)
     if events:
@@ -125,12 +119,11 @@ def _render_sample_data_dashboard() -> None:
 def render() -> None:
     render_topbar(mode_label="Live cluster", is_live=True)
 
-    rec = _only_current_system(experiment_store.active_run())
-    is_active = rec is not None
-    if rec is None:
-        rec = _only_current_system(experiment_store.latest_run())
-
-    live_details_v2.render(rec, is_active)
+    # Task sec.4: the run selector (default = the active run if one
+    # exists, else the latest completed run) now lives inside
+    # `render_primary()` itself, which also filters to v2-generation runs
+    # the same way `_only_current_system()` used to here.
+    live_details_v2.render_primary()
     _render_current_cluster_state()
 
     with st.expander("Sample data (offline) -- simulated, not real LIVE results"):

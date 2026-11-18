@@ -110,6 +110,41 @@ def _migrate_legacy_store_once() -> None:
 _migrate_legacy_store_once()
 
 
+def _arm_label(controller: Optional[str]) -> Optional[str]:
+    """Task sec.5: the short, display-ready "PPO"/"HPA" label derived from
+    a `controller` id, using the SAME `_controller_family()` substring
+    logic as Comparison pairing (forward-compatible with any future
+    controller id containing "ppo"/"hpa", not just the two current V2
+    ids). Returns None if `controller` does not match either family
+    (never fabricates a label for an unrecognized controller id)."""
+    family = _controller_family(controller)
+    return family.upper() if family is not None else None
+
+
+def _backfill_arm_field_once(path: Path) -> None:
+    """Task sec.5: one-time migration -- every existing record with
+    `arm` missing or `None` gets it backfilled from its own `controller`
+    field. Mutates run RECORDS only (never touches `summary`/samples
+    content), and is idempotent/a no-op once every record already has its
+    `arm` set. Runs once per process per store path, immediately after
+    `_migrate_legacy_store_once()` so a freshly-migrated legacy store is
+    backfilled too, and never raises -- a failed backfill must not break
+    import."""
+    try:
+        records = _load(path)
+        changed = False
+        for rec in records:
+            if rec.get("arm") is None:
+                label = _arm_label(rec.get("controller"))
+                if label is not None:
+                    rec["arm"] = label
+                    changed = True
+        if changed:
+            _save(records, path)
+    except OSError:
+        pass
+
+
 def start_run(controller: str, profile_name: str, path: Optional[Path] = None) -> str:
     """Creates a new `status="running"` record and returns its `run_id`.
     Called exactly once per real click of START (RealExperimentControllerV2
@@ -133,6 +168,7 @@ def start_run(controller: str, profile_name: str, path: Optional[Path] = None) -
         "completed_at": None,
         "data_source": "LIVE",
         "controller": controller,
+        "arm": _arm_label(controller),
         "profile_name": profile_name,
         "workload_hash": None,
         "workload_seed": None,
@@ -154,9 +190,15 @@ def start_run(controller: str, profile_name: str, path: Optional[Path] = None) -
 def update_run(run_id: str, path: Optional[Path] = None, **fields: Any) -> None:
     """Merges `fields` into the record for `run_id`. Setting `status` to a
     terminal value auto-stamps `completed_at` (once) unless the caller
-    already supplied one. No-op if `run_id` is unknown (e.g. called after
-    the store was manually cleared)."""
+    already supplied one. Task sec.5: whenever `controller` is (re)set and
+    the caller did not also explicitly pass `arm`, `arm` is derived from
+    it right here -- the other place (besides `start_run`) `controller` is
+    first/again known, so `arm` can never drift out of sync with it. No-op
+    if `run_id` is unknown (e.g. called after the store was manually
+    cleared)."""
     path = path if path is not None else STORE_PATH
+    if "controller" in fields and "arm" not in fields:
+        fields = {**fields, "arm": _arm_label(fields["controller"])}
     records = _load(path)
     changed = False
     for rec in records:
@@ -382,6 +424,17 @@ def _controller_family(controller: Optional[str]) -> Optional[str]:
     if "hpa" in c:
         return "hpa"
     return None
+
+
+# Task sec.5: one-time backfill of the `arm` field for records written
+# before this phase (which all have `arm=None`) -- run once per process,
+# here (not immediately after `_migrate_legacy_store_once()` above) only
+# because `_arm_label()`/`_backfill_arm_field_once()` depend on
+# `_controller_family()`, defined above this line; Python resolves that
+# name at CALL time, not at the `def` of `_backfill_arm_field_once`
+# itself, but the call below must still come after this point in module
+# execution order.
+_backfill_arm_field_once(STORE_PATH)
 
 
 def latest_compatible_pair(run: Dict[str, Any], path: Optional[Path] = None) -> Dict[str, Optional[Dict[str, Any]]]:

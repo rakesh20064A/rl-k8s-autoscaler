@@ -189,6 +189,137 @@ class TestReattachAfterRunFinishedWhileUiWasClosed:
         assert "du_v2_start_button" in button_keys
 
 
+class TestLiveLogTailingDuringAnActiveRun:
+    """Task sec.2/7: the "Recent log output" panel must show log content
+    WHILE a run is still active -- read incrementally from the log file,
+    never waiting for the run to finish. Reproduces this by seeding a
+    genuinely active run whose log file already has several lines (as
+    `scripts/run_demo_episode_v2.py` now writes incrementally, task
+    sec.1) and checking those lines are visible on a single fresh page
+    load, with the status still non-terminal."""
+
+    def test_in_progress_log_lines_are_shown_while_run_is_still_running(self, tmp_path):
+        proc = subprocess.Popen(["sleep", "100"], start_new_session=True)
+        status_path = tmp_path / "status.json"
+        log_path = tmp_path / "run.log"
+        status_path.write_text(json.dumps({
+            "status": "running", "stage": "EPISODE_RUNNING", "arm": "ppo_v2",
+            "profile": "demo_constant_cpu_normal", "decision_index": 2,
+            "samples": [{"time_s": 0.0, "desired_replicas": 2}],
+        }))
+        log_path.write_text(
+            "[12:40:05] Preflight OK: lock none, no conflicting process or unexpected HPA detected\n"
+            "[12:40:06] Removed idle HPA ['demo-app-hpa-v2']; controller lock → ppo\n"
+            "[12:40:08] Traffic started: Bursts / CPU / High (480 s)\n"
+            "[12:40:38] Decision 1/16: HOLD | replicas 2→2 | 41 req/s | p95 612 ms | CPU/replica 2.3 | mem/replica 0.9 | tie rule: none\n"
+        )
+        run_id = experiment_store.start_run("ppo_v2", "demo_bursts_cpu_high")
+        experiment_store.update_run(
+            run_id, generation="v2", pid=proc.pid, pgid=proc.pid,
+            status_path=str(status_path), log_path=str(log_path),
+        )
+        try:
+            at = _run_experiment_page()
+            assert not at.exception
+
+            html = _all_markdown_html(at)
+            assert "Traffic started: Bursts / CPU / High" in html
+            assert "Decision 1/16: HOLD" in html
+            # The run is still genuinely in progress -- this is NOT a
+            # post-completion log dump; the status shown is still the
+            # running stage, never a terminal one.
+            assert "EPISODE_RUNNING" in html
+            assert "COMPLETED" not in html
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+            proc.wait()
+
+
+class TestButtonFlipsToStartAfterCompletionWithoutManualRerun:
+    """Task sec.3/7's key regression test: the ROOT CAUSE was
+    `render_controls_v2()`'s `already_running = controls_disabled or
+    st.session_state["du_v2_run_in_progress"]` -- that session_state flag
+    was set once, at START-click time, and only ever reset by an explicit
+    STOP click, so it stayed `True` forever once a LIVE run finished on
+    its own. `controls_disabled` (derived from the store's `active_run()`)
+    correctly flipped back to `False`, but the `or` kept `already_running`
+    `True` regardless, so STOP (never START) kept showing even after a
+    full-page rerun that had already re-synced everything else. This test
+    reproduces that exact sequence WITHOUT ever starting a fresh `AppTest`
+    session (a manual browser refresh) -- the SAME session must flip on
+    its own the next time it reruns."""
+
+    def _seed_active_run(self, tmp_path):
+        proc = subprocess.Popen(["sleep", "100"], start_new_session=True)
+        status_path = tmp_path / "status.json"
+        status_path.write_text(json.dumps({
+            "status": "running", "stage": "EPISODE_RUNNING", "arm": "ppo_v2",
+            "profile": "demo_constant_cpu_normal", "decision_index": 1,
+            "samples": [{"time_s": 0.0, "desired_replicas": 2}],
+        }))
+        run_id = experiment_store.start_run("ppo_v2", "demo_constant_cpu_normal")
+        experiment_store.update_run(
+            run_id, generation="v2", pid=proc.pid, pgid=proc.pid, status_path=str(status_path),
+        )
+        return proc, run_id, status_path
+
+    def test_same_session_shows_start_after_run_completes_no_manual_refresh(self, tmp_path):
+        proc, run_id, status_path = self._seed_active_run(tmp_path)
+        try:
+            # 1) Fresh load of a session that itself clicked START earlier
+            #    (never via a real click here -- that would launch a real
+            #    subprocess against the live cluster; `du_v2_run_in_progress`
+            #    is set directly, exactly as `views/experiment.py`'s own
+            #    START-click handler sets it). The run is genuinely active:
+            #    STOP is shown either way, so this alone cannot distinguish
+            #    the fix from the bug -- step 3 below is what does.
+            at = AppTest.from_file(APP_PATH, default_timeout=30)
+            at.session_state["du_v2_run_in_progress"] = True
+            at.run()
+            at.sidebar.radio[0].set_value("Experiment").run()
+            assert not at.exception
+            button_keys = {b.key for b in at.button}
+            assert "du_v2_stop_button" in button_keys
+            assert "du_v2_start_button" not in button_keys
+
+            # 2) The run finishes on its own (never via a STOP click) --
+            #    its OWN status file now records a real terminal outcome,
+            #    and the backing process is gone, exactly as
+            #    `scripts/run_demo_episode_v2.py`'s own unconditional
+            #    cleanup leaves things.
+            proc.kill()
+            proc.wait()
+            summary = {
+                "episode_id": "demo_v2_ppo_v2_demo_constant_cpu_normal_1", "arm": "ppo_v2",
+                "profile": "demo_constant_cpu_normal", "n_samples": 16, "demo_only": True, "partial": False,
+                "samples": [{"time_s": float(i) * 30.0, "desired_replicas": 2} for i in range(16)],
+            }
+            status_path.write_text(json.dumps({
+                "status": "completed", "stage": "COMPLETED", "arm": "ppo_v2",
+                "profile": "demo_constant_cpu_normal", "summary": summary,
+            }))
+
+            # 3) The SAME `AppTest` session reruns (what the fragment's own
+            #    periodic tick -- or any other widget interaction -- would
+            #    trigger) -- NOT a new `AppTest.from_file(...)` call, which
+            #    would be a manual browser refresh and could trivially
+            #    "fix" a stale in-memory flag just by recreating it.
+            at.run()
+            assert not at.exception
+
+            html = _all_markdown_html(at)
+            assert "COMPLETED" in html
+
+            button_keys = {b.key for b in at.button}
+            assert "du_v2_start_button" in button_keys, "must flip to START without a manual refresh"
+            assert "du_v2_stop_button" not in button_keys, "must not keep showing STOP after completion"
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+            proc.wait()
+
+
 class TestHostRestartWipesTmpNoLock:
     """A record survives (it lives under `persistent-data/`, not `/tmp`),
     but its pid is dead AND its status file is simply gone (the OLD

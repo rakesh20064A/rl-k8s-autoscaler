@@ -40,13 +40,17 @@ def _combo_description(pattern_label: str, resource: str) -> str:
     return template.format(pattern=pattern_label)
 
 
-@st.fragment(run_every=3)
 def _render_live_status_panel(real_ctrl: RealExperimentControllerV2) -> None:
-    """Periodically re-executes on its own (every 3s) WITHOUT rerunning the
-    rest of the page -- `render_controls_v2()` (and its START/STOP click
-    handling) lives outside this fragment, so these refreshes can never
-    re-invoke `.start()` or launch a duplicate subprocess. This is what
-    keeps status/log output moving while a run is active instead of being
+    """Called (never decorated directly -- see `render()`) via
+    `st.fragment(run_every=...)` applied FUNCTIONALLY at the call site, so
+    the interval can be `None` (no periodic reruns at all) once no run is
+    active -- task sec.3's "stop polling once the run reaches a terminal
+    state". While a run IS active, `render()` passes `run_every=3`: this
+    fragment then re-executes every ~3s WITHOUT rerunning the rest of the
+    page -- `render_controls_v2()` (and its START/STOP click handling)
+    lives outside this fragment, so these refreshes can never re-invoke
+    `.start()` or launch a duplicate subprocess. This is what keeps
+    status/log output moving while a run is active instead of being
     frozen until the user happens to touch some other widget.
 
     RE-ATTACH (task sec.2/4): every tick re-derives the active run from
@@ -115,10 +119,21 @@ def _render_live_status_panel(real_ctrl: RealExperimentControllerV2) -> None:
 
     if status_label in experiment_store.TERMINAL_STATUSES and real_ctrl.is_running:
         real_ctrl.is_running = False
+        st.session_state["du_v2_run_in_progress"] = False  # never read for the LIVE button anymore (see controls_v2.py), cleared so a later DEMO-mode run starts from a clean slate
+        # Default (app) scope: the WHOLE page reruns, not just this
+        # fragment -- `render()` recomputes `active_rec` fresh from the
+        # now-terminal store record (None) on that rerun, so the control
+        # strip's START/STOP button and this fragment's own `run_every`
+        # (task sec.3) both pick up the terminal state on this one
+        # rerun, with no further periodic ticking needed afterward.
         st.rerun()
 
+    # Task sec.2: last ~30 lines, read fresh from the log file every tick
+    # above (never only once the run has finished) -- `recent_log_lines()`
+    # re-reads the file from disk each call, so this is a genuine tail,
+    # not a one-time snapshot.
     with st.expander("Recent log output", expanded=real_ctrl.is_running):
-        lines = real_ctrl.recent_log_lines()
+        lines = real_ctrl.recent_log_lines(n=30)
         if not lines:
             st.caption("No output yet." if real_ctrl.is_running else "No output.")
         for line in lines:
@@ -221,7 +236,14 @@ def render() -> None:
             st.session_state["du_v2_run_in_progress"] = False
             real_ctrl.stop()
             st.rerun()
-        _render_live_status_panel(real_ctrl)
+        # Task sec.3: `run_every` is computed HERE, fresh on every full-app
+        # rerun, from the SAME store-backed `active_rec` signal the control
+        # strip's START/STOP button now derives from (never a session_state
+        # flag) -- polling runs every ~3s while a run is active and stops
+        # entirely (no fragment reruns at all) once it is not, applying
+        # `st.fragment(...)` functionally rather than as a fixed decorator
+        # so this interval can change between reruns.
+        st.fragment(run_every=3 if active_rec is not None else None)(_render_live_status_panel)(real_ctrl)
         _render_recover_control()
         return
 

@@ -46,6 +46,7 @@ from typing import Any, Callable, Dict, List, Optional
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from autoscaler.src.rl_env.config_v2 import load_env_config_v2_from_yaml  # noqa: E402
 from autoscaler.src.rl_env.controller_exclusivity import CONTROLLER_NONE, V2_HPA_NAME, clear_lock, read_lock  # noqa: E402
 from loadgen.traffic_generator import parse_traffic_profile  # noqa: E402
 from scripts.eval_v2_episodes import (  # noqa: E402
@@ -72,6 +73,10 @@ from scripts.evaluate_v2_campaign import restore_canonical_idle_state  # noqa: E
 from scripts.generate_demo_profiles import (  # noqa: E402
     ALL_PROFILE_NAMES,
     LEGACY_DEMO_PROFILE_NAMES,
+    LOAD_LABELS,
+    PATTERN_LABELS,
+    RESOURCE_LABELS,
+    parse_profile_name,
 )
 from scripts.v2_live_cluster_state import remove_hpa_before_ppo_start  # noqa: E402
 
@@ -185,6 +190,79 @@ def _real_list_hpa_names() -> List[str]:
     return backend._kubectl.list_hpa_names()
 
 
+def _log(message: str) -> None:
+    """Task sec.1 (LIVE LOG, runner side): one timestamped, human-readable
+    progress line to stdout, flushed immediately. `main()` runs this
+    script with `-u` (unbuffered) AND `live_execution_adapter.
+    RealExperimentControllerV2.start()` sets `PYTHONUNBUFFERED=1` on the
+    child's env, but `flush=True` here is belt-and-suspenders -- it costs
+    nothing and guarantees every line is visible to a tailing reader
+    (demo_ui's "Recent log output" panel) the moment it is written, never
+    batched until process exit. stdout (not stderr) is used throughout so
+    every progress line lands in the SAME stream `start()` redirects to
+    this run's `log_path` (`stderr=subprocess.STDOUT`) -- one ordered log,
+    not two interleaved files."""
+    print(f"[{time.strftime('%H:%M:%S')}] {message}", flush=True)
+
+
+def _fmt_num(value: Any, spec: str = "{:.1f}") -> str:
+    """Formats a possibly-`None`/non-numeric telemetry value for a log
+    line -- never raises, falls back to `"?"` rather than crashing a demo
+    run over a cosmetic logging format error."""
+    try:
+        return spec.format(value)
+    except (TypeError, ValueError):
+        return "?"
+
+
+def _traffic_description(profile_name: str) -> str:
+    """"Pattern / Resource / Load" (Title Case, task sec.1's exact
+    separator) for a 36-catalog profile name; falls back to the raw
+    profile name for a legacy `demo_*_short` profile, which has no such
+    decomposition."""
+    parsed = parse_profile_name(profile_name)
+    if parsed is None:
+        return profile_name
+    pattern, resource, load = parsed
+    return f"{PATTERN_LABELS[pattern]} / {RESOURCE_LABELS[resource]} / {LOAD_LABELS[load]}"
+
+
+def _log_decision(sample_dict: Dict[str, Any], step_number: int, n_steps_total: Optional[int]) -> None:
+    """One progress line per decision/step (task sec.1), branching on
+    which arm produced the sample: `ppo_decision` is populated only for
+    `ppo_v2` (a `DecisionRecordV2`, see `decision_record_v2.py`),
+    `hpa_status` only for `hpa_v2_cpu_memory` -- never both, never
+    neither, for a real sample from either recorder in `eval_v2_episodes.
+    py`, so this is a reliable discriminator without needing `arm_id`."""
+    total_suffix = f"/{n_steps_total}" if n_steps_total else ""
+    raw_obs = sample_dict.get("raw_observation") or {}
+    cpu = raw_obs.get("cpu_per_replica")
+    mem = raw_obs.get("memory_per_replica")
+    p95 = sample_dict.get("p95_latency_ms")
+    rps = sample_dict.get("request_rate_rps")
+    decision = sample_dict.get("ppo_decision")
+    if decision:
+        action = decision.get("effective_action_name", "?")
+        cur = decision.get("current_replicas", "?")
+        des = decision.get("desired_replicas", "?")
+        tie = decision.get("tie_rule_applied") or "none"
+        _log(
+            f"Decision {step_number}{total_suffix}: {action} | replicas {cur}→{des} | "
+            f"{_fmt_num(rps, '{:.0f}')} req/s | p95 {_fmt_num(p95, '{:.0f}')} ms | "
+            f"CPU/replica {_fmt_num(cpu)} | mem/replica {_fmt_num(mem)} | tie rule: {tie}"
+        )
+    else:
+        desired = sample_dict.get("desired_replicas", "?")
+        current = sample_dict.get("ready_replicas", "?")
+        cpu_pct = cpu * 100 if isinstance(cpu, (int, float)) else None
+        mem_pct = mem * 100 if isinstance(mem, (int, float)) else None
+        _log(
+            f"Step {step_number}{total_suffix}: HPA desired {desired}, current {current} | "
+            f"CPU {_fmt_num(cpu_pct, '{:.0f}')}%/260% | memory {_fmt_num(mem_pct, '{:.0f}')}%/120% | "
+            f"p95 {_fmt_num(p95, '{:.0f}')} ms"
+        )
+
+
 def _write_status(status_file: Optional[Path], payload: Dict[str, Any]) -> None:
     if status_file is None:
         return
@@ -222,18 +300,27 @@ def run_demo_episode_v2(
     profile_path = resolve_demo_profile_path(profile_name)
     profile = parse_traffic_profile(profile_path)
     episode_duration_s = profile.total_duration
+    traffic_desc = _traffic_description(profile_name)
 
+    try:
+        n_steps_total: Optional[int] = int(round(episode_duration_s / load_env_config_v2_from_yaml().decision_interval_s))
+    except Exception:  # noqa: BLE001 -- purely a log-line nicety, never blocks a run
+        n_steps_total = None
+
+    _log(f"Demo episode starting: arm={arm}, profile={profile_name!r} ({traffic_desc})")
     _write_status(status_file, {"status": "running", "stage": "PREFLIGHT", "arm": arm, "profile": profile_name})
     if protection_check_fn is None:
         protection_check_fn = lambda: check_training_protection(list_hpa_names_fn=_real_list_hpa_names)  # noqa: E731
     protection = protection_check_fn()
     if not protection["ok"]:
         message = "; ".join(protection["reasons"])
+        _log(f"Preflight FAILED: {message}")
         _write_status(status_file, {
             "status": "refused", "stage": "REFUSED", "arm": arm, "profile": profile_name,
             "error": f"refusing to start: {message}",
         })
         raise DemoRefusedError(f"refusing to start demo episode: {message}")
+    _log(f"Preflight OK: lock {read_lock()!r}, no conflicting process or unexpected HPA detected")
 
     if samples_jsonl is not None and samples_jsonl.exists():
         samples_jsonl.unlink()  # fresh stream for this run, never appends to a stale prior run's data
@@ -249,9 +336,16 @@ def run_demo_episode_v2(
         # pattern `evaluate_v2_campaign.build_live_context()`'s own
         # `ppo_episode` wrapper already uses for the live campaign
         # (CORR-63 lineage).
-        remove_hpa_before_ppo_start()
+        removed = remove_hpa_before_ppo_start()
+        if removed:
+            _log(f"Removed idle HPA {removed}; controller lock → ppo")
+        else:
+            _log("No idle HPA to remove; controller lock → ppo")
+    else:
+        _log("Controller lock → hpa (CPU 260% / memory 120% targets)")
 
     _write_status(status_file, {"status": "running", "stage": "STARTING", "arm": arm, "profile": profile_name})
+    _log(f"Traffic started: {traffic_desc} ({episode_duration_s:.0f} s)")
 
     def _to_status_sample(sample_dict: Dict[str, Any]) -> Dict[str, Any]:
         """`experiment_store.extract_series()` (demo_ui, generation-agnostic)
@@ -268,6 +362,7 @@ def run_demo_episode_v2(
         sample_dict = sample.to_dict()
         _append_sample_jsonl(samples_jsonl, sample)
         collected.append(_to_status_sample(sample_dict))
+        _log_decision(sample_dict, len(collected), n_steps_total)
         _write_status(status_file, {
             "status": "running", "stage": "EPISODE_RUNNING", "arm": arm, "profile": profile_name,
             "decision_index": sample.decision_index, "note": "DEMO -- not evaluation evidence",
@@ -303,12 +398,14 @@ def run_demo_episode_v2(
                         profile_name, episode_duration_s, episode_id, on_sample=on_sample,
                     )
             except DemoStopRequested as exc:
+                _log(f"Run stopped: {exc}")
                 terminal_payload = {
                     "status": "stopped", "stage": "STOPPED", "arm": arm, "profile": profile_name,
                     "error": str(exc), "summary": _partial_summary(episode_id),
                 }
                 raise
             except (SafetyTerminationError, ToolingFailureError, CpuOnlyArmNotYetSupportedError) as exc:
+                _log(f"Run error ({type(exc).__name__}): {exc}")
                 terminal_payload = {
                     "status": "error", "stage": "ERROR", "arm": arm, "profile": profile_name,
                     "error": str(exc), "summary": _partial_summary(episode_id),
@@ -320,6 +417,7 @@ def run_demo_episode_v2(
                 "n_samples": len(result["samples"]), "demo_only": True, "partial": False,
                 "samples": [_to_status_sample(s) for s in result["samples"]],
             }
+            _log(f"Episode complete: {len(result['samples'])} decisions recorded")
             terminal_payload = {"status": "completed", "stage": "COMPLETED", "arm": arm, "profile": profile_name, "summary": summary}
             # (a) write the run summary -- the full outcome is already on
             # disk and readable by RE-ATTACH/the UI, via a non-terminal
@@ -332,6 +430,7 @@ def run_demo_episode_v2(
             return summary
         except Exception as exc:  # noqa: BLE001 -- catches anything the specific handlers above did not
             if terminal_payload is None:
+                _log(f"Unexpected failure: {exc}")
                 terminal_payload = {
                     "status": "error", "stage": "ERROR", "arm": arm, "profile": profile_name,
                     "error": f"unexpected failure: {exc}", "summary": _partial_summary(episode_id),
@@ -349,7 +448,9 @@ def run_demo_episode_v2(
         # (`_safe_cleanup`/`restore_canonical_idle_state`).
         #
         # (b) cleanup happens here, BEFORE...
+        _log("Traffic stopped; cleanup starting (restore idle HPA at 2 replicas, release controller lock)")
         cleanup_result = _restore_idle_state_safely()
+        _log(f"Cleanup result: {cleanup_result}")
         # (c) ...the terminal status is written LAST. This ordering (not
         # the original "write completed, then clean up") is deliberate:
         # the terminal status is the one signal reconciliation
@@ -358,11 +459,13 @@ def run_demo_episode_v2(
         # back in its canonical idle state -- otherwise the UI could
         # unlock and let a new run start while cleanup from this one was
         # still in flight.
+        final_payload = terminal_payload or {
+            "status": "error", "stage": "ERROR", "arm": arm, "profile": profile_name,
+            "error": "run ended without a determined outcome", "summary": _partial_summary(episode_id),
+        }
+        _log(f"Run finished: status={final_payload.get('status')}")
         if status_file is not None:
-            _write_status(status_file, {**(terminal_payload or {
-                "status": "error", "stage": "ERROR", "arm": arm, "profile": profile_name,
-                "error": "run ended without a determined outcome", "summary": _partial_summary(episode_id),
-            }), "cleanup": cleanup_result})
+            _write_status(status_file, {**final_payload, "cleanup": cleanup_result})
 
 
 def main(argv: Optional[List[str]] = None) -> int:
