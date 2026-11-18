@@ -2,6 +2,7 @@
 \label{ch:results}
 
 \section{Experimental Setup}
+\label{sec:results-setup}
 
 Every result in this chapter was produced on the testbed described in
 Chapter~\ref{ch:methodology}: a single-node Minikube cluster (2 vCPU,
@@ -18,7 +19,7 @@ and a plain statement of this project's limitations.
 
 \subsection{Learning Curves}
 
-Figure~\ref{fig:training-reward} through Figure~\ref{fig:training-action-mix}
+Figure~\ref{fig:training-curves-1} and Figure~\ref{fig:training-curves-2}
 show the training campaign's learning indicators across all 48 analyzed
 sessions (12,288 cumulative timesteps). Dashed vertical markers in each
 figure indicate sessions 4 and 38, the two sessions that failed and were
@@ -26,58 +27,22 @@ retried (Section~\ref{sec:zero-ready-stops}).
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.42\textwidth]{../figures/training_mean_step_reward.pdf}
-\caption[Mean step reward per session]{Mean per-step reward per training session, 48 sessions; dashed lines mark sessions 4 and 38 (failed, retried).}
-\label{fig:training-reward}
+\begin{subfigure}[b]{0.48\textwidth}\centering\includegraphics[width=\textwidth]{../figures/training_mean_step_reward.pdf}\caption{Mean step reward}\label{fig:training-reward}\end{subfigure}\hfill
+\begin{subfigure}[b]{0.48\textwidth}\centering\includegraphics[width=\textwidth]{../figures/training_entropy.pdf}\caption{Entropy loss}\label{fig:training-entropy}\end{subfigure}\\[4pt]
+\begin{subfigure}[b]{0.48\textwidth}\centering\includegraphics[width=\textwidth]{../figures/training_explained_variance.pdf}\caption{Explained variance}\label{fig:training-ev}\end{subfigure}\hfill
+\begin{subfigure}[b]{0.48\textwidth}\centering\includegraphics[width=\textwidth]{../figures/training_value_loss.pdf}\caption{Value loss}\label{fig:training-vloss}\end{subfigure}
+\caption[Training curves: reward, entropy, EV, value loss]{Training curves, 48 sessions, dashed lines mark sessions 4 and 38 (failed, retried): (a) mean per-step reward, (b) policy entropy loss, (c) explained variance of the value function, (d) value loss.}
+\label{fig:training-curves-1}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.42\textwidth]{../figures/training_entropy.pdf}
-\caption[Policy entropy loss]{Policy entropy loss per training session, 48 sessions; dashed lines mark sessions 4 and 38.}
-\label{fig:training-entropy}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.42\textwidth]{../figures/training_explained_variance.pdf}
-\caption[Explained variance]{Explained variance of the value function per training session, 48 sessions; dashed lines mark sessions 4 and 38.}
-\label{fig:training-ev}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.42\textwidth]{../figures/training_value_loss.pdf}
-\caption[Value loss]{Value loss per training session, 48 sessions; dashed lines mark sessions 4 and 38.}
-\label{fig:training-vloss}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.42\textwidth]{../figures/training_approx_kl.pdf}
-\caption[Approximate KL divergence]{Approximate KL divergence per PPO update, 48 sessions; dashed lines mark sessions 4 and 38.}
-\label{fig:training-kl}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.42\textwidth]{../figures/training_mean_replicas.pdf}
-\caption[Mean replica count per session]{Mean replica count per training session, 48 sessions; dashed lines mark sessions 4 and 38.}
-\label{fig:training-replicas}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.42\textwidth]{../figures/training_reward_components.pdf}
-\caption[Reward component share]{Relative share of each reward component (by absolute mean value) per training session, 48 sessions; dashed lines mark sessions 4 and 38.}
-\label{fig:training-components}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.42\textwidth]{../figures/training_action_mix.pdf}
-\caption[Action mix per session]{Fraction of SCALE\_DOWN/HOLD/SCALE\_UP actions per training session, 48 sessions; dashed lines mark sessions 4 and 38.}
-\label{fig:training-action-mix}
+\begin{subfigure}[b]{0.48\textwidth}\centering\includegraphics[width=\textwidth]{../figures/training_approx_kl.pdf}\caption{Approximate KL divergence}\label{fig:training-kl}\end{subfigure}\hfill
+\begin{subfigure}[b]{0.48\textwidth}\centering\includegraphics[width=\textwidth]{../figures/training_mean_replicas.pdf}\caption{Mean replica count}\label{fig:training-replicas}\end{subfigure}\\[4pt]
+\begin{subfigure}[b]{0.48\textwidth}\centering\includegraphics[width=\textwidth]{../figures/training_reward_components.pdf}\caption{Reward component share}\label{fig:training-components}\end{subfigure}\hfill
+\begin{subfigure}[b]{0.48\textwidth}\centering\includegraphics[width=\textwidth]{../figures/training_action_mix.pdf}\caption{Action mix}\label{fig:training-action-mix}\end{subfigure}
+\caption[Training curves: KL, replicas, reward share, actions]{Training curves, 48 sessions, dashed lines mark sessions 4 and 38: (a) approximate KL divergence per PPO update, (b) mean replica count, (c) relative share of each reward component, (d) fraction of SCALE\_DOWN/HOLD/SCALE\_UP actions.}
+\label{fig:training-curves-2}
 \end{figure}
 
 Table~\ref{tab:training-summary} summarizes the key endpoints: entropy
@@ -118,7 +83,7 @@ early-campaign level toward the lower half of the 2-8 replica range,
 consistent with the policy learning that most of the training traffic
 profiles do not need many replicas to keep latency and error rate healthy.
 This progression is visible directly in
-Figures~\ref{fig:training-reward}-\ref{fig:training-action-mix} and is the
+Figures~\ref{fig:training-curves-1}-\ref{fig:training-curves-2} and is the
 basis for the discussion of what the policy had and had not converged to
 by session 47 in Section~\ref{sec:discussion}.
 
@@ -284,8 +249,8 @@ Section~\ref{sec:reward-function}).
 \subsection{Workload and Latency Figures}
 
 Figure~\ref{fig:workloads} shows the request-rate shape of the three
-held-out evaluation profiles. Figures~\ref{fig:eval-box-cpu}-\ref{fig:eval-box-mixed}
-show box plots of per-decision p95 latency, pooled across the three
+held-out evaluation profiles. Figure~\ref{fig:eval-box-all}
+shows box plots of per-decision p95 latency, pooled across the three
 repeats of each profile; \textbf{these box plots use a symmetric-log
 (symlog) vertical axis} (linear threshold 200\,ms, switching to
 logarithmic scaling beyond it) because a linear axis compresses every box
@@ -302,30 +267,18 @@ into an unreadably thin line at this project's latency scale.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.42\textwidth]{../figures/evaluation_p95_boxplot_eval_cpu_step.pdf}
-\caption[P95 latency box plot, CPU step]{Box plot (log-scaled y-axis: symlog, linear threshold 200\,ms) of per-decision p95 latency, pooled across 3 repeats, CPU step profile. Dashed line: 1000\,ms SLA target.}
-\label{fig:eval-box-cpu}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.42\textwidth]{../figures/evaluation_p95_boxplot_eval_memory_ramp.pdf}
-\caption[P95 latency box plot, memory ramp]{Box plot (log-scaled y-axis: symlog, linear threshold 200\,ms) of per-decision p95 latency, pooled across 3 repeats, memory ramp profile. Dashed line: 1000\,ms SLA target; the 975\,ms cluster is the histogram-bucket artefact described in the text.}
-\label{fig:eval-box-memory}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.42\textwidth]{../figures/evaluation_p95_boxplot_eval_mixed_burst.pdf}
-\caption[P95 latency box plot, mixed bursts]{Box plot (log-scaled y-axis: symlog, linear threshold 200\,ms) of per-decision p95 latency, pooled across 3 repeats, mixed bursts profile. Dashed line: 1000\,ms SLA target; the 975\,ms cluster is the histogram-bucket artefact described in the text.}
-\label{fig:eval-box-mixed}
+\begin{subfigure}[b]{0.32\textwidth}\centering\includegraphics[width=\textwidth]{../figures/evaluation_p95_boxplot_eval_cpu_step.pdf}\caption{CPU step}\label{fig:eval-box-cpu}\end{subfigure}\hfill
+\begin{subfigure}[b]{0.32\textwidth}\centering\includegraphics[width=\textwidth]{../figures/evaluation_p95_boxplot_eval_memory_ramp.pdf}\caption{Memory ramp}\label{fig:eval-box-memory}\end{subfigure}\hfill
+\begin{subfigure}[b]{0.32\textwidth}\centering\includegraphics[width=\textwidth]{../figures/evaluation_p95_boxplot_eval_mixed_burst.pdf}\caption{Mixed bursts}\label{fig:eval-box-mixed}\end{subfigure}
+\caption[P95 latency box plots, held-out evaluation]{Box plots (log-scaled y-axis: symlog, linear threshold 200\,ms) of per-decision p95 latency, pooled across 3 repeats, dashed line at the 1000\,ms SLA target: (a) CPU step, (b) memory ramp, (c) mixed bursts. The 975\,ms cluster in (b)-(c) is the histogram-bucket artefact described in the text.}
+\label{fig:eval-box-all}
 \end{figure}
 
 Figure~\ref{fig:eval-replica-minutes} shows replica-minutes per profile
 and arm with error bars (mean $\pm$ sd), and
-Figures~\ref{fig:eval-replicas-cpu}-\ref{fig:eval-p95-mixed} show replica
-count and p95 latency over time for the median-cost repeat of each arm on
-each profile.
+Figure~\ref{fig:eval-cpu-over-time} and Figure~\ref{fig:eval-other-over-time}
+show replica count, p95 latency, and memory over time for the
+median-cost repeat of each arm on each profile.
 
 \begin{figure}[htbp]
 \centering
@@ -336,30 +289,18 @@ each profile.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.42\textwidth]{../figures/evaluation_replicas_over_time_eval_cpu_step.pdf}
-\caption[Replicas over time, CPU step]{Replica count over time, CPU step profile, all 3 arms (median-cost repeat per arm), with request rate as a light background.}
-\label{fig:eval-replicas-cpu}
+\begin{subfigure}[b]{0.48\textwidth}\centering\includegraphics[width=\textwidth]{../figures/evaluation_replicas_over_time_eval_cpu_step.pdf}\caption{Replicas, CPU step}\label{fig:eval-replicas-cpu}\end{subfigure}\hfill
+\begin{subfigure}[b]{0.48\textwidth}\centering\includegraphics[width=\textwidth]{../figures/evaluation_p95_over_time_eval_cpu_step.pdf}\caption{P95, CPU step}\label{fig:eval-p95-cpu}\end{subfigure}
+\caption[Replicas and p95 over time, CPU step]{Held-out evaluation, CPU step profile, all 3 arms (median-cost repeat per arm): (a) replica count over time, with request rate as a light background; (b) p95 latency over time, with the 1000\,ms SLA line.}
+\label{fig:eval-cpu-over-time}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.42\textwidth]{../figures/evaluation_p95_over_time_eval_cpu_step.pdf}
-\caption[p95 over time, CPU step]{p95 latency over time, CPU step profile, all 3 arms (median-cost repeat per arm), with the 1000\,ms SLA line.}
-\label{fig:eval-p95-cpu}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.42\textwidth]{../figures/evaluation_memory_over_time.pdf}
-\caption[Memory over time, memory ramp]{Maximum per-pod memory (MiB) over time on the memory ramp profile, all 3 arms (median-cost repeat per arm).}
-\label{fig:eval-memory-time}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.42\textwidth]{../figures/evaluation_p95_over_time_eval_mixed_burst.pdf}
-\caption[p95 over time, mixed bursts]{p95 latency over time, mixed bursts profile, all 3 arms (median-cost repeat per arm), with the 1000\,ms SLA line.}
-\label{fig:eval-p95-mixed}
+\begin{subfigure}[b]{0.48\textwidth}\centering\includegraphics[width=\textwidth]{../figures/evaluation_memory_over_time.pdf}\caption{Memory, memory ramp}\label{fig:eval-memory-time}\end{subfigure}\hfill
+\begin{subfigure}[b]{0.48\textwidth}\centering\includegraphics[width=\textwidth]{../figures/evaluation_p95_over_time_eval_mixed_burst.pdf}\caption{P95, mixed bursts}\label{fig:eval-p95-mixed}\end{subfigure}
+\caption[Memory and p95 over time, held-out evaluation]{Held-out evaluation, all 3 arms (median-cost repeat per arm): (a) maximum per-pod memory over time, memory ramp profile; (b) p95 latency over time, mixed bursts profile, with the 1000\,ms SLA line.}
+\label{fig:eval-other-over-time}
 \end{figure}
 
 \subsection{PPO Policy Behaviour and Tie-Break Usage}
@@ -367,33 +308,27 @@ each profile.
 Across all 360 PPO decisions made during the held-out evaluation (27 PPO
 episodes $\times$ 40 decisions each, for the 9 PPO runs), HOLD was chosen
 347 times, SCALE\_UP\_ONE 13 times (3.6\%), and SCALE\_DOWN\_ONE never.
-Figure~\ref{fig:ppo-policy-map} shows the dominant action per
+Figure~\ref{fig:ppo-behaviour}(a) shows the dominant action per
 (CPU-per-replica, memory-per-replica) bin: HOLD dominates almost every
 bin, and the 13 scale-up decisions are spread across a wide range of CPU
 values rather than concentrated only at high CPU, suggesting the policy's
 scale-up decisions are driven by more than CPU alone, consistent with its
 eleven-feature, multi-signal observation space.
 
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.42\textwidth]{../figures/discussion_ppo_policy_map.pdf}
-\caption[PPO dominant-action map]{Dominant action (SCALE\_DOWN/HOLD/SCALE\_UP) per (CPU-per-replica, memory-per-replica) bin, held-out evaluation PPO decisions. HOLD dominates almost every bin; only 13 of 360 decisions (3.6\%) are SCALE\_UP.}
-\label{fig:ppo-policy-map}
-\end{figure}
-
 The safety-aware tie-break rule of Section~\ref{sec:tie-break} fired (that
 is, an actual tie among two or more actions was detected and resolved by
 rules R3-R6, not simply R1's "no tie") in exactly 4 of these 360 decisions
-(1.11\%), shown in Figure~\ref{fig:tie-rule-frequency}. The rule is, by
+(1.11\%), shown in Figure~\ref{fig:ppo-behaviour}(b). The rule is, by
 design and in practice, a rare intervention: the overwhelming majority of
 decisions have a single clear highest-probability action, and the rule
 only matters at the margin.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.42\textwidth]{../figures/discussion_tie_rule_frequency.pdf}
-\caption[Tie-break rule frequency]{Frequency of each CORR-58 tie-break rule firing across held-out evaluation PPO decisions (R1 = no tie; R3-R6 = an actual tie resolved). An actual tie-break fired in 4 of 360 decisions (1.11\%).}
-\label{fig:tie-rule-frequency}
+\begin{subfigure}[b]{0.48\textwidth}\centering\includegraphics[width=\textwidth]{../figures/discussion_ppo_policy_map.pdf}\caption{Dominant-action map}\label{fig:ppo-policy-map}\end{subfigure}\hfill
+\begin{subfigure}[b]{0.48\textwidth}\centering\includegraphics[width=\textwidth]{../figures/discussion_tie_rule_frequency.pdf}\caption{Tie-rule frequency}\label{fig:tie-rule-frequency}\end{subfigure}
+\caption[PPO behaviour: action map and tie-rule frequency]{PPO behaviour across the 360 held-out-evaluation decisions: (a) dominant action (SCALE\_DOWN/HOLD/SCALE\_UP) per (CPU-per-replica, memory-per-replica) bin -- HOLD dominates almost every bin, only 13 decisions (3.6\%) are SCALE\_UP; (b) frequency of each CORR-58 tie-break rule firing (R1 = no tie; R3-R6 = an actual tie resolved) -- an actual tie-break fired in 4 of 360 decisions (1.11\%).}
+\label{fig:ppo-behaviour}
 \end{figure}
 
 \subsection{Verdict}
@@ -491,30 +426,18 @@ profiles.}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.42\textwidth]{../figures/stress_replicas_over_time_stress_cpu_burst.pdf}
-\caption[Replicas over time, CPU bursts stress]{Replica count over time, CPU bursts stress profile (exploratory, CORR-65, 1 repeat per arm), with request rate as a light background. Both HPA arms repeatedly hit the 8-replica ceiling; PPO caps at 5 replicas.}
-\label{fig:stress-replicas-cpu}
+\begin{subfigure}[b]{0.48\textwidth}\centering\includegraphics[width=\textwidth]{../figures/stress_replicas_over_time_stress_cpu_burst.pdf}\caption{Replicas, CPU bursts}\label{fig:stress-replicas-cpu}\end{subfigure}\hfill
+\begin{subfigure}[b]{0.48\textwidth}\centering\includegraphics[width=\textwidth]{../figures/stress_replica_minutes.pdf}\caption{Replica-minutes, all profiles}\label{fig:stress-replica-minutes}\end{subfigure}
+\caption[Stress test: replicas over time and replica-minutes]{Stress test (exploratory, CORR-65, 1 repeat per arm): (a) replica count over time on the CPU bursts profile, with request rate as a light background -- both HPA arms repeatedly hit the 8-replica ceiling, PPO caps at 5; (b) replica-minutes (cost proxy) per profile and arm, no error bars (1 repeat).}
+\label{fig:stress-replicas-and-cost}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.42\textwidth]{../figures/stress_p95_boxplot_stress_cpu_burst.pdf}
-\caption[P95 box plot, CPU bursts stress]{Box plot (log-scaled y-axis: symlog, linear threshold 200\,ms) of per-decision p95 latency, CPU bursts stress profile (exploratory, CORR-65, 1 repeat per arm). Dashed line: 1000\,ms SLA target.}
-\label{fig:stress-box-cpu}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.42\textwidth]{../figures/stress_p95_boxplot_stress_mixed_burst.pdf}
-\caption[P95 box plot, mixed bursts stress]{Box plot (log-scaled y-axis: symlog, linear threshold 200\,ms) of per-decision p95 latency, mixed bursts stress profile (exploratory, CORR-65, 1 repeat per arm). Dashed line: 1000\,ms SLA target. PPO shows a wider spread above the SLA line than either HPA arm here, consistent with its higher SLA-violation rate on this profile.}
-\label{fig:stress-box-mixed}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.42\textwidth]{../figures/stress_replica_minutes.pdf}
-\caption[Stress-test replica-minutes]{Replica-minutes (cost proxy), 1 repeat per cell (no error bars), per profile and arm, stress test (exploratory, CORR-65).}
-\label{fig:stress-replica-minutes}
+\begin{subfigure}[b]{0.48\textwidth}\centering\includegraphics[width=\textwidth]{../figures/stress_p95_boxplot_stress_cpu_burst.pdf}\caption{CPU bursts}\label{fig:stress-box-cpu}\end{subfigure}\hfill
+\begin{subfigure}[b]{0.48\textwidth}\centering\includegraphics[width=\textwidth]{../figures/stress_p95_boxplot_stress_mixed_burst.pdf}\caption{Mixed bursts}\label{fig:stress-box-mixed}\end{subfigure}
+\caption[P95 box plots, stress test]{Box plots (log-scaled y-axis: symlog, linear threshold 200\,ms) of per-decision p95 latency, exploratory stress test (CORR-65, 1 repeat per arm), dashed line at the 1000\,ms SLA target: (a) CPU bursts, (b) mixed bursts -- PPO shows a wider spread above the SLA line than either HPA arm in (b), consistent with its higher SLA-violation rate on this profile.}
+\label{fig:stress-box-all}
 \end{figure}
 
 Figure~\ref{fig:cost-vs-latency} places every run from both campaigns on a
@@ -593,7 +516,7 @@ scientific campaigns above from ever being disturbed by a demonstration.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.8\textwidth]{../ref/ui/ui_1.png}
+\includegraphics[width=0.6\textwidth]{ref/ui/ui_1.png}
 \caption[Demo console: Experiment page]{The Experiment page: the sidebar page selector, the Arm/Traffic
 pattern/Resource type/Load level dropdowns, and the live request-rate
 preview chart for a CPU bursts profile at normal load.}
@@ -620,16 +543,10 @@ PPO agent even before looking at any metric.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.85\textwidth]{../ref/ui/ui_2.png}
-\caption[Demo console: Live Details, PPO run]{Live Details for a PPO run: replica count rising one step at a time, and p95 latency plotted against the 1\,s SLA target line.}
-\label{fig:demo-live-ppo}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.85\textwidth]{../ref/ui/ui_4.png}
-\caption[Demo console: Live Details, HPA run]{Live Details for an HPA run: replica count jumping by two pods at once, matching the HPA's own scale-up policy, and a brief early p95 latency spike that settles as replicas catch up.}
-\label{fig:demo-live-hpa}
+\begin{subfigure}[b]{\textwidth}\centering\includegraphics[width=0.62\textwidth]{ref/ui/ui_2.png}\caption{PPO run}\label{fig:demo-live-ppo}\end{subfigure}\\[6pt]
+\begin{subfigure}[b]{\textwidth}\centering\includegraphics[width=0.62\textwidth]{ref/ui/ui_4.png}\caption{HPA run}\label{fig:demo-live-hpa}\end{subfigure}
+\caption[Demo console: Live Details, PPO vs. HPA]{Live Details: (a) a PPO run, replica count rising one step at a time with p95 latency plotted against the 1\,s SLA target line; (b) an HPA run on a different profile, replica count jumping by two pods at once, matching the HPA's own scale-up policy, with a brief early p95 latency spike that settles as replicas catch up.}
+\label{fig:demo-live-all}
 \end{figure}
 
 For a PPO run, the same page also shows a decision-explanation panel
@@ -647,7 +564,7 @@ ties to explain.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.85\textwidth]{../ref/ui/ui_3.png}
+\includegraphics[width=0.6\textwidth]{ref/ui/ui_3.png}
 \caption[Demo console: PPO decision panel]{The PPO decision-explanation panel: action probabilities for
 each of the three actions, the chosen action, the tie set, and the R1
 ("no tie") explanation; below it, the live cluster state the decision was
@@ -685,7 +602,7 @@ specifically and not only of the console in general.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.85\textwidth]{../ref/ui/ui_5.png}
+\includegraphics[width=0.6\textwidth]{ref/ui/ui_5.png}
 \caption[Demo console: Comparison page]{The Comparison page, pairing a live PPO run with a live HPA run
 on the same demo profile: replica count and p95 latency over time for both,
 with a legend distinguishing the two controllers.}
@@ -706,7 +623,7 @@ than disappearing once it stops being "current."
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.85\textwidth]{../ref/ui/ui_6.png}
+\includegraphics[width=0.55\textwidth]{ref/ui/ui_6.png}
 \caption[Demo console: Training page]{The Training page: "Sessions completed: 48/48," read live from the training campaign's own files, with entropy-loss and approximate-KL curves.}
 \label{fig:demo-training}
 \end{figure}
@@ -750,7 +667,7 @@ conditional waste penalty, the SLA target, the safety-aware tie-break, two
 HPA baselines instead of one -- and the correction log is what lets a
 reader check that trace rather than take our word for it. Second, the
 training curves (Section~\ref{sec:training-campaign} and
-Figures~\ref{fig:training-reward}-\ref{fig:training-action-mix}) show a
+Figures~\ref{fig:training-curves-1}-\ref{fig:training-curves-2}) show a
 policy that was still improving, not one that had clearly plateaued, by
 session 47: entropy loss and explained variance both continue to move in
 the expected direction through the last few sessions rather than

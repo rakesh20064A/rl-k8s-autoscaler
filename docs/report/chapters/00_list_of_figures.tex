@@ -1,0 +1,40 @@
+\chapter*{\centering LIST OF FIGURES}
+\label{ch:lof}
+\addcontentsline{toc}{chapter}{List of Figures}
+
+\begin{center}
+\small
+\renewcommand{\arraystretch}{0.92}
+\begin{longtable}{p{1.0cm}p{10.5cm}p{2.0cm}}
+\toprule
+No. & Title & Page No. \\
+\midrule
+\endfirsthead
+\toprule
+No. & Title & Page No. \\
+\midrule
+\endhead
+1 & System architecture & \pageref{fig:system-architecture} \\
+2 & RL control loop & \pageref{fig:rl-control-loop} \\
+3 & Experiment pipeline & \pageref{fig:experiment-pipeline} \\
+4 & Tie-break decision flow & \pageref{fig:tie-break-flow} \\
+5 & Training curves: reward, entropy, EV, value loss & \pageref{fig:training-curves-1} \\
+6 & Training curves: KL, replicas, reward share, actions & \pageref{fig:training-curves-2} \\
+7 & Held-out evaluation workloads & \pageref{fig:workloads} \\
+8 & P95 latency box plots, held-out evaluation & \pageref{fig:eval-box-all} \\
+9 & Held-out evaluation replica-minutes & \pageref{fig:eval-replica-minutes} \\
+10 & Replicas and p95 over time, CPU step & \pageref{fig:eval-cpu-over-time} \\
+11 & Memory and p95 over time, held-out evaluation & \pageref{fig:eval-other-over-time} \\
+12 & PPO behaviour: action map and tie-rule frequency & \pageref{fig:ppo-behaviour} \\
+13 & Stress-test workloads & \pageref{fig:workloads-stress} \\
+14 & Stress test: replicas over time and replica-minutes & \pageref{fig:stress-replicas-and-cost} \\
+15 & P95 box plots, stress test & \pageref{fig:stress-box-all} \\
+16 & Cost vs.\ latency, all runs & \pageref{fig:cost-vs-latency} \\
+17 & Demo console: Experiment page & \pageref{fig:demo-experiment} \\
+18 & Demo console: Live Details, PPO vs.\ HPA & \pageref{fig:demo-live-all} \\
+19 & Demo console: PPO decision panel & \pageref{fig:demo-decision-panel} \\
+20 & Demo console: Comparison page & \pageref{fig:demo-comparison} \\
+21 & Demo console: Training page & \pageref{fig:demo-training} \\
+\bottomrule
+\end{longtable}
+\end{center}

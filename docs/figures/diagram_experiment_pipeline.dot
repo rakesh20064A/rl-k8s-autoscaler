@@ -5,11 +5,9 @@ digraph experiment_pipeline {
   edge [fontname="Helvetica", fontsize=9, color="#555555"];
   graph [ranksep=0.7, nodesep=0.35];
 
-  v1 [label="V1\n(single-metric CPU HPA\nbaseline)", fillcolor="#eeeeee"];
-  v2design [label="V2 design\n(multi-metric: CPU+memory,\n3 arms, safety-aware PPO)", fillcolor="#eeeeee"];
-  training [label="48-session training\n(final_min2 campaign,\n2 failed attempts retried)", fillcolor="#fde8db", color="#D55E00"];
-  eval [label="Pre-registered evaluation\n(eval_final: 27 runs,\n3 arms x 3 profiles x 3 repeats)\nCORR-60", fillcolor="#e3eef7", color="#0072B2"];
-  stress [label="Exploratory stress test\n(stress_explore: 9 runs,\n1 repeat, descriptive only)\nCORR-65", fillcolor="#f0e9f7", color="#6a3d9a"];
+  training [label="48-session training\n(2 failed attempts retried)", fillcolor="#fde8db", color="#D55E00"];
+  eval [label="Pre-registered held-out evaluation\n(27 runs,\n3 arms x 3 profiles x 3 repeats)\nCORR-60", fillcolor="#e3eef7", color="#0072B2"];
+  stress [label="Exploratory stress test\n(9 runs,\n1 repeat, descriptive only)\nCORR-65", fillcolor="#f0e9f7", color="#6a3d9a"];
 
-  v1 -> v2design -> training -> eval -> stress;
+  training -> eval -> stress;
 }

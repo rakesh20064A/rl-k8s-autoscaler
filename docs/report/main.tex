@@ -98,28 +98,24 @@
 
 \begin{document}
 
-% ================= FRONT MATTER (roman numerals) =================
-\pagenumbering{roman}
-
+% ================= TITLE PAGE (unnumbered) =================
 \input{chapters/00_titlepage}
+
+% ================= CONTINUOUS ARABIC NUMBERING FROM THE CERTIFICATE =================
+% \pagenumbering{arabic} resets the page counter to 1 for the NEXT page
+% shipped, which is the Certificate page below -- there are no roman
+% numerals anywhere in this report; numbering is continuous arabic from
+% the Certificate page through to the end (Biodata).
+\clearpage
+\pagenumbering{arabic}
+
 \input{chapters/00_certificate}
 \input{chapters/00_acknowledgements}
 \input{chapters/00_abstract}
-
-\begingroup
-\singlespacing
-\tableofcontents
-\clearpage
-\listoffigures
-\clearpage
-\listoftables
-\endgroup
-\clearpage
+\input{chapters/00_toc}
+\input{chapters/00_list_of_tables}
+\input{chapters/00_list_of_figures}
 \input{chapters/00_abbreviations}
-
-% ================= MAIN MATTER (arabic numerals) =================
-\clearpage
-\pagenumbering{arabic}
 
 \input{chapters/01_introduction}
 \input{chapters/02_methodology}
@@ -128,5 +124,6 @@
 \input{chapters/05_conclusion}
 \input{chapters/06_appendix}
 \input{chapters/07_references}
+\input{chapters/08_biodata}
 
 \end{document}

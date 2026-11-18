@@ -41,7 +41,7 @@ it is the only process touching the Deployment's replica count.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.95\textwidth]{../figures/diagram_system_architecture.pdf}
+\includegraphics[width=0.82\textwidth]{../figures/diagram_system_architecture.pdf}
 \caption[System architecture]{System architecture: the Minikube cluster (demo-app pods, HPA,
 Metrics Server at a 15-second resolution, Prometheus) together with the
 host-side load generator/relay and the PPO agent's
@@ -58,7 +58,7 @@ feeding into the next PPO update.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.85\textwidth]{../figures/diagram_rl_control_loop.pdf}
+\includegraphics[width=0.72\textwidth]{../figures/diagram_rl_control_loop.pdf}
 \caption[RL control loop]{The RL control loop: the 11-feature observation feeds the PPO
 policy, whose action passes through safety gating before reaching the
 Kubernetes API; the resulting metrics feed the 7-component reward, which
@@ -74,7 +74,7 @@ labelled exploratory stress test (CORR-65).
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.9\textwidth]{../figures/diagram_experiment_pipeline.pdf}
+\includegraphics[width=0.78\textwidth]{../figures/diagram_experiment_pipeline.pdf}
 \caption[Experiment pipeline]{The project's experiment pipeline: the 48-session training
 campaign, the pre-registered held-out evaluation (CORR-60), and the later,
 separately labelled exploratory stress test (CORR-65), which never
@@ -330,7 +330,7 @@ illustrated in Figure~\ref{fig:tie-break-flow}:
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.78\textwidth]{../figures/diagram_tie_break_flow.pdf}
+\includegraphics[width=0.65\textwidth]{../figures/diagram_tie_break_flow.pdf}
 \caption[Tie-break decision flow]{Decision flow for the safety-aware tie-break rule (R1-R6,
 CORR-58): from the PPO action-probability tie set to the final selected
 action. \textsc{scale\_down\_one} can never win a tie by construction; an

@@ -255,6 +255,7 @@ that does discriminate, no single arm is cheapest across every workload
 profile we tested.
 
 \section{Motivation}
+\label{sec:intro-motivation}
 
 Three considerations motivated taking on this question rather than, for
 example, building a simulator-based RL autoscaler and reporting simulated
@@ -417,6 +418,7 @@ a previous, similar traffic episode to inform the current decision -- every
 decision cycle starts from nothing but the current metric reading.
 
 \section{Proposed Approach}
+\label{sec:intro-proposed-approach}
 
 We propose, and report on, replacing the HPA's decision rule with a learned
 policy while keeping everything else about the deployment -- the benchmark
@@ -435,6 +437,7 @@ held-out traffic profiles that were all fixed and recorded before any
 evaluation episode was run.
 
 \section{Organization of the Report}
+\label{sec:intro-organization}
 
 Chapter~\ref{ch:methodology} describes the proposed system and the full
 methodology: the testbed, the benchmark service, the traffic generator, the

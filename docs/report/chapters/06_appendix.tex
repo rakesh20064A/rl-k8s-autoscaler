@@ -164,24 +164,16 @@ from \texttt{autoscaler/\allowbreak \allowbreak src/\allowbreak \allowbreak rl\_
 implementing rules R1-R6 of Section~\ref{sec:tie-break} and
 Figure~\ref{fig:tie-break-flow}.
 
-\begin{lstlisting}[language=Python,caption={Safety-aware tie-break selector (\texttt{autoscaler/\allowbreak \allowbreak src/\allowbreak \allowbreak rl\_\allowbreak env/\allowbreak \allowbreak action\_\allowbreak selection.py}, lines 171-241).},label={lst:tiebreak}]
+\begin{lstlisting}[language=Python,caption={Safety-aware tie-break selector (\texttt{autoscaler/\allowbreak \allowbreak src/\allowbreak \allowbreak rl\_\allowbreak env/\allowbreak \allowbreak action\_\allowbreak selection.py}, lines 171-241, abridged).},label={lst:tiebreak}]
 def select_safety_aware_action(
     probabilities: Sequence[float],
     epsilon: float = DEFAULT_NEAR_TIE_EPSILON,
     stressed: Optional[bool] = None,
     stress_reasons: Tuple[str, ...] = (),
 ) -> SafetyAwareActionResult:
-    if epsilon < 0:
-        raise ValueError(f"epsilon must be >= 0, got {epsilon}")
-
+    # ... (validates epsilon >= 0 and that probabilities has the expected
+    # shape, is finite, and is non-negative; raises ValueError otherwise.)
     probs = np.asarray(probabilities, dtype=float)
-    if probs.shape != (EXPECTED_NUM_ACTIONS,):
-        raise ValueError(f"expected exactly {EXPECTED_NUM_ACTIONS} probabilities, got shape {probs.shape}")
-    if not np.all(np.isfinite(probs)):
-        raise ValueError(f"probabilities must all be finite, got {probs.tolist()}")
-    if np.any(probs < 0):
-        raise ValueError(f"probabilities must be non-negative, got {probs.tolist()}")
-
     max_p = float(probs.max())
     within_epsilon = set(np.flatnonzero(probs >= max_p - epsilon).tolist())
     tie_set_names = tuple(ACTION_NAMES[i] for i in sorted(within_epsilon))
@@ -217,68 +209,6 @@ def select_safety_aware_action(
         tie_rule_applied=TIE_RULE_HOLD_UP_STRESS_DEPENDENT, stressed=stressed,
         stress_reasons=stress_reasons if stressed else (),
     )
-\end{lstlisting}
-
-\section{Trainer Session Loop}
-
-Listing~\ref{lst:trainer} shows the setup portion of
-\texttt{run\_\allowbreak one\_\allowbreak final\_\allowbreak session}, from
-\texttt{scripts/\allowbreak \allowbreak train\_\allowbreak ppo\_\allowbreak final\_\allowbreak v2.py}, lines 604-693 (abridged), which
-runs one 256-step training session: it resolves the session's attempt
-directory, loads the environment configuration, constructs the live
-Kubernetes backend and the Gymnasium environment, and wraps it with an
-episode ledger recorder before training begins.
-
-\begin{lstlisting}[language=Python,caption={Training session setup (\texttt{scripts/\allowbreak \allowbreak train\_\allowbreak ppo\_\allowbreak final\_\allowbreak v2.py}, lines 604-693, abridged).},label={lst:trainer}]
-def run_one_final_session(
-    session_index: int,
-    campaign_state: Dict[str, Any],
-    seed: int = FINAL_TRAINING_SEED,
-) -> Dict[str, Any]:
-    from stable_baselines3 import PPO
-    from autoscaler.src.rl_env.live_backend import LiveKubernetesBackend
-    from collectors.metrics_collector import PrometheusClient
-    from scripts.v2_pilot_safety import PROMETHEUS_URL, PilotSafetyCallback, get_pod_health
-    from scripts.v2_traffic_orchestrator import V2TrafficOrchestrator, V2TrafficSyncedWrapper
-
-    session_dir = resolve_session_attempt_dir(session_index)
-    physical_attempt_number = physical_attempt_number_for_dir(session_dir)
-    model_path = session_dir / SB3_CHECKPOINT_NAME
-    rng_path = session_dir / RNG_STATE_NAME
-    metadata_path = session_dir / SESSION_METADATA_NAME
-    metrics_path = session_dir / SESSION_TRAINING_METRICS_NAME
-    telemetry_path = session_dir / SESSION_TELEMETRY_NAME
-
-    assert_final_namespace_isolated([model_path, FINAL_LEDGER_PATH])
-    session_dir.mkdir(parents=True, exist_ok=False)
-
-    env_config_v2 = load_env_config_v2_from_yaml()
-    backend = LiveKubernetesBackend(
-        prometheus_url=PROMETHEUS_URL,
-        min_replicas=env_config_v2.gating.min_replicas,
-        initial_replicas=env_config_v2.initial_replicas,
-    )
-    baseline_pods = get_pod_health("autoscaler-app", "app=demo-app")
-    baseline_restart_counts = {p.name: p.restart_count for p in baseline_pods}
-
-    raw_env = KubernetesAutoscalerEnvV2(
-        backend=backend, episode_duration_s=600.0, config=env_config_v2,
-    )
-    controller_code_hash = hashlib.sha256(
-        (PROJECT_ROOT / "autoscaler/src/rl_env/environment_v2.py").read_bytes()
-        + (PROJECT_ROOT / "autoscaler/src/rl_env/reward_v2.py").read_bytes()
-    ).hexdigest()
-    config_hash = hashlib.sha256(
-        (PROJECT_ROOT / "configs/rl_v2.yaml").read_bytes() + (PROJECT_ROOT / "configs/reward_v2.yaml").read_bytes()
-    ).hexdigest()
-    ledgered_env = LedgeredEpisodeWrapper(
-        raw_env, ledger_path=FINAL_LEDGER_PATH, traffic_profile="PENDING_FIRST_RESET",
-        profile_hash="PENDING_FIRST_RESET", seed=seed, controller_code_hash=controller_code_hash,
-        config_hash=config_hash, role="v2_final_training",
-    )
-    # ... (environment reset, PPO.learn() call, checkpoint/metadata writing,
-    # and the session's own post-hoc self-verification continue below; see
-    # scripts/train_ppo_final_v2.py in the project repository.)
 \end{lstlisting}
 
 \section{Evaluation Runner Core}
@@ -324,18 +254,16 @@ def run_one_attempt(run_record: RunRecord, ctx: CampaignContext, attempt_number:
         ctx.settle_fn(ctx.settle_seconds)
         entry.update({"status": "VALID", "result": result, "cleanup": cleanup_result})
 
-    except CpuOnlyArmNotYetSupportedError as exc:
-        cleanup_result = _safe_cleanup(ctx)
-        entry.update({"status": "FAILED_CLOSED", "error": str(exc), "cleanup": cleanup_result})
     except SafetyTerminationError as exc:
+        # A real scientific outcome (Section 2.5, Retry Rules) -- never retried.
         cleanup_result = _safe_cleanup(ctx)
         entry.update({"status": "SAFETY_TERMINATION", "error": str(exc), "cleanup": cleanup_result})
-    except ToolingFailureError as exc:
+    except (CpuOnlyArmNotYetSupportedError, ToolingFailureError, Exception) as exc:  # noqa: BLE001
+        # A tooling failure (Section 2.5) -- no scientific outcome recorded,
+        # exactly one retry; distinct FAILED_CLOSED/TOOLING_FAILURE statuses
+        # in the real code are collapsed here for brevity.
         cleanup_result = _safe_cleanup(ctx)
         entry.update({"status": "TOOLING_FAILURE", "error": str(exc), "cleanup": cleanup_result})
-    except Exception as exc:  # noqa: BLE001
-        cleanup_result = _safe_cleanup(ctx)
-        entry.update({"status": "TOOLING_FAILURE", "error": f"unclassified: {exc}", "cleanup": cleanup_result})
 
     entry["ended_utc"] = datetime.now(timezone.utc).isoformat()
     run_dir = ctx.runs_dir / f"{run_record.run_id}__attempt{attempt_number}"
