@@ -54,9 +54,18 @@ from scripts.eval_v2_episodes import (  # noqa: E402
     run_hpa_v2_cpu_memory_eval_episode,
     run_ppo_v2_eval_episode,
 )
+from scripts.generate_demo_profiles import (  # noqa: E402
+    ALL_PROFILE_NAMES,
+    LEGACY_DEMO_PROFILE_NAMES,
+)
 
 DEMO_PROFILE_DIR = PROJECT_ROOT / "configs" / "traffic_profiles" / "v2_demo"
-DEMO_PROFILE_ALLOWLIST = ("demo_cpu_short", "demo_memory_short", "demo_mixed_short")
+# The 3 original short demo profiles (kept, unmodified, for backward
+# compatibility) plus the 36-profile pattern x resource x load catalog
+# (scripts/generate_demo_profiles.py) -- additive, never replacing the
+# legacy entries. Every name here resolves ONLY inside DEMO_PROFILE_DIR,
+# never a training/eval/stress profile directory.
+DEMO_PROFILE_ALLOWLIST = LEGACY_DEMO_PROFILE_NAMES + ALL_PROFILE_NAMES
 DEMO_ARMS = ("ppo_v2", "hpa_v2_cpu_memory")
 
 DEFAULT_MODEL_PATH = PROJECT_ROOT / "models" / "ppo_v2" / "ppo_model_v2_min2.zip"

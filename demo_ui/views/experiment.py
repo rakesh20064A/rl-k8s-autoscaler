@@ -13,12 +13,30 @@ from __future__ import annotations
 import streamlit as st
 
 from demo_ui import experiment_store
+from demo_ui.components.charts import line_chart
 from demo_ui.components.controls import render_data_source_toggle
 from demo_ui.components.controls_v2 import display_arm_label, render_controls_v2
 from demo_ui.components.layout import render_topbar
 from demo_ui.config_v2 import load_config_v2_safe
 from demo_ui.fixtures_v2 import build_fixture_v2_run
 from demo_ui.live_execution_adapter import RealExperimentControllerV2
+from demo_ui.profile_preview import compute_rps_curve
+from scripts.generate_demo_profiles import PATTERN_LABELS
+
+# Short, templated-by-resource-type descriptions of what each
+# pattern x resource combination exercises. Not 36 bespoke sentences --
+# templated per resource type with the pattern label substituted in, which
+# reads naturally for all 6 patterns without hand-writing each one.
+_RESOURCE_BLURB_TEMPLATES = {
+    "cpu": "{pattern} CPU load: drives compute pressure a CPU-aware autoscaler sees directly.",
+    "memory": "{pattern} memory work: a CPU-only autoscaler barely sees this load; memory-aware scaling matters here.",
+    "mixed": "{pattern} mixed CPU+memory load: stresses both signals together, the hardest case to scale well.",
+}
+
+
+def _combo_description(pattern_label: str, resource: str) -> str:
+    template = _RESOURCE_BLURB_TEMPLATES.get(resource, "{pattern} load on the demo workload.")
+    return template.format(pattern=pattern_label)
 
 
 @st.fragment(run_every=3)
@@ -70,6 +88,30 @@ def _render_live_status_panel(real_ctrl: RealExperimentControllerV2) -> None:
             st.markdown(f'<div class="mono" style="font-size:11px;">{line}</div>', unsafe_allow_html=True)
 
 
+def _render_traffic_preview(profile_name: str, pattern: str, resource: str, load: str) -> None:
+    """Preview of the currently selected demo traffic combination -- a
+    request-rate-over-time chart computed from the ACTUAL generated
+    profile file (never a hand-drawn approximation), plus a one-line
+    description of what the combination exercises. Shown regardless of
+    data source, and regardless of whether a run is active, so changing
+    the selects always previews what pressing START will actually send."""
+    st.markdown('<div class="du-section-label" style="margin-top:0.6rem;">Traffic Preview</div>', unsafe_allow_html=True)
+    try:
+        timestamps, rps = compute_rps_curve(profile_name)
+    except Exception:  # noqa: BLE001 -- preview must never crash the page
+        st.caption(f"Preview unavailable for profile {profile_name!r}.")
+        return
+
+    st.plotly_chart(
+        line_chart(f"Request rate over time -- {profile_name}", timestamps, {"request_rate_rps": rps}, "req/s"),
+        width="stretch",
+    )
+    pattern_label = PATTERN_LABELS.get(pattern, pattern)
+    st.caption(_combo_description(pattern_label, resource))
+    if load == "high":
+        st.caption("High load: up to 70 req/s, like the stress test")
+
+
 def render() -> None:
     if "du_v2_real_controller_impl" not in st.session_state:
         st.session_state.du_v2_real_controller_impl = RealExperimentControllerV2()
@@ -94,9 +136,11 @@ def render() -> None:
     if active_rec is not None and active_rec.get("generation") != "v2":
         active_rec = None  # a run from a different generation must never disable these controls
 
-    arm, profile_name, start_clicked, stop_clicked = render_controls_v2(
+    arm, profile_name, pattern, resource, load, start_clicked, stop_clicked = render_controls_v2(
         live_enabled, live_disabled_reason, is_live, active_rec,
     )
+
+    _render_traffic_preview(profile_name, pattern, resource, load)
 
     if is_live:
         real_ctrl = st.session_state.du_v2_real_controller_impl

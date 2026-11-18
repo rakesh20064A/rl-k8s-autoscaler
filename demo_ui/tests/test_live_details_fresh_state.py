@@ -114,7 +114,9 @@ class TestFreshStoreRendering:
         assert not at.exception, at.exception
         assert at.session_state["du_show_live_fixture_v2"] is True
         selectbox_keys = {sb.key for sb in at.selectbox}
-        assert selectbox_keys == {"du_live_v2_profile", "du_live_v2_arm"}
+        assert selectbox_keys == {
+            "du_live_v2_pattern", "du_live_v2_resource", "du_live_v2_load", "du_live_v2_arm",
+        }
 
         primary_after = next(m.value for m in at.markdown if 'du-metric-label">Arm</div>' in m.value)
         assert primary_after == primary_before  # opting into sample data never touches the real LIVE state

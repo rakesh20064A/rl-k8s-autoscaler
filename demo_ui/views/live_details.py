@@ -22,9 +22,21 @@ from demo_ui.components.controller_status import render_hpa_panel
 from demo_ui.components.controls_v2 import display_arm_label
 from demo_ui.components.layout import render_metric_strip, render_topbar
 from demo_ui.components.pods import render_pod_panel
-from demo_ui.fixtures_v2 import ARMS_V2, PROFILES_V2, build_fixture_v2_run
+from demo_ui.fixtures_v2 import ARMS_V2, build_fixture_v2_run
 from demo_ui.live_providers import KubernetesClusterProvider, NOT_AVAILABLE, PrometheusMetricsProvider
 from demo_ui.views import live_details_v2
+from scripts.generate_demo_profiles import (
+    DEFAULT_LOAD,
+    DEFAULT_PATTERN,
+    DEFAULT_RESOURCE,
+    LOAD_LABELS,
+    LOADS,
+    PATTERN_LABELS,
+    PATTERNS,
+    RESOURCE_LABELS,
+    RESOURCES,
+    profile_slug,
+)
 
 
 def _only_current_system(rec: dict | None) -> dict | None:
@@ -85,13 +97,26 @@ def _render_current_cluster_state() -> None:
 
 def _render_sample_data_dashboard() -> None:
     st.caption("SIMULATED DATA -- not evaluation evidence.")
-    col1, col2 = st.columns(2)
-    profile_choice = col1.selectbox(
-        "Demo traffic profile", [p.replace("_", " ").title() for p in PROFILES_V2], key="du_live_v2_profile",
+    col1, col2, col3, col4 = st.columns(4)
+    pattern_labels = [PATTERN_LABELS[p] for p in PATTERNS]
+    resource_labels = [RESOURCE_LABELS[r] for r in RESOURCES]
+    load_labels = [LOAD_LABELS[lvl] for lvl in LOADS]
+    pattern_choice = col1.selectbox(
+        "Traffic pattern", pattern_labels, index=PATTERNS.index(DEFAULT_PATTERN), key="du_live_v2_pattern",
+    )
+    resource_choice = col2.selectbox(
+        "Resource type", resource_labels, index=RESOURCES.index(DEFAULT_RESOURCE), key="du_live_v2_resource",
+    )
+    load_choice = col3.selectbox(
+        "Load level", load_labels, index=LOADS.index(DEFAULT_LOAD), key="du_live_v2_load",
     )
     arm_labels = [display_arm_label(a) for a in ARMS_V2]
-    arm_choice = col2.selectbox("Arm", arm_labels, key="du_live_v2_arm")
-    profile_name = profile_choice.lower().replace(" ", "_")
+    arm_choice = col4.selectbox("Arm", arm_labels, key="du_live_v2_arm")
+
+    pattern = PATTERNS[pattern_labels.index(pattern_choice)]
+    resource = RESOURCES[resource_labels.index(resource_choice)]
+    load = LOADS[load_labels.index(load_choice)]
+    profile_name = profile_slug(pattern, resource, load)
     arm = ARMS_V2[arm_labels.index(arm_choice)]
     rec = build_fixture_v2_run(arm, profile_name)
     live_details_v2.render(rec, is_active=False)

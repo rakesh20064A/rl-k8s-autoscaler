@@ -10,3 +10,9 @@ requests==2.34.2
 # and exact PromQL query strings verbatim), which imports yaml at module
 # load time for its unrelated config-loading code path.
 PyYAML==6.0.3
+# httpx is required transitively: loadgen.traffic_generator (imported for
+# parse_traffic_profile by demo_ui.fixtures_v2 / demo_ui.profile_preview /
+# scripts.generate_demo_profiles, to derive the demo traffic preview chart
+# and Sample data fixtures from the ACTUAL generated profile files) imports
+# httpx at module load time for its unrelated live-dispatch code path.
+httpx==0.28.1

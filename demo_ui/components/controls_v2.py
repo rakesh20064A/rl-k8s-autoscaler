@@ -2,10 +2,16 @@
 control strip, parallel to controls.py's V1 strip but simpler (no Auto
 mode -- the task scope for V2 is a single-arm demo run).
 
-Same session-state discipline as controls.py: a durable public key
-(`du_v2_selected_arm`/`du_v2_selected_profile`), seeded via `setdefault`
+Same session-state discipline as controls.py: a durable public key per
+selectable field (`du_v2_selected_arm`/`du_v2_selected_pattern`/
+`du_v2_selected_resource`/`du_v2_selected_load`), seeded via `setdefault`
 only if missing, each widget using its own private key.
-"""
+
+Demo traffic is chosen via 3 independent selects -- pattern, resource
+type, load level -- whose combination picks one generated profile file
+from `scripts/generate_demo_profiles.py`'s 36-profile catalog (plus the
+3 legacy `demo_*_short` profiles, reachable only via an already-active
+run's own `profile_name`, never newly selectable here)."""
 
 from __future__ import annotations
 
@@ -13,12 +19,26 @@ from typing import Optional, Tuple
 
 import streamlit as st
 
+from scripts.generate_demo_profiles import (
+    DEFAULT_LOAD,
+    DEFAULT_PATTERN,
+    DEFAULT_RESOURCE,
+    LOAD_LABELS,
+    LOADS,
+    PATTERN_LABELS,
+    PATTERNS,
+    RESOURCE_LABELS,
+    RESOURCES,
+    parse_profile_name,
+    profile_slug,
+)
+
 ARM_LABELS = {"ppo_v2": "PPO", "hpa_v2_cpu_memory": "HPA (CPU+memory)"}
-PROFILE_LABELS = {
-    "demo_cpu_short": "CPU (short)", "demo_memory_short": "Memory (short)", "demo_mixed_short": "Mixed (short)",
-}
 _LABEL_TO_ARM = {v: k for k, v in ARM_LABELS.items()}
-_LABEL_TO_PROFILE = {v: k for k, v in PROFILE_LABELS.items()}
+
+_LABEL_TO_PATTERN = {v: k for k, v in PATTERN_LABELS.items()}
+_LABEL_TO_RESOURCE = {v: k for k, v in RESOURCE_LABELS.items()}
+_LABEL_TO_LOAD = {v: k for k, v in LOAD_LABELS.items()}
 
 
 def display_arm_label(raw: str) -> str:
@@ -33,8 +53,9 @@ def display_arm_label(raw: str) -> str:
 
 def render_controls_v2(
     live_enabled: bool, live_disabled_reason: Optional[str], is_live: bool, active_rec: Optional[dict] = None,
-) -> Tuple[str, str, bool, bool]:
-    """Returns (arm, profile_name, start_clicked, stop_clicked).
+) -> Tuple[str, str, str, str, str, bool, bool]:
+    """Returns (arm, profile_name, pattern, resource, load, start_clicked,
+    stop_clicked).
 
     `live_enabled=False` disables START while `is_live=True` and shows
     `live_disabled_reason` -- DEMO mode (is_live=False) is never affected."""
@@ -42,10 +63,14 @@ def render_controls_v2(
     controls_disabled = active_rec is not None
 
     st.session_state.setdefault("du_v2_selected_arm", "ppo_v2")
-    st.session_state.setdefault("du_v2_selected_profile", "demo_cpu_short")
+    st.session_state.setdefault("du_v2_selected_pattern", DEFAULT_PATTERN)
+    st.session_state.setdefault("du_v2_selected_resource", DEFAULT_RESOURCE)
+    st.session_state.setdefault("du_v2_selected_load", DEFAULT_LOAD)
 
     st.markdown('<div class="du-control-strip">', unsafe_allow_html=True)
-    c_arm, c_profile, c_status, c_action = st.columns([2.4, 2.2, 1.6, 1.4])
+    c_arm, c_pattern, c_resource, c_load, c_status, c_action = st.columns(
+        [1.6, 1.7, 1.3, 1.1, 1.3, 1.3]
+    )
 
     with c_arm:
         st.markdown('<div class="du-section-label">Arm</div>', unsafe_allow_html=True)
@@ -63,21 +88,67 @@ def render_controls_v2(
             st.session_state["du_v2_selected_arm"] = _LABEL_TO_ARM[choice]
         arm = _LABEL_TO_ARM[effective_label]
 
-    with c_profile:
-        st.markdown('<div class="du-section-label">Demo Traffic</div>', unsafe_allow_html=True)
-        choices = list(PROFILE_LABELS.values())
-        current_raw_profile = active_rec["profile_name"] if controls_disabled else st.session_state["du_v2_selected_profile"]
-        current_profile_label = PROFILE_LABELS.get(current_raw_profile, choices[0])
-        if controls_disabled:
-            st.session_state["du_v2_profile_widget"] = current_profile_label
-        profile_choice = st.selectbox(
-            "Demo Traffic Profile", choices, index=choices.index(current_profile_label),
-            key="du_v2_profile_widget", label_visibility="collapsed", disabled=controls_disabled,
+    # When an active run is locked in, parse its own profile_name back
+    # into (pattern, resource, load) for display; a legacy `demo_*_short`
+    # profile has no such decomposition, so each select falls back to its
+    # own default rather than crashing.
+    if controls_disabled:
+        parsed = parse_profile_name(active_rec["profile_name"])
+        locked_pattern, locked_resource, locked_load = parsed if parsed is not None else (
+            DEFAULT_PATTERN, DEFAULT_RESOURCE, DEFAULT_LOAD,
         )
-        effective_profile_label = current_profile_label if controls_disabled else profile_choice
+    else:
+        locked_pattern = locked_resource = locked_load = None
+
+    with c_pattern:
+        st.markdown('<div class="du-section-label">Traffic pattern</div>', unsafe_allow_html=True)
+        choices = [PATTERN_LABELS[p] for p in PATTERNS]
+        current_raw_pattern = locked_pattern if controls_disabled else st.session_state["du_v2_selected_pattern"]
+        current_label = PATTERN_LABELS.get(current_raw_pattern, choices[0])
+        if controls_disabled:
+            st.session_state["du_v2_pattern_widget"] = current_label
+        choice = st.selectbox(
+            "Traffic pattern", choices, index=choices.index(current_label),
+            key="du_v2_pattern_widget", label_visibility="collapsed", disabled=controls_disabled,
+        )
+        effective_label = current_label if controls_disabled else choice
         if not controls_disabled:
-            st.session_state["du_v2_selected_profile"] = _LABEL_TO_PROFILE[profile_choice]
-        profile_name = _LABEL_TO_PROFILE[effective_profile_label]
+            st.session_state["du_v2_selected_pattern"] = _LABEL_TO_PATTERN[choice]
+        pattern = _LABEL_TO_PATTERN[effective_label]
+
+    with c_resource:
+        st.markdown('<div class="du-section-label">Resource type</div>', unsafe_allow_html=True)
+        choices = [RESOURCE_LABELS[r] for r in RESOURCES]
+        current_raw_resource = locked_resource if controls_disabled else st.session_state["du_v2_selected_resource"]
+        current_label = RESOURCE_LABELS.get(current_raw_resource, choices[0])
+        if controls_disabled:
+            st.session_state["du_v2_resource_widget"] = current_label
+        choice = st.selectbox(
+            "Resource type", choices, index=choices.index(current_label),
+            key="du_v2_resource_widget", label_visibility="collapsed", disabled=controls_disabled,
+        )
+        effective_label = current_label if controls_disabled else choice
+        if not controls_disabled:
+            st.session_state["du_v2_selected_resource"] = _LABEL_TO_RESOURCE[choice]
+        resource = _LABEL_TO_RESOURCE[effective_label]
+
+    with c_load:
+        st.markdown('<div class="du-section-label">Load level</div>', unsafe_allow_html=True)
+        choices = [LOAD_LABELS[lvl] for lvl in LOADS]
+        current_raw_load = locked_load if controls_disabled else st.session_state["du_v2_selected_load"]
+        current_label = LOAD_LABELS.get(current_raw_load, choices[0])
+        if controls_disabled:
+            st.session_state["du_v2_load_widget"] = current_label
+        choice = st.selectbox(
+            "Load level", choices, index=choices.index(current_label),
+            key="du_v2_load_widget", label_visibility="collapsed", disabled=controls_disabled,
+        )
+        effective_label = current_label if controls_disabled else choice
+        if not controls_disabled:
+            st.session_state["du_v2_selected_load"] = _LABEL_TO_LOAD[choice]
+        load = _LABEL_TO_LOAD[effective_label]
+
+    profile_name = active_rec["profile_name"] if controls_disabled else profile_slug(pattern, resource, load)
 
     with c_status:
         st.markdown('<div class="du-section-label">Status</div>', unsafe_allow_html=True)
@@ -107,4 +178,4 @@ def render_controls_v2(
         )
     st.markdown("</div>", unsafe_allow_html=True)
 
-    return arm, profile_name, start_clicked, stop_clicked
+    return arm, profile_name, pattern, resource, load, start_clicked, stop_clicked

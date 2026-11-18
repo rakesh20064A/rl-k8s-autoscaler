@@ -24,6 +24,7 @@ from demo_ui.components.charts import line_chart, step_chart
 from demo_ui.components.controls_v2 import display_arm_label
 from demo_ui.components.layout import render_metric_strip
 from demo_ui.theme import PALETTE
+from scripts.generate_demo_profiles import LOAD_LABELS, PATTERN_LABELS, RESOURCE_LABELS, parse_profile_name
 
 SLA_P95_TARGET_MS = 1000.0
 _REPLICAS_EMPTY_RANGE = (0, 8)
@@ -56,6 +57,13 @@ def render_run_banner(rec: Optional[Dict[str, Any]], is_active: bool) -> None:
         )
         return
     profile_label = rec["profile_name"].replace("_", " ").title()
+    combo = parse_profile_name(rec["profile_name"])
+    if combo is not None:
+        pattern, resource, load = combo
+        profile_label = (
+            f"{PATTERN_LABELS.get(pattern, pattern)} / {RESOURCE_LABELS.get(resource, resource)} / "
+            f"{LOAD_LABELS.get(load, load)}"
+        )
     prefix = "Current run" if is_active else "Latest run"
     data_source = rec.get("data_source", "LIVE")
     status_label = (rec.get("stage") or rec.get("status", "unknown")).upper()
@@ -88,9 +96,21 @@ def render_telemetry(rec: Optional[Dict[str, Any]]) -> None:
     ts_q, rps = experiment_store.extract_series(rec, "request_rate_rps")
     ts_e, err = experiment_store.extract_series(rec, "error_rate")
 
+    traffic_label = "—"
+    if rec is not None:
+        combo = parse_profile_name(rec["profile_name"])
+        if combo is not None:
+            pattern, resource, load = combo
+            traffic_label = (
+                f"{PATTERN_LABELS.get(pattern, pattern)} / {RESOURCE_LABELS.get(resource, resource)} / "
+                f"{LOAD_LABELS.get(load, load)}"
+            )
+        else:
+            traffic_label = rec["profile_name"].replace("_", " ").title()
+
     render_metric_strip([
         ("Arm", display_arm_label(rec["controller"]) if rec is not None else "—"),
-        ("Traffic", rec["profile_name"].replace("_", " ").title() if rec is not None else "—"),
+        ("Traffic", traffic_label),
         ("RPS", _fmt(rps[-1] if rps else None)),
         ("Replicas (desired/ready)", str(replicas[-1]) if replicas else "—"),
         ("P95", _fmt(p95[-1] if p95 else None, " ms", 0)),

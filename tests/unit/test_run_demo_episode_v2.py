@@ -120,5 +120,13 @@ class TestDemoArmsAndAllowlist:
     def test_only_two_arms_selectable(self):
         assert runner.DEMO_ARMS == ("ppo_v2", "hpa_v2_cpu_memory")
 
-    def test_demo_profile_allowlist_matches_the_three_short_profiles(self):
-        assert set(runner.DEMO_PROFILE_ALLOWLIST) == {"demo_cpu_short", "demo_memory_short", "demo_mixed_short"}
+    def test_demo_profile_allowlist_includes_the_three_legacy_short_profiles(self):
+        assert {"demo_cpu_short", "demo_memory_short", "demo_mixed_short"}.issubset(
+            set(runner.DEMO_PROFILE_ALLOWLIST)
+        )
+
+    def test_demo_profile_allowlist_includes_the_36_pattern_resource_load_catalog(self):
+        from scripts.generate_demo_profiles import ALL_PROFILE_NAMES
+
+        assert set(ALL_PROFILE_NAMES).issubset(set(runner.DEMO_PROFILE_ALLOWLIST))
+        assert len(ALL_PROFILE_NAMES) == 36

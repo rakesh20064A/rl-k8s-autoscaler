@@ -18,14 +18,30 @@ from __future__ import annotations
 
 import hashlib
 import random
+import sys
+from pathlib import Path
 from typing import Any, Dict, List
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from loadgen.traffic_generator import parse_traffic_profile  # noqa: E402
+from scripts.generate_demo_profiles import ALL_PROFILE_NAMES, LEGACY_DEMO_PROFILE_NAMES  # noqa: E402
 
 DEMO_SEED_V2 = 4242
 DECISION_INTERVAL_S = 30.0
 N_DECISIONS = 16  # matches the ~8 min v2_demo profiles (480s / 30s)
 
+DEMO_PROFILE_DIR = PROJECT_ROOT / "configs" / "traffic_profiles" / "v2_demo"
+
 ARMS_V2 = ("ppo_v2", "hpa_v2_cpu_memory")
-PROFILES_V2 = ("demo_cpu_short", "demo_memory_short", "demo_mixed_short")
+# All demo profiles a fixture run may be built for: the 36-profile
+# pattern x resource x load catalog plus the 3 legacy `demo_*_short`
+# profiles -- same allowlist shape as scripts/run_demo_episode_v2.py's
+# DEMO_PROFILE_ALLOWLIST (kept independent here deliberately: this is a
+# pure-data module with no dependency on that script).
+PROFILES_V2 = ALL_PROFILE_NAMES + LEGACY_DEMO_PROFILE_NAMES
 
 ACTION_NAMES = ("SCALE_DOWN", "HOLD", "SCALE_UP")
 
@@ -35,13 +51,20 @@ def workload_hash_v2(profile_name: str, seed: int) -> str:
     return hashlib.sha256(payload).hexdigest()[:16]
 
 
-def _rps_curve(profile_name: str, i: int, n: int) -> float:
-    frac = i / max(n - 1, 1)
-    if profile_name == "demo_cpu_short":
-        return 5.0 if frac < 0.5 else 18.0
-    if profile_name == "demo_memory_short":
-        return 3.0 + frac * 15.0 if frac < 0.5 else 18.0 - (frac - 0.5) * 30.0
-    return 18.0 if (i % 5) == 0 else 4.0  # demo_mixed_short: short bursts
+def resolve_demo_profile_path(profile_name: str) -> Path:
+    return DEMO_PROFILE_DIR / f"{profile_name}.yaml"
+
+
+def rps_curve_from_profile(profile_name: str, n: int = N_DECISIONS, interval_s: float = DECISION_INTERVAL_S) -> List[float]:
+    """Derives the request-rate-over-time curve for `profile_name` directly
+    from its actual traffic-profile YAML (the SAME parser the real demo
+    episode runner and loadgen use), sampled once per decision interval --
+    never a hand-authored per-profile special case. Used both to build
+    fixture samples below and by the Experiment page's live preview chart
+    (demo_ui/profile_preview.py), so both paths render the identical
+    shape for a given profile."""
+    profile = parse_traffic_profile(resolve_demo_profile_path(profile_name))
+    return [profile.get_phase_and_target_rps(i * interval_s)[0] for i in range(n)]
 
 
 def _build_ppo_decision(rng: random.Random, replicas: int, action_name: str) -> Dict[str, Any]:
@@ -80,10 +103,11 @@ def build_fixture_v2_run(arm: str, profile_name: str, seed: int = DEMO_SEED_V2) 
         raise ValueError(f"profile_name must be one of {PROFILES_V2}, got {profile_name!r}")
 
     rng = random.Random(f"{seed}:{arm}:{profile_name}")
+    rps_series = rps_curve_from_profile(profile_name)
     samples: List[Dict[str, Any]] = []
     replicas = 2
     for i in range(N_DECISIONS):
-        rps = _rps_curve(profile_name, i, N_DECISIONS)
+        rps = rps_series[i]
         p95 = 150.0 + rps * 12.0 + rng.uniform(-20, 20)
         error_rate = 0.0 if p95 < 900 else min(0.05, (p95 - 900) / 5000.0)
         cpu_per_replica = min(1.0, 0.15 + rps / replicas * 0.03)
