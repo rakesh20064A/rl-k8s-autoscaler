@@ -33,8 +33,13 @@ from scripts.generate_demo_profiles import (
     profile_slug,
 )
 
-ARM_LABELS = {"ppo_v2": "PPO", "hpa_v2_cpu_memory": "HPA (CPU+memory)"}
+ARM_LABELS = {"ppo_v2": "PPO", "hpa_v2_cpu_memory": "HPA"}
 _LABEL_TO_ARM = {v: k for k, v in ARM_LABELS.items()}
+
+# Tooltip shown on the Arm select's label (via st.selectbox(help=...)) --
+# the one place the HPA CPU/memory target detail lives, now that the
+# control itself only shows the short "HPA" label.
+ARM_HELP = "HPA uses CPU (260%) and memory (120%) targets, 2-8 replicas"
 
 _LABEL_TO_PATTERN = {v: k for k, v in PATTERN_LABELS.items()}
 _LABEL_TO_RESOURCE = {v: k for k, v in RESOURCE_LABELS.items()}
@@ -79,9 +84,10 @@ def render_controls_v2(
         current_label = ARM_LABELS.get(current_raw, options[0])
         if controls_disabled:
             st.session_state["du_v2_arm_widget"] = current_label
-        choice = st.radio(
-            "Arm", options, index=options.index(current_label), horizontal=True,
+        choice = st.selectbox(
+            "Arm", options, index=options.index(current_label),
             key="du_v2_arm_widget", label_visibility="collapsed", disabled=controls_disabled,
+            help=ARM_HELP,
         )
         effective_label = current_label if controls_disabled else choice
         if not controls_disabled:
