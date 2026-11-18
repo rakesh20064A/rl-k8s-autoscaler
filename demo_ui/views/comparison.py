@@ -10,7 +10,9 @@ that sits the pre-registered evaluation campaign's own analysis output.
 
 from __future__ import annotations
 
+import statistics
 import time
+from typing import Any, Dict, List, Optional
 
 import streamlit as st
 
@@ -20,22 +22,162 @@ from demo_ui.components.layout import render_topbar
 from demo_ui.config_v2 import load_config_v2_safe
 from demo_ui.views import comparison_v2
 
-_METRIC_LABELS = [
-    ("mean_replicas", "Mean replicas"),
-    ("max_replicas", "Max replicas"),
-    ("scaling_events", "Scaling events"),
-    ("mean_latency_p95_ms", "P95 latency (ms)"),
-    ("success_rate_rps", "Success rate (rps)"),
-    ("error_rate_rps", "Error rate (rps)"),
+# Task sec.1/2 (this phase): the metrics table used to read keys
+# (`mean_replicas`, `max_latency_p95_ms`, etc.) directly off
+# `run["summary"]` -- but `status_file_fields_for_store()` in
+# `experiment_store.py` never populates any such top-level summary
+# field; `summary` only ever carries `samples` (plus workload identity
+# fields). So every `summary.get(key)` call was always `None` and the
+# table always rendered "--" for every metric, for every run, regardless
+# of how much real data the run actually has. Fixed by computing every
+# metric directly from `run["summary"]["samples"]` -- the SAME per-
+# decision records `experiment_store.extract_series()` already reads
+# correctly (post Phase 9H) for the overlay charts above this table --
+# instead of a summary-level field that was never written.
+#
+# Each entry: (label, unit-suffix-or-None, decimals, lower_is_better).
+# `lower_is_better=True` rows get the smaller of the two arms' values
+# bolded (never colour-filled, per task sec.2); `None` means the row is
+# purely descriptive (e.g. workload request rate) and nothing is
+# highlighted either way.
+_METRIC_ROWS: List[tuple] = [
+    ("decisions", "Number of decisions", None, 0, None),
+    ("mean_replicas", "Mean replicas", None, 2, True),
+    ("max_replicas", "Max replicas", None, 0, True),
+    ("replica_minutes", "Replica-minutes", None, 1, True),
+    ("scaling_actions", "Scaling actions", None, 0, True),
+    ("mean_p95_latency_ms", "Mean P95 latency", "ms", 1, True),
+    ("median_p95_latency_ms", "Median P95 latency", "ms", 1, True),
+    ("max_p95_latency_ms", "Max P95 latency", "ms", 1, True),
+    ("share_p95_over_1s_pct", "Decisions with P95 >= 1s", "%", 1, True),
+    ("mean_request_rate_rps", "Mean request rate", "req/s", 2, None),
+    ("peak_request_rate_rps", "Peak request rate", "req/s", 2, None),
+    ("error_rate_pct", "Error rate", "%", 2, True),
+    ("max_pod_memory_mib", "Max per-pod memory", "MiB", 1, True),
+    ("pod_restarts", "Pod restarts", None, 0, True),
 ]
 
 
-def _fmt_metric(value) -> str:
+def _run_samples(run: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if run is None:
+        return []
+    return (run.get("summary") or {}).get("samples") or []
+
+
+def _field_values(samples: List[Dict[str, Any]], field: str) -> List[float]:
+    return [s[field] for s in samples if s.get(field) is not None]
+
+
+def compute_run_metrics(run: Optional[Dict[str, Any]]) -> Dict[str, Optional[float]]:
+    """Computes every Comparison-table metric for one run directly from
+    its own persisted per-decision samples (`run["summary"]["samples"]`)
+    -- the real `EpisodeSample` schema (`desired_replicas`,
+    `p95_latency_ms`, `request_rate_rps`, `error_rate`,
+    `max_per_pod_memory_mib`, `pod_restart_counts`, `t_s`/`time_s`), never
+    a summary-level field. Returns `None` for a metric only when there is
+    genuinely nothing to compute it from (no samples at all, or that
+    field is absent from every sample) -- never because of a field-name
+    mismatch."""
+    samples = _run_samples(run)
+    result: Dict[str, Optional[float]] = {key: None for key, *_ in _METRIC_ROWS}
+    # "Number of decisions" is always known (0 is a real, meaningful
+    # value -- a run that genuinely produced no samples), so it is set
+    # even when every OTHER metric below stays `None`/"--" for lack of
+    # anything to compute them from.
+    result["decisions"] = len(samples)
+    if not samples:
+        return result
+
+    replicas = _field_values(samples, "desired_replicas")
+    if replicas:
+        result["mean_replicas"] = statistics.mean(replicas)
+        result["max_replicas"] = max(replicas)
+        result["scaling_actions"] = sum(
+            1 for a, b in zip(replicas, replicas[1:]) if a != b
+        )
+
+    times = [s.get("t_s", s.get("time_s")) for s in samples]
+    times = [t for t in times if t is not None]
+    if replicas and len(times) == len(replicas) and len(replicas) >= 1:
+        # Replica-minutes: each decision's replica count held for the
+        # interval until the NEXT decision; the final decision's interval
+        # is assumed equal to the previous (uniform decision cadence) --
+        # there is no further decision to bound it, so this is the most
+        # defensible estimate rather than treating it as zero-duration.
+        minutes_total = 0.0
+        for i in range(len(replicas)):
+            if i + 1 < len(times):
+                dt_s = times[i + 1] - times[i]
+            elif len(times) >= 2:
+                dt_s = times[-1] - times[-2]
+            else:
+                dt_s = 0.0
+            minutes_total += replicas[i] * (dt_s / 60.0)
+        result["replica_minutes"] = minutes_total
+
+    p95s = _field_values(samples, "p95_latency_ms")
+    if p95s:
+        result["mean_p95_latency_ms"] = statistics.mean(p95s)
+        result["median_p95_latency_ms"] = statistics.median(p95s)
+        result["max_p95_latency_ms"] = max(p95s)
+        result["share_p95_over_1s_pct"] = 100.0 * sum(1 for v in p95s if v >= 1000.0) / len(p95s)
+
+    rates = _field_values(samples, "request_rate_rps")
+    if rates:
+        result["mean_request_rate_rps"] = statistics.mean(rates)
+        result["peak_request_rate_rps"] = max(rates)
+
+    errors = _field_values(samples, "error_rate")
+    if errors:
+        result["error_rate_pct"] = 100.0 * statistics.mean(errors)
+
+    mem = _field_values(samples, "max_per_pod_memory_mib")
+    if mem:
+        result["max_pod_memory_mib"] = max(mem)
+
+    restart_totals = [
+        sum(s["pod_restart_counts"].values())
+        for s in samples
+        if isinstance(s.get("pod_restart_counts"), dict)
+    ]
+    if restart_totals:
+        result["pod_restarts"] = max(restart_totals)
+
+    return result
+
+
+def _fmt_value(value: Optional[float], unit: Optional[str], decimals: int) -> str:
     if value is None:
         return "—"
-    if isinstance(value, float):
-        return f"{value:,.2f}"
-    return str(value)
+    text = f"{value:,.{decimals}f}" if decimals else f"{value:,.0f}"
+    return f"{text} {unit}" if unit else text
+
+
+def _render_metrics_table(hpa_run: Dict[str, Any], ppo_run: Dict[str, Any]) -> None:
+    hpa_metrics = compute_run_metrics(hpa_run)
+    ppo_metrics = compute_run_metrics(ppo_run)
+
+    row_html = []
+    for key, label, unit, decimals, lower_is_better in _METRIC_ROWS:
+        hpa_val, ppo_val = hpa_metrics.get(key), ppo_metrics.get(key)
+        hpa_text, ppo_text = _fmt_value(hpa_val, unit, decimals), _fmt_value(ppo_val, unit, decimals)
+        if lower_is_better and hpa_val is not None and ppo_val is not None and hpa_val != ppo_val:
+            if hpa_val < ppo_val:
+                hpa_text = f"<b>{hpa_text}</b>"
+            else:
+                ppo_text = f"<b>{ppo_text}</b>"
+        row_html.append(f"<tr><td>{label}</td><td>{hpa_text}</td><td>{ppo_text}</td></tr>")
+
+    st.markdown(
+        f"""
+        <table class="du-cmp-table" style="margin-top:0.5rem;">
+          <tr><th>Metric</th><th>HPA</th><th>PPO</th></tr>
+          {"".join(row_html)}
+        </table>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.caption("Demo runs illustrate behaviour; they are not evaluation evidence.")
 
 
 def _latest_current_system_run():
@@ -120,20 +262,7 @@ def _render_live_comparison() -> bool:
     c2.plotly_chart(overlay_line_chart("P95 Latency", ts_hl, hl, "HPA", ts_pl, pl, "PPO", "ms", empty_message="No comparison data", empty_detail="Run both arms with the same workload", empty_y_range=(0, 500)), use_container_width=True)
 
     if hpa_run is not None and ppo_run is not None:
-        hpa_summary, ppo_summary = hpa_run.get("summary") or {}, ppo_run.get("summary") or {}
-        rows = "".join(
-            f"<tr><td>{label}</td><td>{_fmt_metric(hpa_summary.get(key))}</td><td>{_fmt_metric(ppo_summary.get(key))}</td></tr>"
-            for key, label in _METRIC_LABELS
-        )
-        st.markdown(
-            f"""
-            <table class="du-cmp-table" style="margin-top:0.5rem;">
-              <tr><th>Metric</th><th>HPA</th><th>PPO</th></tr>
-              {rows}
-            </table>
-            """,
-            unsafe_allow_html=True,
-        )
+        _render_metrics_table(hpa_run, ppo_run)
     return True
 
 
