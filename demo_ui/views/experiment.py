@@ -22,6 +22,7 @@ from demo_ui.fixtures_v2 import build_fixture_v2_run
 from demo_ui.live_execution_adapter import RealExperimentControllerV2
 from demo_ui.profile_preview import compute_rps_curve
 from scripts.generate_demo_profiles import PATTERN_LABELS
+from scripts.v2_live_cluster_state import ensure_canonical_idle_state, no_runner_process_alive
 
 # Short, templated-by-resource-type descriptions of what each
 # pattern x resource combination exercises. Not 36 bespoke sentences --
@@ -48,13 +49,46 @@ def _render_live_status_panel(real_ctrl: RealExperimentControllerV2) -> None:
     keeps status/log output moving while a run is active instead of being
     frozen until the user happens to touch some other widget.
 
+    RE-ATTACH (task sec.2/4): every tick re-derives the active run from
+    `experiment_store.reconcile()` -- never from `real_ctrl`'s own
+    in-memory state, which is empty/stale right after a Streamlit restart.
+    If the run this `real_ctrl` is (or should be) tracking differs from
+    what the store says is active, `real_ctrl.attach()` re-hydrates it
+    first. If no run is active, `real_ctrl` falls back to whatever it was
+    last tracking, then to the store's own latest run, so the panel still
+    shows a finished run's real outcome (COMPLETED, STOPPED, ...) instead
+    of reverting to "UNKNOWN" the moment it stops being active.
+
     Surfaces a `"refused"` status (the training/evaluation-protection
     check inside `scripts/run_demo_episode_v2.py` failing closed) distinctly."""
-    real_status = real_ctrl.status()
-    status_label = real_status.get("status", "unknown")
-    display_label = "starting" if (real_ctrl.is_running and status_label == "unknown") else status_label
+    reconciled = experiment_store.reconcile()
+    active_rec_now = reconciled["active"]
 
-    rec = experiment_store.get_run(real_ctrl.run_id) if real_ctrl.run_id else None
+    rec = active_rec_now
+    if rec is None and real_ctrl.run_id is not None:
+        rec = experiment_store.get_run(real_ctrl.run_id)
+    if rec is None:
+        latest = experiment_store.latest_run()
+        rec = latest if (latest is not None and latest.get("generation") == "v2") else None
+
+    if rec is not None and real_ctrl.run_id != rec["run_id"]:
+        real_ctrl.attach(rec)
+    real_ctrl.is_running = active_rec_now is not None
+
+    if active_rec_now is not None:
+        real_ctrl.status()  # polls the live status file -- the one thing that keeps the store's record fresh while a run is active
+        rec = experiment_store.get_run(real_ctrl.run_id)
+    elif reconciled["newly_stale"]:
+        # Task sec.4: a run was just found dead with no terminal status of
+        # its own -- if nothing is left running anywhere, make sure the
+        # live cluster did not get left mid-run.
+        cleanup = ensure_canonical_idle_state()
+        if cleanup.get("ran"):
+            st.info(f"Recovered the live cluster to its idle state after an interrupted run: {cleanup}.")
+
+    status_label = rec.get("status", "unknown") if rec is not None else "unknown"
+    display_label = (rec.get("stage") or status_label) if rec is not None else "unknown"
+
     if rec is not None:
         profile_label = rec["profile_name"].replace("_", " ").title()
         st.markdown(
@@ -69,15 +103,18 @@ def _render_live_status_panel(real_ctrl: RealExperimentControllerV2) -> None:
         unsafe_allow_html=True,
     )
     if status_label == "refused":
-        st.error(f"Refused to start: {real_status.get('error', 'unknown reason')}")
+        st.error(f"Refused to start: {(rec or {}).get('error', 'unknown reason')}")
     elif status_label == "error":
-        st.error(real_status.get("error", "unknown error"))
+        st.error((rec or {}).get("error", "unknown error"))
     elif status_label == "completed":
         st.success("Demo episode completed. DEMO ONLY -- not evaluation evidence.")
+    elif status_label == "stopped":
+        st.info("Run stopped by user.")
+    elif status_label == experiment_store.STALE_STATUS:
+        st.warning((rec or {}).get("error") or "Run was interrupted.")
 
-    was_running = st.session_state.get("du_v2_run_in_progress", False)
-    if status_label in ("completed", "error", "exited", "refused") and was_running:
-        st.session_state["du_v2_run_in_progress"] = False
+    if status_label in experiment_store.TERMINAL_STATUSES and real_ctrl.is_running:
+        real_ctrl.is_running = False
         st.rerun()
 
     with st.expander("Recent log output", expanded=real_ctrl.is_running):
@@ -86,6 +123,28 @@ def _render_live_status_panel(real_ctrl: RealExperimentControllerV2) -> None:
             st.caption("No output yet." if real_ctrl.is_running else "No output.")
         for line in lines:
             st.markdown(f'<div class="mono" style="font-size:11px;">{line}</div>', unsafe_allow_html=True)
+
+
+def _render_recover_control() -> None:
+    """RECOVER (task sec.6): enabled only when no `run_demo_episode_v2.py`
+    process is alive anywhere on this host -- runs the SAME reconciliation
+    + canonical-cleanup logic the terminal `scripts/demo_recover.py` runs,
+    and reports exactly what it did/found. Never touches the cluster while
+    a runner might still be mid-cleanup itself."""
+    runner_alive = not no_runner_process_alive()
+    if st.button("RECOVER", key="du_v2_recover_button", disabled=runner_alive,
+                 help="Reconcile run history and restore the idle cluster state. Disabled while a run is active."):
+        reconciled = experiment_store.reconcile()
+        cleanup = ensure_canonical_idle_state()
+        st.session_state["du_v2_last_recover_result"] = {
+            "newly_terminal": [r["run_id"] for r in reconciled["newly_terminal"]],
+            "newly_stale": [r["run_id"] for r in reconciled["newly_stale"]],
+            "cleanup": cleanup,
+        }
+        st.rerun()
+    result = st.session_state.get("du_v2_last_recover_result")
+    if result is not None:
+        st.caption(f"Last RECOVER result: {result}")
 
 
 def _render_traffic_preview(profile_name: str, pattern: str, resource: str, load: str) -> None:
@@ -144,6 +203,16 @@ def render() -> None:
 
     if is_live:
         real_ctrl = st.session_state.du_v2_real_controller_impl
+        # RE-ATTACH before handling STOP (task sec.2/5): a fresh
+        # `real_ctrl` (e.g. right after a Streamlit restart) has no
+        # `run_id` of its own yet. Without this, clicking STOP on a run
+        # this session never itself started would silently no-op --
+        # `stop()` has nothing to signal without a persisted record to
+        # resolve a pid/pgid from. `_render_live_status_panel()` below
+        # repeats this attach on every 3s tick, but STOP must see it on
+        # THIS exact rerun, synchronously, before `stop()` is called.
+        if active_rec is not None and real_ctrl.run_id != active_rec["run_id"]:
+            real_ctrl.attach(active_rec)
         if start_clicked and live_enabled:
             st.session_state["du_v2_run_in_progress"] = True
             real_ctrl.start(arm, profile_name, model_path)
@@ -153,6 +222,7 @@ def render() -> None:
             real_ctrl.stop()
             st.rerun()
         _render_live_status_panel(real_ctrl)
+        _render_recover_control()
         return
 
     if start_clicked:

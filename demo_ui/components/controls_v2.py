@@ -63,9 +63,21 @@ def render_controls_v2(
     stop_clicked).
 
     `live_enabled=False` disables START while `is_live=True` and shows
-    `live_disabled_reason` -- DEMO mode (is_live=False) is never affected."""
-    already_running = st.session_state.get("du_v2_run_in_progress", False)
+    `live_disabled_reason` -- DEMO mode (is_live=False) is never affected.
+
+    `already_running` (shows STOP instead of START, and the RUNNING badge)
+    is derived from `active_rec` -- the SAME `experiment_store`-backed
+    signal that disables the selects below -- whenever one is live
+    (`is_live=True`), never from the `du_v2_run_in_progress` session key
+    alone. That key is per-browser-session and defaults to False on a
+    fresh session, which used to leave START visible/enabled (with the
+    selects correctly greyed out) for a run a DIFFERENT session started
+    and this one simply reattached to after a Streamlit restart -- the
+    session key still drives the DEMO (is_live=False, no `active_rec`
+    ever exists) START/STOP toggle for a loaded sample fixture, which has
+    no persisted record of its own."""
     controls_disabled = active_rec is not None
+    already_running = controls_disabled or st.session_state.get("du_v2_run_in_progress", False)
 
     st.session_state.setdefault("du_v2_selected_arm", "ppo_v2")
     st.session_state.setdefault("du_v2_selected_pattern", DEFAULT_PATTERN)

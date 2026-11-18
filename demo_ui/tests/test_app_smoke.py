@@ -67,6 +67,18 @@ class TestAppSmoke:
         assert "du-mode-indicator" in _all_markdown_html(at)
 
     def test_start_button_does_not_crash_single_run(self):
+        """Sample data (offline) mode, deliberately: "Live cluster" is the
+        page's default data source, and clicking START there launches a
+        REAL subprocess (`scripts/run_demo_episode_v2.py`, in the
+        project's scientific `.venv`, with real kubectl/Kubernetes access)
+        against whatever cluster this test happens to run against the
+        moment `demo_ui/config_v2.yaml`'s model+epsilon files exist on
+        disk -- this smoke test only needs to confirm the click does not
+        crash the page, which Sample data (offline) mode verifies without
+        ever touching a real cluster."""
         at = _run_page("Experiment")
-        at.button[0].click().run()  # START
+        at.segmented_control(key="du_data_source_widget").set_value("Sample data (offline)").run()
+        assert not at.exception
+        start_button = [b for b in at.button if b.label == "START"][0]
+        start_button.click().run()
         assert not at.exception

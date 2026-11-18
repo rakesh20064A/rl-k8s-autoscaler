@@ -19,6 +19,7 @@ from typing import Any, Dict, Optional
 
 import streamlit as st
 
+from autoscaler.src.rl_env.types import ACTION_NAMES as _REAL_RUN_ACTION_NAMES
 from demo_ui import experiment_store
 from demo_ui.components.charts import line_chart, step_chart
 from demo_ui.components.controls_v2 import display_arm_label
@@ -31,7 +32,17 @@ _REPLICAS_EMPTY_RANGE = (0, 8)
 _LATENCY_EMPTY_RANGE = (0, 2000)
 _MEMORY_EMPTY_RANGE = (0, 256)
 
-ACTION_COLORS = {"SCALE_UP": PALETTE["vermilion"], "SCALE_DOWN": PALETTE["ochre"], "HOLD": PALETTE["petrol"]}
+# A REAL run's `effective_action_name`/`raw_argmax_action_name` use
+# `autoscaler.src.rl_env.types.ACTION_NAMES` (`SCALE_DOWN_ONE`/`HOLD`/
+# `SCALE_UP_ONE`); `demo_ui.fixtures_v2`'s DEMO (sample data) records use
+# the shorter `SCALE_DOWN`/`HOLD`/`SCALE_UP`. Both are kept here (a
+# superset, never a rename of either side's own data) so this panel colors
+# an action consistently regardless of which one produced the record.
+ACTION_COLORS = {
+    "SCALE_UP": PALETTE["vermilion"], "SCALE_UP_ONE": PALETTE["vermilion"],
+    "SCALE_DOWN": PALETTE["ochre"], "SCALE_DOWN_ONE": PALETTE["ochre"],
+    "HOLD": PALETTE["petrol"],
+}
 
 # CORR-58's safety-aware tie-break rules, in plain language for a
 # non-expert examiner -- never shown as a bare "R3" code alone.
@@ -144,6 +155,21 @@ def render_telemetry(rec: Optional[Dict[str, Any]]) -> None:
     )
 
 
+def _action_probabilities_as_dict(decision: Dict[str, Any]) -> Dict[str, float]:
+    """A REAL run (`scripts/run_demo_episode_v2.py`) writes
+    `action_probabilities` as the RAW index-ordered list/tuple the policy
+    produced -- index 0/1/2 -> SCALE_DOWN_ONE/HOLD/SCALE_UP_ONE
+    (`autoscaler.src.rl_env.types.ACTION_NAMES`, the SAME names
+    `effective_action_name`/`raw_argmax_action_name` already use), never a
+    name-keyed dict. `demo_ui.fixtures_v2`'s DEMO (sample data) records
+    already provide a dict. Accepts either shape so this panel never
+    crashes trying to call `.items()` on a list."""
+    raw = decision.get("action_probabilities") or {}
+    if isinstance(raw, dict):
+        return raw
+    return {_REAL_RUN_ACTION_NAMES.get(i, str(i)): p for i, p in enumerate(raw)}
+
+
 def _render_ppo_decision_panel(rec: Dict[str, Any]) -> None:
     """Per-decision explanation panel for the ppo_v2 arm: action
     probabilities, chosen action, plain argmax, tie set + rule, stressed +
@@ -158,7 +184,7 @@ def _render_ppo_decision_panel(rec: Dict[str, Any]) -> None:
 
     latest = decisions[-1]
     decision = latest["ppo_decision"]
-    probs = decision.get("action_probabilities") or {}
+    probs = _action_probabilities_as_dict(decision)
 
     col1, col2 = st.columns(2)
     with col1:

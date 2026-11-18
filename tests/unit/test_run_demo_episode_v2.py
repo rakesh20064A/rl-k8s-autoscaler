@@ -290,3 +290,117 @@ class TestPpoRunRemovesIdleHpaFirstAndAlwaysRestoresIdleState:
         status = json.loads(status_file.read_text())
         assert status["status"] == "refused"
         assert "unexpected HPA" in status["error"]
+
+
+class TestTerminalStatusWrittenAfterCleanup:
+    """V2 Phase 9F: task sec.3's ordering -- (a) write the run summary,
+    (b) restore the canonical idle cluster state, (c) write the terminal
+    status LAST. Verified by having the fake cleanup function itself peek
+    at the status file mid-cleanup: it must already see the full summary,
+    but NOT yet the terminal status/stage -- that must appear only once
+    cleanup has returned."""
+
+    def _ok_protection(self):
+        return {"ok": True, "reasons": []}
+
+    def test_success_writes_summary_before_cleanup_and_completed_status_after(self, tmp_path, monkeypatch):
+        status_file = tmp_path / "status.json"
+        monkeypatch.setattr(runner, "remove_hpa_before_ppo_start", lambda: [])
+        monkeypatch.setattr(
+            runner, "run_ppo_v2_eval_episode",
+            lambda *a, **k: _fake_episode_result("ppo_v2", "demo_cpu_short", "ep1"),
+        )
+        seen_during_cleanup = {}
+
+        def fake_restore():
+            seen_during_cleanup["stage"] = json.loads(status_file.read_text())["stage"]
+            seen_during_cleanup["has_summary"] = "summary" in json.loads(status_file.read_text())
+            return {"restored": True}
+
+        monkeypatch.setattr(runner, "restore_canonical_idle_state", fake_restore)
+        monkeypatch.setattr(runner, "clear_lock", lambda: None)
+
+        summary = runner.run_demo_episode_v2(
+            "ppo_v2", "demo_cpu_short", status_file=status_file, samples_jsonl=None,
+            protection_check_fn=self._ok_protection,
+        )
+
+        # Mid-cleanup, the status file already carries the full summary
+        # (RE-ATTACH can show it) but is NOT yet terminal -- `stage` is the
+        # intermediate "FINISHING" marker, not "COMPLETED".
+        assert seen_during_cleanup["stage"] == "FINISHING"
+        assert seen_during_cleanup["has_summary"] is True
+
+        final = json.loads(status_file.read_text())
+        assert final["status"] == "completed"
+        assert final["stage"] == "COMPLETED"
+        assert final["cleanup"] == {"restored": True}
+        assert final["summary"]["partial"] is False
+        assert summary["partial"] is False
+
+    def test_unexpected_exception_still_writes_a_terminal_error_status_with_partial_summary(self, tmp_path, monkeypatch):
+        """Regression: an exception not caught by any of the SPECIFIC
+        `except` clauses (neither `DemoStopRequested` nor the
+        Safety/Tooling/CpuOnly trio) must still leave a real terminal
+        status behind -- never a status file stuck mid-run with nothing
+        but a dead pid for reconciliation to go on."""
+        status_file = tmp_path / "status.json"
+        monkeypatch.setattr(runner, "remove_hpa_before_ppo_start", lambda: [])
+
+        def fake_run_ppo_raises_unanticipated(*args, **kwargs):
+            raise KeyError("boom -- not one of the specifically-handled exception types")
+
+        monkeypatch.setattr(runner, "run_ppo_v2_eval_episode", fake_run_ppo_raises_unanticipated)
+        monkeypatch.setattr(runner, "restore_canonical_idle_state", lambda: {"restored": True})
+        monkeypatch.setattr(runner, "clear_lock", lambda: None)
+
+        with pytest.raises(KeyError):
+            runner.run_demo_episode_v2(
+                "ppo_v2", "demo_cpu_short", status_file=status_file, samples_jsonl=None,
+                protection_check_fn=self._ok_protection,
+            )
+
+        final = json.loads(status_file.read_text())
+        assert final["status"] == "error"
+        assert "unexpected failure" in final["error"]
+        assert final["summary"]["partial"] is True
+        assert final["cleanup"] == {"restored": True}
+
+    def test_stopped_run_summary_is_marked_partial(self, tmp_path, monkeypatch):
+        status_file = tmp_path / "status.json"
+        monkeypatch.setattr(runner, "remove_hpa_before_ppo_start", lambda: [])
+
+        def fake_run_ppo_stops(*args, **kwargs):
+            raise runner.DemoStopRequested("stop requested (signal 15)")
+
+        monkeypatch.setattr(runner, "run_ppo_v2_eval_episode", fake_run_ppo_stops)
+        monkeypatch.setattr(runner, "restore_canonical_idle_state", lambda: {"restored": True})
+        monkeypatch.setattr(runner, "clear_lock", lambda: None)
+
+        with pytest.raises(runner.DemoStopRequested):
+            runner.run_demo_episode_v2(
+                "ppo_v2", "demo_cpu_short", status_file=status_file, samples_jsonl=None,
+                protection_check_fn=self._ok_protection,
+            )
+
+        final = json.loads(status_file.read_text())
+        assert final["status"] == "stopped"
+        assert final["summary"]["partial"] is True
+
+
+class TestMainSignalAndAtexitSetup:
+    """V2 Phase 9F: SIGINT handling and an `atexit` cleanup safety net,
+    alongside the pre-existing SIGTERM handling."""
+
+    def test_main_registers_sigint_sigterm_and_atexit_cleanup(self, monkeypatch):
+        calls = {"signals": [], "atexit": []}
+        monkeypatch.setattr(runner.signal, "signal", lambda sig, handler: calls["signals"].append((sig, handler)))
+        monkeypatch.setattr(runner.atexit, "register", lambda fn: calls["atexit"].append(fn))
+        monkeypatch.setattr(runner, "run_demo_episode_v2", lambda *a, **k: {"episode_id": "e1"})
+
+        rc = runner.main(["--arm", "ppo_v2", "--profile", "demo_cpu_short"])
+
+        assert rc == 0
+        assert (runner.signal.SIGTERM, runner._raise_stop_requested) in calls["signals"]
+        assert (runner.signal.SIGINT, runner._raise_stop_requested) in calls["signals"]
+        assert runner._restore_idle_state_safely in calls["atexit"]

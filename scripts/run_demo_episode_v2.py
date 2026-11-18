@@ -34,6 +34,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import signal
 import subprocess
@@ -273,51 +274,114 @@ def run_demo_episode_v2(
             "samples": list(collected),
         })
 
+    def _partial_summary(episode_id_: str) -> Dict[str, Any]:
+        return {
+            "episode_id": episode_id_, "arm": arm, "profile": profile_name,
+            "n_samples": len(collected), "demo_only": True, "partial": True,
+            "samples": list(collected),
+        }
+
+    # V2 Phase 9F: the run's terminal payload is built as soon as the
+    # outcome (success/stop/error) is known, but NEVER written to the
+    # status file until AFTER cleanup below has run -- see the ordering
+    # note on `finally`. `None` here means "no outcome determined yet";
+    # the broad `except Exception` further down fills it in for a truly
+    # unanticipated failure that none of the specific `except` clauses
+    # caught, so the status file is never left stuck on a mid-run stage
+    # with nothing but a dead pid for reconciliation to go on.
+    terminal_payload: Optional[Dict[str, Any]] = None
     episode_id = f"demo_v2_{arm}_{profile_name}_{int(time.time())}"
     try:
         try:
-            if arm == "ppo_v2":
-                result = run_ppo_v2_eval_episode(
-                    model_path, epsilon, profile_name, episode_duration_s, episode_id, on_sample=on_sample,
-                )
-            else:
-                result = run_hpa_v2_cpu_memory_eval_episode(
-                    profile_name, episode_duration_s, episode_id, on_sample=on_sample,
-                )
-        except DemoStopRequested as exc:
-            _write_status(status_file, {"status": "stopped", "stage": "STOPPED", "arm": arm, "profile": profile_name, "error": str(exc)})
-            raise
-        except (SafetyTerminationError, ToolingFailureError, CpuOnlyArmNotYetSupportedError) as exc:
-            _write_status(status_file, {"status": "error", "stage": "ERROR", "arm": arm, "profile": profile_name, "error": str(exc)})
-            raise
+            try:
+                if arm == "ppo_v2":
+                    result = run_ppo_v2_eval_episode(
+                        model_path, epsilon, profile_name, episode_duration_s, episode_id, on_sample=on_sample,
+                    )
+                else:
+                    result = run_hpa_v2_cpu_memory_eval_episode(
+                        profile_name, episode_duration_s, episode_id, on_sample=on_sample,
+                    )
+            except DemoStopRequested as exc:
+                terminal_payload = {
+                    "status": "stopped", "stage": "STOPPED", "arm": arm, "profile": profile_name,
+                    "error": str(exc), "summary": _partial_summary(episode_id),
+                }
+                raise
+            except (SafetyTerminationError, ToolingFailureError, CpuOnlyArmNotYetSupportedError) as exc:
+                terminal_payload = {
+                    "status": "error", "stage": "ERROR", "arm": arm, "profile": profile_name,
+                    "error": str(exc), "summary": _partial_summary(episode_id),
+                }
+                raise
 
-        summary = {
-            "episode_id": result["episode_id"], "arm": arm, "profile": profile_name,
-            "n_samples": len(result["samples"]), "demo_only": True,
-            "samples": [_to_status_sample(s) for s in result["samples"]],
-        }
-        _write_status(status_file, {"status": "completed", "stage": "COMPLETED", "arm": arm, "profile": profile_name, "summary": summary})
-        return summary
+            summary = {
+                "episode_id": result["episode_id"], "arm": arm, "profile": profile_name,
+                "n_samples": len(result["samples"]), "demo_only": True, "partial": False,
+                "samples": [_to_status_sample(s) for s in result["samples"]],
+            }
+            terminal_payload = {"status": "completed", "stage": "COMPLETED", "arm": arm, "profile": profile_name, "summary": summary}
+            # (a) write the run summary -- the full outcome is already on
+            # disk and readable by RE-ATTACH/the UI, via a non-terminal
+            # `stage` so reconciliation still treats the run as ACTIVE
+            # (controls stay locked) until cleanup below actually reaches
+            # the canonical idle cluster state -- never unlocking the UI
+            # to start a new run before this one has finished tearing
+            # down.
+            _write_status(status_file, {"status": "running", "stage": "FINISHING", "arm": arm, "profile": profile_name, "summary": summary})
+            return summary
+        except Exception as exc:  # noqa: BLE001 -- catches anything the specific handlers above did not
+            if terminal_payload is None:
+                terminal_payload = {
+                    "status": "error", "stage": "ERROR", "arm": arm, "profile": profile_name,
+                    "error": f"unexpected failure: {exc}", "summary": _partial_summary(episode_id),
+                }
+            raise
     finally:
-        # V2 Phase 9E: UNCONDITIONAL cleanup -- on success, on any
+        # V2 Phase 9E/9F: UNCONDITIONAL cleanup -- on success, on any
         # exception, and on an explicit STOP request (DemoStopRequested,
-        # raised from the SIGTERM handler `main()` installs) alike. Always
-        # restores the canonical idle cluster state (deletes any HPA
-        # object present that isn't `demo-app-hpa-v2`, re-applies it at 2
-        # replicas) and releases the run lock, exactly as
-        # `evaluate_v2_campaign.py`'s own live campaign does after every
-        # attempt (`_safe_cleanup`/`restore_canonical_idle_state`).
-        _restore_idle_state_safely()
+        # raised from the SIGTERM/SIGINT handler `main()` installs, or
+        # from the `atexit` safety net) alike. Always restores the
+        # canonical idle cluster state (deletes any HPA object present
+        # that isn't `demo-app-hpa-v2`, re-applies it at 2 replicas) and
+        # releases the run lock, exactly as `evaluate_v2_campaign.py`'s own
+        # live campaign does after every attempt
+        # (`_safe_cleanup`/`restore_canonical_idle_state`).
+        #
+        # (b) cleanup happens here, BEFORE...
+        cleanup_result = _restore_idle_state_safely()
+        # (c) ...the terminal status is written LAST. This ordering (not
+        # the original "write completed, then clean up") is deliberate:
+        # the terminal status is the one signal reconciliation
+        # (`experiment_store`) trusts as ground truth over a dead/stale
+        # pid, so it must never be visible until the cluster is actually
+        # back in its canonical idle state -- otherwise the UI could
+        # unlock and let a new run start while cleanup from this one was
+        # still in flight.
+        if status_file is not None:
+            _write_status(status_file, {**(terminal_payload or {
+                "status": "error", "stage": "ERROR", "arm": arm, "profile": profile_name,
+                "error": "run ended without a determined outcome", "summary": _partial_summary(episode_id),
+            }), "cleanup": cleanup_result})
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    # V2 Phase 9E: `demo_ui.live_execution_adapter.RealExperimentControllerV2.
+    # V2 Phase 9E/9F: `demo_ui.live_execution_adapter.RealExperimentControllerV2.
     # stop()` sends SIGTERM to this process's whole process group -- without
     # this handler that kills the process with NO cluster cleanup at all.
     # Converting it into `DemoStopRequested` routes a STOP exactly like any
     # other exception, through the same unconditional `finally` cleanup in
-    # `run_demo_episode_v2()`.
+    # `run_demo_episode_v2()`. SIGINT (Ctrl-C, e.g. a developer running this
+    # script directly from a terminal) is handled identically.
     signal.signal(signal.SIGTERM, _raise_stop_requested)
+    signal.signal(signal.SIGINT, _raise_stop_requested)
+    # Last-resort safety net for any normal interpreter shutdown path that
+    # reaches here WITHOUT having gone through `run_demo_episode_v2()`'s own
+    # `finally` (there should not be one, given the above, but this is
+    # cheap and `_restore_idle_state_safely()`/`restore_canonical_idle_state()`
+    # are both idempotent, so running it twice is harmless). Never fires on
+    # SIGKILL -- nothing in a Python process can catch that.
+    atexit.register(_restore_idle_state_safely)
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--arm", required=True, choices=DEMO_ARMS)

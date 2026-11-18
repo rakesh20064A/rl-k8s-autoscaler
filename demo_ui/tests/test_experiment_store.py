@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import time
 from pathlib import Path
@@ -203,3 +204,203 @@ class TestActiveRunLiveness:
         assert es.active_run(store_path) is None
         for rid in (r1, r2, r3):
             assert es.get_run(rid, store_path)["status"] == es.STALE_STATUS
+
+
+class TestDeadPidButActuallyCompletedRegression:
+    """Regression test for the exact production incident this phase fixes:
+    run `4d4edc8274e6` (PID 20102, profile `demo_constant_cpu_normal`) was
+    left recorded `status="running"` after a Streamlit restart orphaned
+    its `RealExperimentControllerV2` instance. The process (PID 20102)
+    had actually finished successfully -- its OWN status file read
+    `{"status": "completed", ..., "summary": {..., "n_samples": 16}}` --
+    but the store record's pid was dead AND its status file was stale by
+    mtime, so the OLD `active_run()` unconditionally overwrote it with a
+    fabricated `STALE_STATUS` verdict, throwing away the true outcome and
+    leaving the UI's controls disabled with no way to show what actually
+    happened. `active_run()`/`reconcile()` must now check the status
+    file's own content FIRST and surface COMPLETED, never INTERRUPTED."""
+
+    def test_dead_pid_and_stale_status_file_but_status_file_says_completed(self, store_path, tmp_path):
+        run_id = es.start_run("ppo_v2", "demo_constant_cpu_normal", path=store_path)
+        status_path = tmp_path / "status.json"
+        summary = {
+            "episode_id": "demo_v2_ppo_v2_demo_constant_cpu_normal_1", "arm": "ppo_v2",
+            "profile": "demo_constant_cpu_normal", "n_samples": 16, "demo_only": True, "partial": False,
+            "samples": [{"time_s": float(i) * 30.0} for i in range(16)],
+        }
+        status_path.write_text(json.dumps({
+            "status": "completed", "stage": "COMPLETED", "arm": "ppo_v2",
+            "profile": "demo_constant_cpu_normal", "summary": summary,
+        }))
+        # A pid that cannot belong to a real live process in this test run
+        # (the dead PID 20102 scenario), AND a status file whose mtime is
+        # old enough to independently fail the staleness check too -- the
+        # OLD code's dead-pid-OR-stale-mtime liveness check alone would
+        # have marked this STALE_STATUS without ever looking at the
+        # file's content.
+        old = time.time() - (es.STALE_STATUS_FILE_AGE_S + 600)
+        os.utime(status_path, (old, old))
+        dead_pid = 2**31 - 1
+        es.update_run(run_id, path=store_path, pid=dead_pid, status_path=str(status_path))
+
+        assert es.is_run_alive(es.get_run(run_id, store_path)) is False  # liveness alone says "not alive"
+
+        active = es.active_run(store_path)  # must NOT fabricate STALE_STATUS over this
+
+        assert active is None  # it is terminal, not "still running" -- but also not STALE
+        rec = es.get_run(run_id, store_path)
+        assert rec["status"] == "completed"
+        assert rec["stage"] == "COMPLETED"
+        assert rec["status"] != es.STALE_STATUS
+        assert rec["summary"]["n_samples"] == 16
+        assert rec["completed_at"] is not None
+
+        # The run now shows up as a real completed run -- History/Comparison
+        # can use it -- never silently dropped.
+        assert run_id in [r["run_id"] for r in es.completed_runs(store_path)]
+
+    def test_reconcile_reports_the_run_as_newly_terminal_not_newly_stale(self, store_path, tmp_path):
+        run_id = es.start_run("ppo_v2", "demo_constant_cpu_normal", path=store_path)
+        status_path = tmp_path / "status.json"
+        status_path.write_text(json.dumps({"status": "completed", "stage": "COMPLETED", "summary": {"n_samples": 1}}))
+        old = time.time() - (es.STALE_STATUS_FILE_AGE_S + 600)
+        os.utime(status_path, (old, old))
+        es.update_run(run_id, path=store_path, pid=2**31 - 1, status_path=str(status_path))
+
+        result = es.reconcile(store_path)
+
+        assert result["active"] is None
+        assert [r["run_id"] for r in result["newly_terminal"]] == [run_id]
+        assert result["newly_stale"] == []
+
+    def test_refused_status_file_also_surfaces_instead_of_stale(self, store_path, tmp_path):
+        run_id = es.start_run("ppo_v2", "demo_cpu_short", path=store_path)
+        status_path = tmp_path / "status.json"
+        status_path.write_text(json.dumps({"status": "refused", "stage": "REFUSED", "error": "controller lock is 'ppo', not 'none'"}))
+        old = time.time() - (es.STALE_STATUS_FILE_AGE_S + 600)
+        os.utime(status_path, (old, old))
+        es.update_run(run_id, path=store_path, pid=2**31 - 1, status_path=str(status_path))
+
+        es.active_run(store_path)
+
+        rec = es.get_run(run_id, store_path)
+        assert rec["status"] == "refused"
+        assert "controller lock" in rec["error"]
+
+    def test_genuinely_dead_run_with_no_terminal_status_file_still_marked_stale_with_a_reason(self, store_path, tmp_path):
+        """The fix must not swallow the real stale case -- a run that is
+        ACTUALLY dead (no terminal outcome recorded anywhere) must still
+        be marked `STALE_STATUS`, now with a human-readable reason."""
+        run_id = es.start_run("ppo_v2", "demo_cpu_short", path=store_path)
+        status_path = tmp_path / "status.json"
+        status_path.write_text(json.dumps({"status": "running", "stage": "EPISODE_RUNNING"}))
+        old = time.time() - (es.STALE_STATUS_FILE_AGE_S + 600)
+        os.utime(status_path, (old, old))
+        es.update_run(run_id, path=store_path, pid=2**31 - 1, status_path=str(status_path))
+
+        assert es.active_run(store_path) is None
+        rec = es.get_run(run_id, store_path)
+        assert rec["status"] == es.STALE_STATUS
+        assert rec["error"]  # a reason was recorded, not just a bare label
+
+
+class TestComparisonPairingAfterReconciliation:
+    """Task sec.7: Comparison must only ever pair COMPLETED runs on the
+    same workload, and reconciliation (which can now turn a stale-looking
+    record into a real COMPLETED one, or a dead one into STALE_STATUS)
+    must never change that. `latest_compatible_pair()`/`_same_workload()`
+    require `workload_hash`/`workload_seed`/`workload_duration_s` to all
+    be non-None and matching -- a real `scripts/run_demo_episode_v2.py`
+    run's summary does not populate those fields at all, so two such runs
+    sharing only `profile_name` correctly do NOT pair (this is the
+    existing, unchanged identity rule -- not something this phase's
+    reconciliation fix is meant to change)."""
+
+    def test_reconciled_completed_run_without_workload_identity_is_not_paired(self, store_path, tmp_path):
+        status_path = tmp_path / "status.json"
+        status_path.write_text(json.dumps({
+            "status": "completed", "stage": "COMPLETED", "summary": {"n_samples": 16, "profile": "demo_constant_cpu_normal"},
+        }))
+        old = time.time() - (es.STALE_STATUS_FILE_AGE_S + 600)
+        os.utime(status_path, (old, old))
+        run_id = es.start_run("ppo_v2", "demo_constant_cpu_normal", path=store_path)
+        es.update_run(run_id, path=store_path, pid=2**31 - 1, status_path=str(status_path))
+        es.active_run(store_path)  # reconciliation surfaces the real "completed" outcome
+        reconciled_run = es.get_run(run_id, store_path)
+        assert reconciled_run["status"] == "completed"
+
+        other = es.start_run("hpa_v2_cpu_memory", "demo_constant_cpu_normal", path=store_path)
+        es.update_run(other, path=store_path, status="completed", summary={"n_samples": 16})
+
+        pair = es.latest_compatible_pair(reconciled_run, path=store_path)
+        # Neither carries workload_hash/seed/duration -- same profile is
+        # not enough on its own to be treated as the same workload.
+        assert pair["ppo"] is None or pair["ppo"]["run_id"] != reconciled_run["run_id"] or pair["hpa"] is None
+
+    def test_interrupted_run_never_appears_in_a_pair_even_if_workload_identity_set(self, store_path):
+        run_id = es.start_run("ppo_v2", "demo_cpu_short", path=store_path)
+        es.update_run(
+            run_id, path=store_path, pid=2**31 - 1, status=es.STALE_STATUS, stage="INTERRUPTED",
+            workload_hash="h1", workload_seed=42, workload_duration_s=40.0,
+        )
+        completed = es.start_run("hpa_v2_cpu_memory", "demo_cpu_short", path=store_path)
+        es.update_run(
+            completed, path=store_path, status="completed",
+            workload_hash="h1", workload_seed=42, workload_duration_s=40.0, summary={},
+        )
+
+        rec = es.get_run(run_id, store_path)
+        pair = es.latest_compatible_pair(rec, path=store_path)
+        assert pair["ppo"] is None  # the INTERRUPTED run itself is never offered as "the" ppo result
+        assert pair["hpa"]["run_id"] == completed  # its genuinely completed counterpart still is
+
+
+class TestExpectedDurationLiveness:
+    def test_elapsed_past_expected_duration_plus_grace_is_not_alive(self, store_path):
+        run_id = es.start_run("ppo_v2", "demo_cpu_short", path=store_path)
+        es.update_run(
+            run_id, path=store_path, pid=os.getpid(), expected_duration_s=10.0,
+            started_at=time.time() - (10.0 + 301.0),
+        )
+        rec = es.get_run(run_id, store_path)
+        assert es.is_run_alive(rec) is False
+
+    def test_elapsed_within_expected_duration_plus_grace_is_alive(self, store_path):
+        run_id = es.start_run("ppo_v2", "demo_cpu_short", path=store_path)
+        es.update_run(
+            run_id, path=store_path, pid=os.getpid(), expected_duration_s=600.0,
+            started_at=time.time() - 10.0,
+        )
+        rec = es.get_run(run_id, store_path)
+        assert es.is_run_alive(rec) is True
+
+
+class TestStoreLocationAndMigration:
+    def test_store_path_lives_under_persistent_data_demo_ui(self):
+        assert es.STORE_PATH.parts[-3:-1] == ("persistent-data", "demo_ui")
+
+    def test_legacy_store_is_migrated_once(self, tmp_path, monkeypatch):
+        legacy = tmp_path / "legacy_runs.json"
+        legacy.write_text(json.dumps([{"run_id": "legacy1", "started_at": 1.0, "status": "completed"}]))
+        new_path = tmp_path / "new_runs.json"
+        monkeypatch.setattr(es, "_LEGACY_STORE_PATH", legacy)
+        monkeypatch.setattr(es, "STORE_PATH", new_path)
+
+        es._migrate_legacy_store_once()
+
+        assert new_path.exists()
+        migrated = es._load(new_path)
+        assert migrated[0]["run_id"] == "legacy1"
+
+    def test_migration_never_overwrites_an_existing_new_store(self, tmp_path, monkeypatch):
+        legacy = tmp_path / "legacy_runs.json"
+        legacy.write_text(json.dumps([{"run_id": "legacy1", "started_at": 1.0, "status": "completed"}]))
+        new_path = tmp_path / "new_runs.json"
+        new_path.write_text(json.dumps([{"run_id": "already_here", "started_at": 2.0, "status": "completed"}]))
+        monkeypatch.setattr(es, "_LEGACY_STORE_PATH", legacy)
+        monkeypatch.setattr(es, "STORE_PATH", new_path)
+
+        es._migrate_legacy_store_once()
+
+        migrated = es._load(new_path)
+        assert [r["run_id"] for r in migrated] == ["already_here"]
