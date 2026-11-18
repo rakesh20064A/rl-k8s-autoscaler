@@ -7,6 +7,7 @@ polls and no divergence between arms.
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 
@@ -25,9 +26,13 @@ def ctrl(tmp_path, monkeypatch):
     monkeypatch.setattr("demo_ui.live_execution_adapter.experiment_store", es)
     c = RealExperimentControllerV2()
     c.run_id = es.start_run("hpa_v2_cpu_memory", "demo_cpu_short", path=store_path)
-    es.update_run(c.run_id, generation="v2", path=store_path)
-    c.is_running = True
     status_path = tmp_path / "status.json"
+    # A live pid + a soon-to-exist status file, same as a real `start()`
+    # would persist -- otherwise `active_run()`'s liveness check (added to
+    # fix the stale-run-locks-controls bug) would treat this fixture's run
+    # as unverifiable and mark it stale before the test ever gets to it.
+    es.update_run(c.run_id, generation="v2", pid=os.getpid(), status_path=str(status_path), path=store_path)
+    c.is_running = True
     c._status_path = status_path
     return c, status_path, store_path
 

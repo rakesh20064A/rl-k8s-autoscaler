@@ -27,6 +27,14 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 VENV_PYTHON = PROJECT_ROOT / ".venv" / "bin" / "python"
 RUNNER_SCRIPT_V2 = PROJECT_ROOT / "scripts" / "run_demo_episode_v2.py"
 
+# Deliberately NOT the system temp dir (`/tmp` on macOS): that is wiped on
+# every host restart, which used to orphan a run's status/log files while
+# `experiment_store` still had it recorded as `"running"` -- locking the
+# Experiment page's controls forever with no process left to ever finish
+# or be stopped. This directory persists across restarts like the rest of
+# `persistent-data/`.
+RUN_FILES_DIR = PROJECT_ROOT / "persistent-data" / "demo_ui"
+
 _TERMINATE_WAIT_SECONDS = 10.0
 
 
@@ -53,9 +61,10 @@ class RealExperimentControllerV2:
         if not VENV_PYTHON.exists():
             raise RuntimeError(f"project venv python not found at {VENV_PYTHON}; run scripts/bootstrap.sh first")
 
-        status_fd, status_name = tempfile.mkstemp(prefix="du_demo_v2_status_", suffix=".json")
+        RUN_FILES_DIR.mkdir(parents=True, exist_ok=True)
+        status_fd, status_name = tempfile.mkstemp(prefix="du_demo_v2_status_", suffix=".json", dir=str(RUN_FILES_DIR))
         os.close(status_fd)
-        log_fd, log_name = tempfile.mkstemp(prefix="du_demo_v2_log_", suffix=".log")
+        log_fd, log_name = tempfile.mkstemp(prefix="du_demo_v2_log_", suffix=".log", dir=str(RUN_FILES_DIR))
         os.close(log_fd)
         self._status_path = Path(status_name)
         self._log_path = Path(log_name)
@@ -77,6 +86,12 @@ class RealExperimentControllerV2:
             start_new_session=True, env=child_env,
         )
         self.is_running = True
+        # Persisted (not just held on this in-memory instance) so
+        # `experiment_store.active_run()` can tell a genuinely running
+        # process apart from a stale record across a Streamlit restart --
+        # a fresh `RealExperimentControllerV2` has no `_proc`/`_status_path`
+        # of its own to check against.
+        experiment_store.update_run(self.run_id, pid=self._proc.pid, status_path=str(self._status_path))
 
     def stop(self) -> None:
         if self._proc is None:

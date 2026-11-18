@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
 
 import pytest
@@ -10,6 +12,16 @@ from demo_ui import experiment_store as es
 @pytest.fixture()
 def store_path(tmp_path: Path) -> Path:
     return tmp_path / "runs.json"
+
+
+def _mark_alive(run_id: str, store_path: Path, status_path: "Path | None" = None) -> None:
+    """Simulates a genuinely running process: a live pid (this test
+    process's own) and, optionally, a status file with a fresh mtime."""
+    fields = {"pid": os.getpid()}
+    if status_path is not None:
+        status_path.write_text("{}")
+        fields["status_path"] = str(status_path)
+    es.update_run(run_id, path=store_path, **fields)
 
 
 class TestLifecycle:
@@ -23,6 +35,7 @@ class TestLifecycle:
 
     def test_active_run_returns_only_running(self, store_path):
         run_id = es.start_run("HPA", "constant", path=store_path)
+        _mark_alive(run_id, store_path)
         assert es.active_run(store_path)["run_id"] == run_id
         es.update_run(run_id, status="completed", summary={}, path=store_path)
         assert es.active_run(store_path) is None
@@ -112,3 +125,81 @@ class TestCompatiblePairing:
         pair = es.latest_compatible_pair(hpa, store_path)
         assert pair["ppo"]["run_id"] == ppo_new["run_id"]
         assert pair["ppo"]["run_id"] != ppo_old["run_id"]
+
+    def test_pair_found_for_real_v2_controller_ids(self, store_path):
+        """The real V2 controller ids are `ppo_v2` and `hpa_v2_cpu_memory`
+        (see components/controls_v2.py) -- not the bare `"hpa"`/`"ppo"`
+        this used to require an exact (lowercased) match against."""
+        ppo = self._completed(store_path, "ppo_v2", "demo_cpu_short", "h1", 42, 40.0)
+        hpa = self._completed(store_path, "hpa_v2_cpu_memory", "demo_cpu_short", "h1", 42, 40.0)
+        pair = es.latest_compatible_pair(ppo, store_path)
+        assert pair["ppo"]["run_id"] == ppo["run_id"]
+        assert pair["hpa"]["run_id"] == hpa["run_id"]
+
+
+class TestActiveRunLiveness:
+    """Covers the "Mac restarted, /tmp wiped" bug: a `"running"` record
+    whose process is actually dead must never lock the Experiment page's
+    ARM/traffic controls forever."""
+
+    def test_dead_pid_is_marked_stale_and_unlocks_controls(self, store_path):
+        run_id = es.start_run("ppo_v2", "demo_cpu_short", path=store_path)
+        # A pid that cannot belong to a real live process in this test run.
+        dead_pid = 2**31 - 1
+        es.update_run(run_id, path=store_path, pid=dead_pid)
+        assert es.active_run(store_path) is None
+        rec = es.get_run(run_id, store_path)
+        assert rec["status"] == es.STALE_STATUS
+        assert rec["completed_at"] is not None  # ended, not silently dropped
+
+    def test_missing_status_file_with_no_pid_is_marked_stale(self, store_path, tmp_path):
+        """Mirrors the actual production bug: a record created before this
+        fix carries neither a pid nor a status_path (the status file lived
+        in the system temp dir and was wiped by a host restart), so there
+        is no way left to verify it is still running."""
+        run_id = es.start_run("ppo_v2", "demo_cpu_short", path=store_path)
+        assert es.active_run(store_path) is None
+        assert es.get_run(run_id, store_path)["status"] == es.STALE_STATUS
+
+    def test_missing_status_file_but_pid_present_is_stale(self, store_path, tmp_path):
+        run_id = es.start_run("ppo_v2", "demo_cpu_short", path=store_path)
+        missing_status_path = tmp_path / "gone.json"  # never written -- simulates the wiped /tmp file
+        es.update_run(run_id, path=store_path, pid=os.getpid(), status_path=str(missing_status_path))
+        assert es.active_run(store_path) is None
+        assert es.get_run(run_id, store_path)["status"] == es.STALE_STATUS
+
+    def test_stale_status_file_is_marked_stale_even_with_live_pid(self, store_path, tmp_path):
+        run_id = es.start_run("ppo_v2", "demo_cpu_short", path=store_path)
+        status_path = tmp_path / "status.json"
+        status_path.write_text("{}")
+        old = time.time() - (es.STALE_STATUS_FILE_AGE_S + 60)
+        os.utime(status_path, (old, old))
+        es.update_run(run_id, path=store_path, pid=os.getpid(), status_path=str(status_path))
+        assert es.active_run(store_path) is None
+        assert es.get_run(run_id, store_path)["status"] == es.STALE_STATUS
+
+    def test_live_pid_and_fresh_status_file_still_locks_controls(self, store_path, tmp_path):
+        run_id = es.start_run("ppo_v2", "demo_cpu_short", path=store_path)
+        status_path = tmp_path / "status.json"
+        status_path.write_text("{}")  # just written -- fresh mtime
+        es.update_run(run_id, path=store_path, pid=os.getpid(), status_path=str(status_path))
+        active = es.active_run(store_path)
+        assert active is not None
+        assert active["run_id"] == run_id
+        assert active["status"] == "running"
+
+    def test_stale_marking_never_deletes_run_history(self, store_path):
+        run_id = es.start_run("ppo_v2", "demo_cpu_short", path=store_path)
+        es.update_run(run_id, path=store_path, pid=2**31 - 1)
+        es.active_run(store_path)
+        records = es._load(store_path)
+        assert len(records) == 1  # updated in place, never removed
+        assert records[0]["run_id"] == run_id
+
+    def test_multiple_stale_records_are_all_cleaned_up(self, store_path):
+        r1 = es.start_run("ppo_v2", "demo_cpu_short", path=store_path)
+        r2 = es.start_run("ppo_v2", "demo_cpu_short", path=store_path)
+        r3 = es.start_run("ppo_v2", "demo_cpu_short", path=store_path)
+        assert es.active_run(store_path) is None
+        for rid in (r1, r2, r3):
+            assert es.get_run(rid, store_path)["status"] == es.STALE_STATUS

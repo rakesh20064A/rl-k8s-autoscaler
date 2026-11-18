@@ -7,6 +7,7 @@ on a missing field.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -107,7 +108,9 @@ class TestFullPageWithV2ActiveRun:
     def test_live_details_page_delegates_to_v2_when_active_run_is_v2(self, tmp_path, monkeypatch):
         monkeypatch.setattr(experiment_store, "STORE_PATH", tmp_path / "runs.json")
         run_id = experiment_store.start_run("ppo_v2", "demo_cpu_short")
-        experiment_store.update_run(run_id, generation="v2", stage="EPISODE_RUNNING")
+        # A live pid is required for `active_run()`'s liveness check to
+        # treat this as a genuinely running process, not a stale record.
+        experiment_store.update_run(run_id, generation="v2", stage="EPISODE_RUNNING", pid=os.getpid())
 
         at = AppTest.from_file(APP_PATH, default_timeout=30)
         at.run()

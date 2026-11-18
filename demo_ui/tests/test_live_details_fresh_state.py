@@ -9,6 +9,7 @@ expander.
 from __future__ import annotations
 
 import inspect
+import os
 
 import pytest
 
@@ -128,9 +129,11 @@ class TestFreshStoreRendering:
 
     def test_navigation_preserves_same_active_run(self):
         run_id = experiment_store.start_run("hpa_v2_cpu_memory", "demo_cpu_short", path=self.store_path)
+        # A live pid is required for `active_run()`'s liveness check to
+        # treat this as a genuinely running process, not a stale record.
         experiment_store.update_run(
             run_id, generation="v2", stage="EPISODE_RUNNING", workload_hash="h1", workload_seed=42,
-            workload_duration_s=40.0, path=self.store_path,
+            workload_duration_s=40.0, pid=os.getpid(), path=self.store_path,
         )
         at = AppTest.from_file(APP_PATH, default_timeout=30)
         at.run()

@@ -68,3 +68,7 @@ htmlcov/
 
 # --- Demo UI run-history store (local runtime state, not source) ---
 demo_ui/.run_store/
+
+# --- Demo UI live-run status/log files (persistent so a host restart can't
+# orphan them, but still local runtime state, not source) ---
+persistent-data/demo_ui/
