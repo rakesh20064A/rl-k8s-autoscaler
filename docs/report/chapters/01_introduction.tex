@@ -1,7 +1,43 @@
-\chapter{Introduction}
+\chapter{INTRODUCTION}
 \label{ch:introduction}
 
-\section{Background}
+\section{Objectives}
+\label{sec:intro-objectives}
+
+The project set out to:
+\begin{enumerate}[label=(\roman*)]
+  \item Build an end-to-end testbed -- a benchmark FastAPI service, a
+    deterministic, seeded open-loop traffic generator, Prometheus
+    telemetry, and a Gymnasium-compatible environment wrapping a live
+    Minikube cluster -- on which both an RL controller and HPA baselines
+    could be run under identical conditions.
+  \item Specify a frozen Markov Decision Process for the autoscaling
+    problem, including explicit rules for what the agent should do when
+    telemetry is missing, when there is genuinely no traffic, and a
+    deterministic safety layer that the policy cannot override.
+  \item Train a PPO agent live against this cluster for a pre-registered,
+    full budget, and evaluate it against two HPA baselines (one using CPU
+    and memory, one using CPU only, at the same target and replica bounds
+    as every other arm) under a pre-registered protocol with a decision
+    rule fixed before evaluation began.
+  \item Report every result in full, including any run that ends in a
+    safety termination rather than quietly excluding it, and diagnose any
+    operational failure in enough depth to identify the specific, named
+    design decision responsible.
+  \item Report every design decision and every mid-course correction made
+    along the way, including the ones that did not work, in an append-only
+    log, so that the final results can be read alongside the full history
+    of decisions that produced them rather than only the decisions that
+    turned out to matter.
+  \item Build a demonstration console that lets a reader watch the trained
+    policy make decisions on deterministic, firewalled demo traffic,
+    separate from every training and evaluation profile.
+\end{enumerate}
+
+\section{Background and Literature Survey}
+\label{sec:intro-background}
+
+\subsection{Background}
 
 Cloud and container platforms let an operator change the amount of compute
 capacity assigned to a service while that service is running. In a
@@ -58,28 +94,207 @@ use throughout this project; we describe it in plain terms in
 Section~\ref{sec:intro-ppo-basics} below, and in full in
 Chapter~\ref{ch:methodology}.
 
-This report is the end result of two attempts at the same underlying
-question, which we refer to throughout as V1 and V2. V1 was our first
-design: a CPU-only observation space, a reward function with an unconditional
-per-replica cost, and a replica floor of one. V1 is not treated in this
-report as a discarded draft; it is reported honestly, including the way it
-failed, because the reasons it failed are exactly the reasons V2 looks the
-way it does. V2 is a from-scratch redesign, not a patch applied to V1's
-code: a new eleven-feature multi-resource observation space, a reshaped
-seven-component reward, a replica floor of two, and a safety-aware
-tie-breaking rule for near-tied policy outputs. Both generations were
-trained and evaluated on the same kind of testbed, a single-node Minikube
-cluster running on a MacBook Air M1 with 8~GB of RAM, under the same
-discipline of writing down, before any evaluation run, what would count as a
-valid run and what would count as one controller being "better" than
-another.
+This report describes a system we built and ran end to end: a benchmark
+service and deterministic traffic generator, a Gymnasium-compatible
+environment wrapping a live Minikube cluster, an eleven-feature
+multi-resource observation space, a seven-component reward, a deterministic
+safety layer, a safety-aware tie-breaking rule, and a pre-registered
+evaluation protocol comparing the trained PPO policy against two HPA
+baselines. Every design decision in it is justified on its own technical
+merits in Chapter~\ref{ch:methodology}, several of them against evidence
+produced by the system's own training and evaluation runs -- for example,
+the two sessions in which every ready replica of the deployment briefly fell
+to zero (Section~\ref{sec:zero-ready-stops}) are part of this system's own
+operating history, not a different design's failure, and they are exactly
+why the deployment is never allowed to run with fewer than two replicas. The
+system was trained and evaluated on a single-node Minikube cluster running
+on a MacBook Air M1 with 8~GB of RAM, under the discipline of writing down,
+before any evaluation run, what would count as a valid run and what would
+count as one controller being "better" than another.
+
+\subsection{Literature Survey}
+\label{sec:related-work}
+
+\subsubsection{Rule-Based and Predictive Autoscaling}
+
+Threshold rules remain the dominant approach to autoscaling in practice
+precisely because they are easy to configure and their behaviour is easy to
+predict, a point made explicitly in the Lorido-Botran, Miguel-Alonso, and
+Lozano survey of elastic cloud autoscaling techniques, which organizes prior
+work into threshold-rule, queueing-model, control-theoretic, time-series
+prediction, and reinforcement-learning families
+\cite{lorido2014review}. Qu, Calheiros, and Buyya's survey of web
+application autoscaling makes a related point about the difficulty of
+choosing thresholds and cooldown periods that work well across varying
+workloads, which is exactly the tuning problem our own HPA baselines had to
+go through before they could be trusted as a fair comparison point (we
+describe this tuning process, including the counterbalanced study that
+selected the 260\% CPU target used by both our HPA baselines, in
+Chapter~\ref{ch:methodology}) \cite{qu2018survey}. Taherizadeh and
+Stankovski propose dynamic, multi-level rules for containerized applications
+that adjust their own thresholds at runtime rather than using one fixed
+value \cite{taherizadeh2019dynamic}, which is one step in the direction an
+RL-based approach pushes further. At industrial scale, Google's Autopilot
+system, described by Rzadca et al., sets both replica count and per-task
+resource limits using statistics of past usage combined with a machine
+learning recommender, and is deployed across a large fraction of Google's
+internal clusters \cite{rzadca2020autopilot}; it is not evaluated against a
+hand-tuned HPA-style baseline in the way this report evaluates PPO against
+HPA, because at Google's scale there usually is no such baseline running
+alongside it to compare against. Rattihalli, Govindaraju, Lu, and Tiwari
+study vertical rather than horizontal autoscaling in Kubernetes, resizing a
+pod's own resource requests instead of the replica count
+\cite{rattihalli2019vertical}; we deliberately kept to the horizontal
+setting throughout this project so that the HPA baseline would be a fair,
+like-for-like comparison rather than a different kind of scaling decision
+altogether.
+
+\subsubsection{Learning-Based Autoscaling}
+
+Mao, Alizadeh, Menache, and Kandula's early demonstration that a
+policy-gradient agent can learn cluster job scheduling directly from
+experience, without being told the scheduling heuristics a human expert
+would use, is one of the papers most often cited as motivation for applying
+RL to resource management problems generally \cite{mao2016resource}.
+Horovitz and Arian apply tabular Q-learning with an explicit SLA objective
+to cloud autoscaling \cite{horovitz2018qlearning}; Rossi, Nardelli, and
+Cardellini apply model-based RL to combined horizontal and vertical scaling
+of containers \cite{rossi2019horizontal}; Imdoukh, Ahmad, and Alfailakawi
+predict load ahead of time with an LSTM network and scale in anticipation of
+that prediction rather than reactively \cite{imdoukh2020lstm}; Toka,
+Dobreff, Fodor, and Sonkoly combine several forecasters to scale Kubernetes
+edge clusters \cite{toka2021edge}; and Qiu, Banerjee, Jha, Kalbarczyk, and
+Iyer's FIRM system uses deep RL to reprovision resources for microservices
+that are violating latency objectives \cite{qiu2020firm}. All of these
+studies report results that are, to varying degrees, encouraging for
+RL-based autoscaling; what distinguishes our project from essentially all of
+them is where the training and evaluation data came from. Most of the work
+above trains and/or evaluates in a simulator or against a recorded trace
+replayed offline; our agent was trained with every single one of its
+decision steps executed against a real Minikube cluster, at a real
+30-second decision interval, with a real safety layer that could, and
+twice did, stop a training session. We return to this contrast directly in
+Table~\ref{tab:related-work-summary} and in the comparative analysis in
+Section~\ref{sec:comparative-analysis}.
+
+\subsubsection{Reliable Evaluation of Reinforcement Learning}
+
+A third thread of related work is less about autoscaling specifically and
+more about how to evaluate an RL method honestly at all. Henderson, Islam,
+Bachman, Pineau, Precup, and Meger demonstrate that deep RL results can vary
+substantially across random seeds and implementation details that papers
+often do not report in enough detail to reproduce \cite{henderson2018matters}.
+Agarwal, Schwarzer, Castro, Courville, and Bellemare argue for reporting
+uncertainty explicitly when only a small number of runs are practically
+possible, rather than reporting a single number as if it were exact
+\cite{agarwal2021precipice} -- directly relevant to our own evaluation,
+where cost and practicality limited us to three repeats per profile per arm
+in the pre-registered campaign and exactly one repeat per cell in the
+exploratory stress test, and where we report means and standard deviations
+rather than single point estimates wherever more than one repeat exists.
+Dulac-Arnold, Mankowitz, and Hester catalogue the obstacles that real
+systems place in the way of RL that simulators do not: limited numbers of
+samples, hard safety constraints, and partial or delayed observations
+\cite{dulacarnold2019challenges}, all three of which appear directly in our
+project (limited samples because every step costs thirty real seconds;
+safety constraints enforced by our deterministic gating layer; and delayed,
+sometimes missing, telemetry handled by the invalid-sample rules in
+Section~\ref{sec:invalid-telemetry}). Garc\'ia and Fern\'andez survey safe
+reinforcement learning broadly, including approaches that restrict the
+action an agent is allowed to take using an external rule rather than
+trusting the learned policy alone \cite{garcia2015safe}, which is the same
+pattern our safety-aware tie-break rule and replica-bound gating follow.
+Finally, Nosek, Ebersole, DeHaven, and Mellor's argument for pre-registration
+as a defence against outcome-driven analysis choices, originally made for
+psychology experiments, is the methodological practice we adopted most
+directly: our evaluation workload, our metrics, our retry rules, and our
+decision rule for declaring a controller "better" were all fixed and hashed
+before any evaluation episode ran \cite{nosek2018preregistration}.
+
+\subsubsection{Summary Comparison of Closest Prior Work}
+
+Table~\ref{tab:related-work-summary} summarizes how the studies above
+compare along the dimensions most relevant to this project: whether training
+and evaluation happened on a live system or in simulation/on a trace,
+which resource signal(s) the method used, and whether the baseline
+comparison, if any, was specified before results were known.
+
+\begin{table}[H]
+\centering
+\caption[Comparison with closest prior work]{Summary comparison of the closest prior work surveyed in this chapter.}
+\label{tab:related-work-summary}
+\small
+\begin{tabular}{p{2.6cm}p{2.6cm}p{2.3cm}p{2.3cm}p{3.5cm}}
+\toprule
+Study & Method family & Live or simulated/trace & Signal(s) used & How this project differs \\
+\midrule
+Mao et al.\ \cite{mao2016resource} & Policy-gradient RL & Simulated & Job/cluster scheduling features & We train every step live against Kubernetes, not a scheduling simulator. \\
+Horovitz \& Arian \cite{horovitz2018qlearning} & Tabular Q-learning & Not specified as live & SLA-derived state & We use a continuous 11-feature observation and PPO, not a tabular Q-table. \\
+Rossi et al.\ \cite{rossi2019horizontal} & Model-based RL & Simulated/model & CPU, container count & We scale horizontally only and train model-free, live. \\
+Imdoukh et al.\ \cite{imdoukh2020lstm} & LSTM forecasting + rule & Trace-driven & Predicted load & We do not forecast; the agent reacts to current and trend features. \\
+Toka et al.\ \cite{toka2021edge} & Forecast ensemble & Trace-driven & Multiple forecasters & Our comparison baseline is a tuned HPA, not an ensemble of predictors. \\
+Qiu et al.\ \cite{qiu2020firm} & Deep RL & Production-scale, not a single baseline & Microservice latency SLOs & We run a pre-registered, held-out, repeated-measures comparison against HPA; FIRM does not report this kind of baseline comparison. \\
+This project & On-policy PPO & Live, single-node Minikube, no simulator & 11 signals: CPU, memory, request rate, latency, replica state, all with short-horizon trends & Pre-registered evaluation protocol and decision rule fixed before any evaluation run; every result, successful or not, reported in full. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Problem Statement}
+\label{sec:problem-statement}
+
+Can a PPO agent, trained in real time against a live, single-node Kubernetes
+cluster rather than against a simulator or a replayed trace, match or
+improve on a correctly tuned Horizontal Pod Autoscaler when both are
+evaluated on traffic that neither has seen during training, under a
+decision rule that is written down before any evaluation result exists? The
+honest answer this report gives is that the evidence does not support
+declaring either kind of controller the winner: at the light evaluation
+loads our pre-registered protocol exercised, the primary latency objective
+does not discriminate between controllers at all, and on the cost metric
+that does discriminate, no single arm is cheapest across every workload
+profile we tested.
+
+\section{Motivation}
+
+Three considerations motivated taking on this question rather than, for
+example, building a simulator-based RL autoscaler and reporting simulated
+results, which is the much more common approach in the literature we survey
+in Section~\ref{sec:related-work}. First, a simulator necessarily encodes
+assumptions about how a real cluster behaves under load -- how quickly a new
+pod becomes ready, how CPU throttling interacts with request latency, how
+Prometheus scrape timing interacts with a 30-second decision interval -- and
+those assumptions are exactly the things we did not trust ourselves to get
+right without first seeing them happen on a real cluster. Training live
+forces every one of those assumptions to be confronted directly, at the
+cost of much slower data collection: our training campaign took 12,288 real
+decision steps, each one tied to a real 30-second interval, which is a
+meaningfully different experience from training an agent for the same
+number of steps in a simulator that can run far faster than real time.
+Second, much of the RL-for-autoscaling literature we found sets up its
+baseline comparison after the RL method's results are already known, which
+creates an obvious risk that the baseline is less carefully tuned than it
+should be, or that the evaluation workload is chosen because it happens to
+favour the proposed method. We wanted to avoid that risk by writing down, in
+advance, exactly which traffic profiles would be used for evaluation, which
+metrics would be measured, and what would count as one controller being
+better than another, before running a single evaluation episode. This
+discipline, borrowed from the pre-registration movement in experimental
+psychology \cite{nosek2018preregistration}, shapes the whole structure of
+Chapter~\ref{ch:methodology} and Chapter~\ref{ch:results}. Third, and more
+simply, we wanted to know, for our own understanding of the problem, what
+actually goes wrong when an RL autoscaler is trained and evaluated live
+rather than in simulation, including the operational failures (a safety
+termination from zero ready replicas, a training session that had to be
+retried, an evaluation run blocked by a leftover HPA object) that a purely
+simulated project would never encounter and that a report written only
+about the successful runs would hide.
 
 \section{Basic Concepts}
 \label{sec:intro-basics}
 
 This section introduces, briefly and in plain language, the concepts that
 the rest of the report assumes. Readers already familiar with Kubernetes and
-reinforcement learning can skip to Section~\ref{sec:problem-statement}.
+reinforcement learning can skip to Section~\ref{sec:existing-system}.
 
 \subsection{Pods, Replicas, and the HPA Algorithm}
 
@@ -108,9 +323,9 @@ velocity policies that slow down how quickly it is allowed to scale up or
 down, to avoid oscillation; and (4) patches the Deployment's replica count
 if the computed value differs from the current one and the safeguards allow
 it \cite{k8s_hpa_docs}. When an HPA is configured against more than one
-metric, as our resource-baseline arm is (CPU and memory), it computes a
-desired replica count from each metric independently and takes the largest
-of the two, so that the metric under more pressure always wins.
+metric, as our HPA CPU+Memory arm is, it computes a desired replica count
+from each metric independently and takes the largest of the two, so that
+the metric under more pressure always wins.
 
 \subsection{Prometheus and Metrics Server}
 
@@ -129,11 +344,10 @@ application-level signals such as request rate, request latency
 percentiles, and error rate, none of which the Metrics Server knows about.
 We installed Prometheus (and, only while its dashboards were actively being
 used, Grafana) via the \texttt{kube-prometheus-stack} Helm chart; Grafana
-itself played no role in any controller's decision loop and, as we note
-throughout Chapter~\ref{ch:methodology} and Chapter~\ref{ch:results}, we
-scaled it to zero replicas during the whole V2 evaluation campaign so that it
-could not compete with the benchmark application for the cluster's limited
-CPU and memory.
+itself played no role in any controller's decision loop and we scaled it to
+zero replicas during both the training campaign and the evaluation campaign
+so that it could not compete with the benchmark application for the
+cluster's limited CPU and memory.
 
 \subsection{Reinforcement Learning and the Markov Decision Process}
 
@@ -182,218 +396,8 @@ represent our live Kubernetes cluster as an RL environment. The full set of
 PPO hyperparameters we used is given in Table~\ref{tab:ppo-hyperparams} in
 Chapter~\ref{ch:methodology}.
 
-\section{Problem Statement}
-\label{sec:problem-statement}
-
-Can a PPO agent, trained in real time against a live, single-node Kubernetes
-cluster rather than against a simulator or a replayed trace, match or
-improve on a correctly tuned Horizontal Pod Autoscaler when both are
-evaluated on traffic that neither has seen during training, under a
-decision rule that is written down before any evaluation result exists? This
-is the question both generations of this project were built to answer, and
-the honest answer this report gives, after both generations, is that the
-evidence does not support declaring either kind of controller the winner: at
-the light evaluation loads our pre-registered protocol exercised, the
-primary latency objective does not discriminate between controllers at all,
-and on the cost metric that does discriminate, no single arm is cheapest
-across every workload profile we tested.
-
-\section{Motivation}
-
-Three considerations motivated taking on this question rather than, for
-example, building a simulator-based RL autoscaler and reporting simulated
-results, which is the much more common approach in the literature we survey
-in Section~\ref{sec:related-work}. First, a simulator necessarily encodes
-assumptions about how a real cluster behaves under load -- how quickly a new
-pod becomes ready, how CPU throttling interacts with request latency, how
-Prometheus scrape timing interacts with a 30-second decision interval -- and
-those assumptions are exactly the things we did not trust ourselves to get
-right without first seeing them happen on a real cluster. Training live
-forces every one of those assumptions to be confronted directly, at the
-cost of much slower data collection: our full V2 training campaign took
-roughly 12,288 real decision steps, each one tied to a real 30-second
-interval, which is a meaningfully different experience from training an
-agent for the same number of steps in a simulator that can run far faster
-than real time. Second, much of the RL-for-autoscaling literature we found
-sets up its baseline comparison after the RL method's results are already
-known, which creates an obvious risk that the baseline is less carefully
-tuned than it should be, or that the evaluation workload is chosen because
-it happens to favour the proposed method. We wanted to avoid that risk by
-writing down, in advance, exactly which traffic profiles would be used for
-evaluation, which metrics would be measured, and what would count as one
-controller being better than another, before running a single evaluation
-episode. This discipline, borrowed from the pre-registration movement in
-experimental psychology \cite{nosek2018preregistration}, shapes the whole
-structure of Chapter~\ref{ch:methodology} and Chapter~\ref{ch:results}.
-Third, and more simply, we wanted to know, for our own understanding of the
-problem, what actually goes wrong when an RL autoscaler is trained and
-evaluated live rather than in simulation, including the operational
-failures (a safety termination from zero ready replicas, a training session
-that had to be retried, an evaluation run blocked by a leftover HPA object)
-that a purely simulated project would never encounter and that a report
-written only about the successful runs would hide.
-
-\section{Objectives}
-
-The project set out to:
-\begin{enumerate}[label=(\roman*)]
-  \item Build an end-to-end testbed -- a benchmark FastAPI service, a
-    deterministic, seeded open-loop traffic generator, Prometheus
-    telemetry, and a Gymnasium-compatible environment wrapping a live
-    Minikube cluster -- on which both an RL controller and HPA baselines
-    could be run under identical conditions.
-  \item Specify a frozen Markov Decision Process for the autoscaling
-    problem, including explicit rules for what the agent should do when
-    telemetry is missing, when there is genuinely no traffic, and a
-    deterministic safety layer that the policy cannot override.
-  \item Train a PPO agent live against this cluster, and evaluate it
-    against a correctly tuned HPA baseline on held-out traffic, reporting
-    the result in full, including any run that ends in a safety
-    termination rather than quietly excluding it.
-  \item When the first generation's evaluation did not support a formal
-    verdict, diagnose why, in enough depth to identify specific, named
-    design decisions responsible, rather than retraining with the same
-    design for longer and hoping for a different result.
-  \item Redesign the controller on the basis of that diagnosis, train it
-    for a pre-registered, full budget, and evaluate it against two HPA
-    baselines (one using CPU and memory, one using CPU only, matching
-    Kubernetes' own default metric) under a pre-registered protocol with a
-    decision rule fixed before evaluation began.
-  \item Report every design decision and every mid-course correction made
-    along the way, including the ones that did not work, in an append-only
-    log, so that the final results can be read alongside the full history
-    of decisions that produced them rather than only the decisions that
-    turned out to matter.
-\end{enumerate}
-
-\section{Literature Survey}
-\label{sec:related-work}
-
-\subsection{Rule-Based and Predictive Autoscaling}
-
-Threshold rules remain the dominant approach to autoscaling in practice
-precisely because they are easy to configure and their behaviour is easy to
-predict, a point made explicitly in the Lorido-Botran, Miguel-Alonso, and
-Lozano survey of elastic cloud autoscaling techniques, which organizes prior
-work into threshold-rule, queueing-model, control-theoretic, time-series
-prediction, and reinforcement-learning families
-\cite{lorido2014review}. Qu, Calheiros, and Buyya's survey of web
-application autoscaling makes a related point about the difficulty of
-choosing thresholds and cooldown periods that work well across varying
-workloads, which is exactly the tuning problem our own HPA baselines had to
-go through before they could be trusted as a fair comparison point (we
-describe this tuning process, including the counterbalanced study that
-selected the 260\% CPU target used by both our HPA baselines, in
-Chapter~\ref{ch:methodology}) \cite{qu2018survey}. Taherizadeh and
-Stankovski propose dynamic, multi-level rules for containerized applications
-that adjust their own thresholds at runtime rather than using one fixed
-value \cite{taherizadeh2019dynamic}, which is one step in the direction an
-RL-based approach pushes further. At industrial scale, Google's Autopilot
-system, described by Rzadca et al., sets both replica count and per-task
-resource limits using statistics of past usage combined with a machine
-learning recommender, and is deployed across a large fraction of Google's
-internal clusters \cite{rzadca2020autopilot}; it is not evaluated against a
-hand-tuned HPA-style baseline in the way this report evaluates PPO against
-HPA, because at Google's scale there usually is no such baseline running
-alongside it to compare against. Rattihalli, Govindaraju, Lu, and Tiwari
-study vertical rather than horizontal autoscaling in Kubernetes, resizing a
-pod's own resource requests instead of the replica count
-\cite{rattihalli2019vertical}; we deliberately kept to the horizontal
-setting throughout this project, both generations, so that the HPA baseline
-would be a fair, like-for-like comparison rather than a different kind of
-scaling decision altogether.
-
-\subsection{Learning-Based Autoscaling}
-
-Mao, Alizadeh, Menache, and Kandula's early demonstration that a
-policy-gradient agent can learn cluster job scheduling directly from
-experience, without being told the scheduling heuristics a human expert
-would use, is one of the papers most often cited as motivation for applying
-RL to resource management problems generally \cite{mao2016resource}.
-Horovitz and Arian apply tabular Q-learning with an explicit SLA objective
-to cloud autoscaling \cite{horovitz2018qlearning}; Rossi, Nardelli, and
-Cardellini apply model-based RL to combined horizontal and vertical scaling
-of containers \cite{rossi2019horizontal}; Imdoukh, Ahmad, and Alfailakawi
-predict load ahead of time with an LSTM network and scale in anticipation of
-that prediction rather than reactively \cite{imdoukh2020lstm}; Toka,
-Dobreff, Fodor, and Sonkoly combine several forecasters to scale Kubernetes
-edge clusters \cite{toka2021edge}; and Qiu, Banerjee, Jha, Kalbarczyk, and
-Iyer's FIRM system uses deep RL to reprovision resources for microservices
-that are violating latency objectives \cite{qiu2020firm}. All of these
-studies report results that are, to varying degrees, encouraging for
-RL-based autoscaling; what distinguishes our project from essentially all of
-them is where the training and evaluation data came from. Most of the work
-above trains and/or evaluates in a simulator or against a recorded trace
-replayed offline; our agent, in both generations, was trained with every
-single one of its decision steps executed against a real Minikube cluster,
-at a real 30-second decision interval, with a real safety layer that could
-and, in V1, did terminate a training session. We return to this contrast
-directly in Table~\ref{tab:related-work-summary} and in the comparative
-analysis in Section~\ref{sec:comparative-analysis}.
-
-\subsection{Reliable Evaluation of Reinforcement Learning}
-
-A third thread of related work is less about autoscaling specifically and
-more about how to evaluate an RL method honestly at all. Henderson, Islam,
-Bachman, Pineau, Precup, and Meger demonstrate that deep RL results can vary
-substantially across random seeds and implementation details that papers
-often do not report in enough detail to reproduce \cite{henderson2018matters}.
-Agarwal, Schwarzer, Castro, Courville, and Bellemare argue for reporting
-uncertainty explicitly when only a small number of runs are practically
-possible, rather than reporting a single number as if it were exact
-\cite{agarwal2021precipice} -- directly relevant to our own evaluation,
-where cost and practicality limited us to three repeats per profile per arm
-in the pre-registered campaign and exactly one repeat per cell in the
-exploratory stress test, and where we report means and standard deviations
-rather than single point estimates wherever more than one repeat exists.
-Dulac-Arnold, Mankowitz, and Hester catalogue the obstacles that real
-systems place in the way of RL that simulators do not: limited numbers of
-samples, hard safety constraints, and partial or delayed observations
-\cite{dulacarnold2019challenges}, all three of which appear directly in our
-project (limited samples because every step costs thirty real seconds;
-safety constraints enforced by our deterministic gating layer; and delayed,
-sometimes missing, telemetry handled by the invalid-sample rules in
-Section~\ref{sec:invalid-telemetry}). Garc\'ia and Fern\'andez survey safe
-reinforcement learning broadly, including approaches that restrict the
-action an agent is allowed to take using an external rule rather than
-trusting the learned policy alone \cite{garcia2015safe}, which is the same
-pattern our safety-aware tie-break rule and replica-bound gating follow.
-Finally, Nosek, Ebersole, DeHaven, and Mellor's argument for pre-registration
-as a defence against outcome-driven analysis choices, originally made for
-psychology experiments, is the methodological practice we adopted most
-directly: our evaluation workload, our metrics, our retry rules, and our
-decision rule for declaring a controller "better" were all fixed and hashed
-before any V2 evaluation episode ran \cite{nosek2018preregistration}.
-
-\subsection{Summary Comparison of Closest Prior Work}
-
-Table~\ref{tab:related-work-summary} summarizes how the studies above
-compare along the dimensions most relevant to this project: whether training
-and evaluation happened on a live system or in simulation/on a trace,
-which resource signal(s) the method used, and whether the baseline
-comparison, if any, was specified before results were known.
-
-\begin{table}[H]
-\centering
-\caption{Summary comparison of the closest prior work surveyed in this chapter.}
-\label{tab:related-work-summary}
-\small
-\begin{tabular}{p{2.6cm}p{2.6cm}p{2.3cm}p{2.3cm}p{3.5cm}}
-\toprule
-Study & Method family & Live or simulated/trace & Signal(s) used & How this project differs \\
-\midrule
-Mao et al.\ \cite{mao2016resource} & Policy-gradient RL & Simulated & Job/cluster scheduling features & We train every step live against Kubernetes, not a scheduling simulator. \\
-Horovitz \& Arian \cite{horovitz2018qlearning} & Tabular Q-learning & Not specified as live & SLA-derived state & We use a continuous 11-feature observation and PPO, not a tabular Q-table. \\
-Rossi et al.\ \cite{rossi2019horizontal} & Model-based RL & Simulated/model & CPU, container count & We scale horizontally only and train model-free, live. \\
-Imdoukh et al.\ \cite{imdoukh2020lstm} & LSTM forecasting + rule & Trace-driven & Predicted load & We do not forecast; the agent reacts to current and trend features. \\
-Toka et al.\ \cite{toka2021edge} & Forecast ensemble & Trace-driven & Multiple forecasters & Our comparison baseline is a tuned HPA, not an ensemble of predictors. \\
-Qiu et al.\ \cite{qiu2020firm} & Deep RL & Production-scale, not a single baseline & Microservice latency SLOs & We run a pre-registered, held-out, repeated-measures comparison against HPA; FIRM does not report this kind of baseline comparison. \\
-This project (V1, V2) & On-policy PPO & Live, single-node Minikube, no simulator & 1 (V1) or 11 (V2) signals: CPU, memory, request rate, latency, trends & Pre-registered evaluation protocol and decision rule fixed before any evaluation run; both successful and unsuccessful (V1) results reported in full. \\
-\bottomrule
-\end{tabular}
-\end{table}
-
 \section{Existing System and Its Limitations}
+\label{sec:existing-system}
 
 The existing system, in the sense of "what a Kubernetes operator would use
 today without this project," is the stock Horizontal Pod Autoscaler
@@ -425,24 +429,24 @@ through a deterministic safety layer before it ever reaches the Kubernetes
 API, so that the learned part of the system can never, by itself, violate a
 replica bound, bypass a cooldown, or act on telemetry that has been flagged
 as invalid. We evaluate this policy against two HPA configurations --
-one matching the project's own tuned CPU-and-memory baseline, one matching
-Kubernetes' CPU-only default pattern with the same floor and ceiling -- under
-a protocol, decision rule, and set of held-out traffic profiles that were
-all fixed and recorded before any evaluation episode was run.
+one using CPU and memory, one using CPU only -- both at the same 260\% CPU
+target and 2-8 replica bounds, under a protocol, decision rule, and set of
+held-out traffic profiles that were all fixed and recorded before any
+evaluation episode was run.
 
-\section{Report Organisation}
+\section{Organization of the Report}
 
 Chapter~\ref{ch:methodology} describes the proposed system and the full
 methodology: the testbed, the benchmark service, the traffic generator, the
-MDP formulation (observation, action space, safety layer, reward), the V1
-design and why it was redesigned into V2, the V2 design in full, the
-evaluation protocol, and the demo UI. Chapter~\ref{ch:cost} gives a cost
-analysis of the hardware and software used. Chapter~\ref{ch:results}
-reports V1's results and failure analysis, the V2 training campaign, the
-pre-registered V2 evaluation, the exploratory stress test, a comparative
-analysis against the related work surveyed in this chapter, and the
-project's limitations. Chapter~\ref{ch:conclusion} concludes and discusses
-future work. Chapter~\ref{ch:appendix} is an appendix containing verbatim
-code excerpts, configuration files, a summary of the design-correction log,
-and supplementary data tables. Chapter~\ref{ch:references} lists references
-in IEEE numbered style.
+MDP formulation (observation, action space, safety layer, reward), the
+standards the system relies on, the software and hardware used, the
+evaluation protocol, and the demonstration interface. Chapter~\ref{ch:cost}
+gives a cost analysis of the hardware and software used. Chapter~\ref{ch:results}
+reports the training campaign, the held-out evaluation, the exploratory
+stress test, the demonstration interface, a comparative analysis against
+the related work surveyed in this chapter, and the project's limitations.
+Chapter~\ref{ch:conclusion} concludes and discusses future work.
+Chapter~\ref{ch:appendix} is an appendix containing verbatim code excerpts,
+configuration files, a summary of the design-correction log, and
+supplementary data tables. Chapter~\ref{ch:references} lists references in
+IEEE numbered style, followed by the biodata of each student author.

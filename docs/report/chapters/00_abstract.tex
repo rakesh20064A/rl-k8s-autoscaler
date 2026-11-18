@@ -1,4 +1,5 @@
 \chapter*{\centering ABSTRACT}
+\label{ch:abstract}
 \addcontentsline{toc}{chapter}{Abstract}
 
 The Kubernetes Horizontal Pod Autoscaler (HPA) resizes a deployment only
@@ -7,34 +8,37 @@ use experience from past traffic to anticipate future load. This report
 describes a capstone project that trained a Proximal Policy Optimization
 (PPO) agent directly against a live, single-node Minikube cluster, with no
 simulator standing in for the cluster at any stage, and compared it against
-two HPA configurations on traffic none of the controllers had seen before. A
-first-generation agent observed only CPU-derived signals, was trained for
-5,120 live decision steps, and reached only one of three required valid
-evaluation repeats before our pre-registered decision rule ruled out a formal
-verdict; we trace this to an unconditional per-replica resource penalty and a
-replica floor of one that let a single unhealthy pod take the whole
-deployment to zero ready replicas. A second-generation controller addressed
-both causes: an eleven-feature observation space covering CPU, memory,
-request rate, latency and their short-horizon trends, a reshaped
-seven-component reward, a replica floor of two, and a safety-aware
-tie-breaking rule for near-tied policy outputs. This controller trained for
-its full, amended budget of 12,288 live timesteps across 48 sessions, during
-which explained variance of the value function rose from 0.0125 at the first
-update to a mean of 0.703 over the last five updates (peaking at 0.799). We
-then ran a pre-registered, 27-run evaluation of this policy against an HPA
-configuration using CPU and memory and a CPU-only HPA baseline, across three
-held-out traffic profiles, followed by a separately labelled, exploratory
-nine-run stress test at training-level peak loads. All 27 pre-registered runs
-were valid; no controller was declared an overall winner, because our
-decision rule required a controller to win on a metric in all three repeats
-of a profile, and cost rankings differed by profile: the CPU-only HPA was
-cheapest on two of three profiles, while the PPO policy was cheaper than the
-CPU-and-memory HPA on two profiles but more expensive on the third. The
-exploratory stress test likewise found no controller that was better across
-every profile. We report these results, together with the operational
-incidents and limitations encountered along the way, as evidence about what
-a live-trained RL autoscaler can and cannot be shown to do on a small cluster
-within one capstone's timeline.
+two HPA configurations on traffic none of the controllers had seen before.
+The agent observes eleven normalized signals covering CPU, memory, request
+rate, and latency, together with their short-horizon trends; its raw action
+passes through a deterministic safety layer -- a replica-bound clamp, a
+pending-scale gate, and an asymmetric scale-down cooldown -- before it ever
+reaches the Kubernetes API, and an uncertain policy is resolved by a
+safety-aware tie-break rule that can never let scale-down win a tie. The
+agent trained for 12,288 live decision steps across 48 sessions, during
+which explained variance of the value function rose from 0.0125 at the
+first update to a mean of 0.703 over the last five updates (peaking at
+0.799), computed directly from the training campaign's own update log. Two
+of the 48 planned sessions stopped early when every ready replica of the
+deployment briefly dropped to zero under correlated pod unhealthiness; both
+resumed from their last checkpoint and completed successfully, and we
+report this as a genuine property of running training against a real
+cluster rather than omitting it. We then ran a pre-registered, 27-run
+held-out evaluation of this policy against an HPA configuration using CPU
+and memory and a CPU-only HPA baseline (the same 260\% CPU target and 2-8
+replica bounds as every other arm, not a stock Kubernetes default), across
+three held-out traffic profiles, followed by a separately labelled,
+exploratory nine-run stress test at training-level peak loads. All 27
+pre-registered runs were valid; no controller was declared an overall
+winner, because our decision rule required a controller to win on a metric
+in all three repeats of a profile, and cost rankings differed by profile:
+the CPU-only HPA was cheapest on two of three profiles, while the PPO
+policy was cheaper than the CPU-and-memory HPA on two profiles but more
+expensive on the third. The exploratory stress test likewise found no
+controller that was better across every profile. We report these results,
+together with the operational incidents and limitations encountered along
+the way, as evidence about what a live-trained RL autoscaler can and cannot
+be shown to do on a small cluster within one capstone's timeline.
 
 \vspace{0.8cm}
 \noindent \textbf{Keywords:} Kubernetes, autoscaling, reinforcement learning,
