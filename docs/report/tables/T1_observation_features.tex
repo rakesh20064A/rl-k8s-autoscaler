@@ -11,7 +11,7 @@ index & name & meaning & raw\_range & normalized\_range & temporal \\
 6 & p95\_latency\_norm & latency\_p95\_seconds (ms), normalized against a 2000ms ceiling (~6.67x the 300ms SLA target). If request\_rate\_rps==0 with no histogram observations, this is semantically 0ms ("no\_traffic", CORR-27) -- not a telemetry failure; see docs/rl\_mdp\_spec.md sec.6. & [0.0, 2000.0] & [0.0, 1.0] & current \\
 7 & p95\_latency\_delta & current step's p95 latency (ms) minus its 90s EWMA. & [-2000.0, 2000.0] & [-1.0, 1.0] & trend \\
 8 & error\_rate & error\_rate\_rps (5xx only, live-observable) / request\_rate\_rps; 0.0 if request\_rate\_rps==0; null (missing) if request\_rate\_rps is null. & [0.0, 1.0] & [0.0, 1.0] & current \\
-9 & ready\_replica\_norm & (replicas\_ready - 2) / (8 - 2) -- authoritative physical capacity, never hpa\_status\_current\_replicas (CORR-25). V2 Phase 4D-B / CORR-55 -- raw\_min changed from 1.0 to 2.0, the V2 replica floor is now 2, never 1. & [2.0, 8.0] & [0.0, 1.0] & current \\
+9 & ready\_replica\_norm & (replicas\_ready - 2) / (8 - 2) -- authoritative physical capacity, never hpa\_status\_current\_replicas (CORR-25). Normalized against a replica floor of 2 and ceiling of 8 (CORR-55); the floor is 2, never 1. & [2.0, 8.0] & [0.0, 1.0] & current \\
 10 & seconds\_since\_last\_scale\_norm & controller-tracked seconds since the last EFFECTIVE (non-HOLD) action, capped per experiment.yaml rl.time\_since\_scale\_cap\_seconds. & [0.0, 300.0] & [0.0, 1.0] & current \\
 \hline
 \end{tabular}

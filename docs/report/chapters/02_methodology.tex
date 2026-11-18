@@ -1,24 +1,29 @@
-\chapter{Proposed System and Methodology}
+\chapter{PPO-BASED MULTI-METRIC AUTOSCALING SYSTEM FOR KUBERNETES}
 \label{ch:methodology}
 
-\section{Proposed System Overview}
+\section{Proposed System}
+\label{sec:proposed-system}
+
+\subsection{System Overview}
 
 The system we built has three controllers that can each, one at a time, take
 charge of scaling a single Kubernetes Deployment: a PPO reinforcement
 learning agent, an HPA configured against CPU and memory utilization (our
-resource baseline), and an HPA configured against CPU utilization only
-(matching the pattern most Kubernetes deployments use out of the box, our
-CPU baseline). All three act on the same Deployment, in the same namespace,
-on the same Minikube cluster, and are never allowed to be active at the same
-time -- a controller-exclusivity lock enforces this at acquisition time, so
-that a run under one arm can never be contaminated by another controller's
-decisions. A traffic generator drives load against the Deployment through a
-benchmark FastAPI service; Prometheus scrapes telemetry from that service
-and from the cluster; an evaluation/training harness orchestrates episodes,
-tears down and restores canonical idle state between them, and records
-every attempt, successful or not, to an append-only ledger.
+HPA CPU+Memory arm), and an HPA configured against CPU utilization only
+(our HPA CPU-only arm, at the same 260\% target and 2-8 replica bounds as
+every other arm -- it is a controlled baseline, not Kubernetes' stock
+default configuration). All three act on the same Deployment, in the same
+namespace, on the same Minikube cluster, and are never allowed to be active
+at the same time -- a controller-exclusivity lock enforces this at
+acquisition time, so that a run under one arm can never be contaminated by
+another controller's decisions. A traffic generator drives load against the
+Deployment through a benchmark FastAPI service; Prometheus scrapes
+telemetry from that service and from the cluster; a training/evaluation
+harness orchestrates episodes, tears down and restores canonical idle state
+between them, and records every attempt, successful or not, to an
+append-only ledger.
 
-\section{System Architecture}
+\subsection{System Architecture}
 
 Figure~\ref{fig:system-architecture} shows the full architecture. The
 Minikube cluster hosts the benchmark application's pods, a Service in front
@@ -37,7 +42,7 @@ it is the only process touching the Deployment's replica count.
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.95\textwidth]{../figures/diagram_system_architecture.pdf}
-\caption{System architecture: the Minikube cluster (demo-app pods, HPA,
+\caption[System architecture]{System architecture: the Minikube cluster (demo-app pods, HPA,
 Metrics Server at a 15-second resolution, Prometheus) together with the
 host-side load generator/relay and the PPO agent's
 observation-builder\,$\rightarrow$\,policy\,$\rightarrow$\,safety-layer\,$\rightarrow$\,executor
@@ -54,7 +59,7 @@ feeding into the next PPO update.
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.85\textwidth]{../figures/diagram_rl_control_loop.pdf}
-\caption{The RL control loop: the 11-feature observation feeds the PPO
+\caption[RL control loop]{The RL control loop: the 11-feature observation feeds the PPO
 policy, whose action passes through safety gating before reaching the
 Kubernetes API; the resulting metrics feed the 7-component reward, which
 feeds the next PPO update. One cycle corresponds to one 30-second decision
@@ -62,24 +67,22 @@ interval.}
 \label{fig:rl-control-loop}
 \end{figure}
 
-Figure~\ref{fig:experiment-pipeline} places the whole project on a single
-timeline: the V1 design, its evaluation and failure analysis, the V2
-redesign, the 48-session V2 training campaign, the pre-registered V2
-evaluation (\texttt{eval\_\allowbreak final}), and the later, separately labelled
-exploratory stress test (\texttt{stress\_\allowbreak explore}).
+Figure~\ref{fig:experiment-pipeline} places the project's own experiment
+pipeline on a single timeline: the training campaign, the pre-registered
+evaluation (held-out evaluation, CORR-60), and the later, separately
+labelled exploratory stress test (CORR-65).
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.9\textwidth]{../figures/diagram_experiment_pipeline.pdf}
-\caption{The project's experiment pipeline: V1 design and evaluation,
-leading to the V2 redesign, the 48-session V2 training campaign, the
-pre-registered evaluation (\texttt{eval\_\allowbreak final}, CORR-60), and the later,
-separately labelled exploratory stress test (\texttt{stress\_\allowbreak explore},
-CORR-65), which never supersedes the pre-registered evaluation.}
+\caption[Experiment pipeline]{The project's experiment pipeline: the 48-session training
+campaign, the pre-registered held-out evaluation (CORR-60), and the later,
+separately labelled exploratory stress test (CORR-65), which never
+supersedes the pre-registered evaluation.}
 \label{fig:experiment-pipeline}
 \end{figure}
 
-\section{Testbed}
+\subsection{Testbed}
 
 We ran every experiment on a single-node Minikube cluster using the Docker
 driver, on a MacBook Air with an Apple M1 chip and 8~GB of RAM, with Docker
@@ -90,15 +93,15 @@ reasons specific to a capstone project's circumstances rather than any claim
 that this is the right choice for production evaluation: it is free, it
 gives us full, low-level visibility into node-level CPU and memory pressure
 that a managed cluster would partly hide behind another layer of
-virtualization, and it let us run both generations' full training and
-evaluation campaigns, totalling tens of thousands of real decision steps,
-without incurring cloud compute cost or depending on network conditions
-outside our control. The obvious limitation of this choice, which we state
-plainly in Section~\ref{sec:limitations}, is that a single-node cluster on a
-laptop is not a multi-node production cluster, and some findings here (in
-particular absolute resource headroom) may not transfer directly.
+virtualization, and it let us run the full training and evaluation
+campaigns, totalling tens of thousands of real decision steps, without
+incurring cloud compute cost or depending on network conditions outside our
+control. The obvious limitation of this choice, which we state plainly in
+Section~\ref{sec:limitations}, is that a single-node cluster on a laptop is
+not a multi-node production cluster, and some findings here (in particular
+absolute resource headroom) may not transfer directly.
 
-\section{Benchmark Service}
+\subsection{Benchmark Service}
 
 The benchmark service, in \texttt{app/\allowbreak \allowbreak }, is a small FastAPI application
 exposing three endpoints: \texttt{/\allowbreak \allowbreak work}, \texttt{/\allowbreak \allowbreak health}, and
@@ -110,8 +113,7 @@ computation sized to hold the request for a target duration, which is what
 lets our CPU-oriented traffic profiles push a pod's CPU usage up in a
 controlled, repeatable way. In memory mode, the handler allocates and holds
 a block of memory for the duration of the request, which is what lets our
-memory-oriented profiles (\texttt{eval\_\allowbreak memory\_\allowbreak ramp},
-\texttt{stress\_\allowbreak memory\_\allowbreak ramp}) exercise the memory side of the reward and
+memory-oriented profiles exercise the memory side of the reward and
 observation space rather than only CPU. \texttt{/\allowbreak \allowbreak health} is a liveness and
 readiness endpoint used by Kubernetes probes; \texttt{/\allowbreak \allowbreak metrics} exposes
 Prometheus-format counters and histograms, including request totals by
@@ -121,7 +123,10 @@ millicores and a memory request of 64~MiB, with limits of 500 millicores
 and 256~MiB; these specific values set the denominators used throughout the
 observation space's per-replica ratio features (Section~\ref{sec:mdp}).
 
-\section{Traffic Generator}
+\section{Working Methodology}
+\label{sec:working-methodology}
+
+\subsection{Traffic Generator}
 
 The traffic generator, in \texttt{loadgen/\allowbreak \allowbreak }, is open-loop and
 deterministic: given a traffic profile and a seed, it produces exactly the
@@ -139,27 +144,27 @@ from the others by an explicit allowlist in the training and evaluation
 code so that a profile used for one purpose can never silently leak into
 another: a \textbf{training} set used only during the PPO training campaign
 (constant CPU, constant memory, constant mixed, mixed ramp, and mixed burst
-profiles, cycled through a seeded shuffle); an \textbf{evaluation} set used
-only for the pre-registered \texttt{eval\_\allowbreak final} campaign
-(\texttt{eval\_\allowbreak cpu\_\allowbreak step}, \texttt{eval\_\allowbreak memory\_\allowbreak ramp},
-\texttt{eval\_\allowbreak mixed\_\allowbreak burst}, each peaking at 18-20 requests per second, well
-below training-level peaks); a \textbf{stress} set used only for the later,
-exploratory \texttt{stress\_\allowbreak explore} campaign (\texttt{stress\_\allowbreak cpu\_\allowbreak burst},
-\texttt{stress\_\allowbreak memory\_\allowbreak ramp}, \texttt{stress\_\allowbreak mixed\_\allowbreak burst}, peaking at
-45-70 requests per second, at the same peaks already exercised live during
-training, never beyond); and a \textbf{demo} set used only by the Streamlit
-demonstration console. Table~\ref{tab:eval-profiles} in
+profiles, cycled through a seeded shuffle); a \textbf{held-out evaluation}
+set used only for the pre-registered campaign (CPU step, memory ramp, mixed
+bursts, each peaking at 18-20 requests per second, well below training-level
+peaks); a \textbf{stress} set used only for the later, exploratory stress
+test (CPU bursts, memory ramp, mixed bursts, peaking at 45-70 requests per
+second, at the same peaks already exercised live during training, never
+beyond); and a \textbf{demonstration} set of 36 deterministic profiles
+used only by the Streamlit demonstration console
+(Section~\ref{sec:demo-ui-design}). Table~\ref{tab:eval-profiles} in
 Section~\ref{sec:eval-protocol} gives the exact peak rate and resource mode
-of each evaluation and stress profile. This firewall exists because the
-whole point of an evaluation is to test a controller on traffic it has not
-seen; if a profile used in training could also appear in evaluation, even
-accidentally, any advantage shown there would be unfalsifiable.
+of each held-out-evaluation and stress profile. This firewall exists
+because the whole point of an evaluation is to test a controller on traffic
+it has not seen; if a profile used in training could also appear in
+evaluation, even accidentally, any advantage shown there would be
+unfalsifiable.
 
-\section{Telemetry and PromQL Signals}
+\subsection{Telemetry and PromQL Signals}
 
 Every signal the RL agent's observation builder uses, and every signal our
 evaluation analysis computes, comes from Prometheus, not from the Metrics
-Server (the HPA baselines read the Metrics Server for CPU/memory directly,
+Server (the HPA arms read the Metrics Server for CPU/memory directly,
 through the Kubernetes Horizontal Pod Autoscaler controller's own internal
 path, which we do not reimplement). The raw metrics read from Prometheus
 are: \texttt{demo\_\allowbreak app\_\allowbreak requests\_\allowbreak total} (counter, by route, used via
@@ -178,7 +183,7 @@ it; we also verified before every HPA run that Prometheus and the Metrics
 Server were both healthy, since both the RL agent and every HPA arm depend
 on telemetry being available.
 
-\section{MDP Formulation}
+\subsection{MDP Formulation}
 \label{sec:mdp}
 
 We formalize the autoscaling problem as a Markov Decision Process with a
@@ -189,57 +194,60 @@ safety layer of Section~\ref{sec:safety-layer} -- is applied to the
 Deployment's replica count. Thirty seconds later the cycle repeats. One
 episode is one full playback of a traffic profile.
 
-\subsection{Observation Features}
+\subsubsection{Observation Features}
 
 Table~\ref{tab:observation-features} gives the eleven observation features
 in the exact order the policy network sees them, their raw ranges, how they
 are normalized into $[-1,1]$ or $[0,1]$ before being passed to the network,
 and whether each is an instantaneous ("current") feature or a trend
-feature. Index 0-8 are clipped to their stated raw range and then divided by
-that range's width; index 9 (ready replicas) is normalized against the
-V2 replica floor and ceiling (2 and 8); index 10 (seconds since the last
+feature. Indices 0-8 are clipped to their stated raw range and then divided
+by that range's width; index 9 (ready replicas) is normalized against the
+replica floor and ceiling (2 and 8); index 10 (seconds since the last
 effective scaling action) is clipped at a 300-second cap and divided by
 that cap. The four trend features (indices 1, 5, 7, and implicitly the
 EWMA state behind them) are each the current step's value minus a
 90-second exponentially weighted moving average of that same signal, so
 that the agent can distinguish "CPU is high and rising" from "CPU is high
-and falling" using the same instantaneous value.
+and falling" using the same instantaneous value. We chose an
+eleven-feature, multi-resource observation deliberately, rather than a
+narrower CPU-only view: the benchmark service and its traffic profiles
+exercise memory as well as CPU, and a controller that can only see CPU has
+no way to represent memory-bound load or to anticipate a trend before it
+shows up as a threshold crossing.
 
 \begin{table}[H]
 \centering
-\caption{The eleven V2 observation features, in network input order.}
+\caption[Observation features]{The eleven observation features, in network input order.}
 \label{tab:observation-features}
 \small
 \input{tables/T1_observation_features.tex}
 \end{table}
 
-\subsection{Normalization and Missing-Data Rules}
+\subsubsection{Normalization and Missing-Data Rules}
 \label{sec:invalid-telemetry}
 
-Two distinct situations have to be told apart carefully, and conflating
-them was a source of an early V1-era bug (CORR-56) that we describe in
-Section~\ref{sec:v1-to-v2}: genuine zero traffic, and missing or unreliable
-telemetry. When the request rate is genuinely zero and no latency
-histogram observations exist for the window, the p95 latency feature is
-defined as exactly 0~ms -- this is a valid, meaningful state ("no traffic
-right now"), not a sign that something is wrong, and it participates
-normally in the EWMA trend calculation. When the request rate is nonzero
-but a usable latency estimate cannot be computed, or any other required raw
-signal cannot be read for the window, the sample is marked invalid; on an
-invalid sample, every level and trend feature except the two
-controller-tracked ones (ready-replica count and seconds-since-last-scale,
-both of which come from state the controller itself always knows,
-independent of Prometheus) holds its previous normalized value rather than
-being set to zero, the clip maximum, or any other fabricated number. The
-very first decision of an episode, before any previous value exists, uses
-the raw-range midpoint for every held feature and is flagged as such. Four
-consecutive invalid decisions (two minutes of persistently unusable
-telemetry at the 30-second interval) terminate the episode; one to three
-consecutive invalid decisions instead force a deterministic HOLD action for
-that step, through the same safety layer that governs every other case
-requiring a fallback.
+Two distinct situations have to be told apart carefully: genuine zero
+traffic, and missing or unreliable telemetry. When the request rate is
+genuinely zero and no latency histogram observations exist for the window,
+the p95 latency feature is defined as exactly 0~ms -- this is a valid,
+meaningful state ("no traffic right now"), not a sign that something is
+wrong, and it participates normally in the EWMA trend calculation. When the
+request rate is nonzero but a usable latency estimate cannot be computed, or
+any other required raw signal cannot be read for the window, the sample is
+marked invalid; on an invalid sample, every level and trend feature except
+the two controller-tracked ones (ready-replica count and
+seconds-since-last-scale, both of which come from state the controller
+itself always knows, independent of Prometheus) holds its previous
+normalized value rather than being set to zero, the clip maximum, or any
+other fabricated number. The very first decision of an episode, before any
+previous value exists, uses the raw-range midpoint for every held feature
+and is flagged as such. Four consecutive invalid decisions (two minutes of
+persistently unusable telemetry at the 30-second interval) terminate the
+episode; one to three consecutive invalid decisions instead force a
+deterministic HOLD action for that step, through the same safety layer that
+governs every other case requiring a fallback.
 
-\section{Action Space and Safety Layer}
+\subsection{Action Space and Safety Layer}
 \label{sec:safety-layer}
 
 The action space is \texttt{Discrete(3)}: remove one replica
@@ -263,15 +271,23 @@ a scale-up action is never delayed by this gate beyond ordinary pending-scale
 settling, while a scale-down action additionally requires at least 60
 seconds to have passed since the last effective scaling action of any
 direction. This asymmetry is deliberate: it lets the controller react to a
-sudden spike immediately, in either generation's design, while making
-scaling down a more deliberate, slower action that cannot immediately
-reverse an upward move -- the asymmetric cooldown further explicitly allows
-an "emergency reversal" (an immediate scale-up right after a scale-down) to
-pass through ungated, since erring toward more capacity is never penalized
-by this gate. Listing~\ref{lst:gating} in Appendix~\ref{ch:appendix} gives
-the gating function in full.
+sudden spike immediately, while making scaling down a more deliberate,
+slower action that cannot immediately reverse an upward move -- the
+asymmetric cooldown further explicitly allows an "emergency reversal" (an
+immediate scale-up right after a scale-down) to pass through ungated, since
+erring toward more capacity is never penalized by this gate. The replica
+floor is set at 2, never 1 (CORR-55): a single pod, by itself, can fail its
+readiness probe or restart under load and take the whole deployment to zero
+ready replicas with no other pod to fall back on, and a floor of 2 means a
+single pod's transient unhealthiness never removes all capacity at once.
+This is not a hypothetical concern -- Section~\ref{sec:zero-ready-stops}
+reports two training sessions in which ready-replica count did briefly
+reach zero even at this floor, through correlated unhealthiness across both
+pods, which is a different and rarer failure mode than a single pod with no
+backup. Listing~\ref{lst:gating} in Appendix~\ref{ch:appendix} gives the
+gating function in full.
 
-\subsection{Safety-Aware Tie-Breaking}
+\subsubsection{Safety-Aware Tie-Breaking}
 \label{sec:tie-break}
 
 A separate concern from gating is what the controller should do when the
@@ -283,17 +299,16 @@ lowest action index, which in our action encoding is
 \textsc{scale\_down\_one} -- meaning an uncertain policy would be silently
 biased toward removing capacity purely as an artefact of how ties are
 broken, never because removing capacity was actually the better action
-on the merits. We replaced this default with a safety-aware tie-break rule
-(CORR-58), used only for deterministic inference during evaluation, never
-during training (Stable-Baselines3's own stochastic sampling during
-\texttt{model.learn()} never passes through this code path). The rule
-first computes the tie set: every action whose probability is within
-$\varepsilon$ of the maximum probability. If the tie set has exactly one
-member, that action is chosen (rule R1) and the controller's own inference
-log records this as "no tie," which is what happens on the overwhelming
-majority of decisions. If the tie set is larger than one, the following
-rules apply, in order, and are illustrated in
-Figure~\ref{fig:tie-break-flow}:
+on the merits. We use a safety-aware tie-break rule instead (CORR-58), used
+only for deterministic inference during evaluation, never during training
+(Stable-Baselines3's own stochastic sampling during \texttt{model.learn()}
+never passes through this code path). The rule first computes the tie set:
+every action whose probability is within $\varepsilon$ of the maximum
+probability. If the tie set has exactly one member, that action is chosen
+(rule R1) and the controller's own inference log records this as "no tie,"
+which is what happens on the overwhelming majority of decisions. If the tie
+set is larger than one, the following rules apply, in order, and are
+illustrated in Figure~\ref{fig:tie-break-flow}:
 
 \begin{itemize}[nosep]
   \item \textbf{R2}: \textsc{scale\_down\_one} can never, by construction,
@@ -316,7 +331,7 @@ Figure~\ref{fig:tie-break-flow}:
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.78\textwidth]{../figures/diagram_tie_break_flow.pdf}
-\caption{Decision flow for the safety-aware tie-break rule (R1-R6,
+\caption[Tie-break decision flow]{Decision flow for the safety-aware tie-break rule (R1-R6,
 CORR-58): from the PPO action-probability tie set to the final selected
 action. \textsc{scale\_down\_one} can never win a tie by construction; an
 unknown-stress tie fails safe to \textsc{hold}.}
@@ -327,14 +342,14 @@ unknown-stress tie fails safe to \textsc{hold}.}
 policy itself sees: the system is stressed if p95 latency is at or above
 the SLA target, or the error rate is above zero, or CPU or memory per ready
 replica is above its configured "safe-high" threshold (the same thresholds
-used in the V2 pressure reward term, Section~\ref{sec:v2-reward}). The
+used in the pressure reward term, Section~\ref{sec:reward-function}). The
 intent, stated in our own design-correction log, is availability-first
 behaviour under genuine stress -- scale up quickly when the signals say the
 system is actually under load, roughly mirroring how a conventional HPA
 would react -- while never letting scale-down be the accidental outcome of
 an uncertain policy rather than a deliberate one.
 
-\subsection{Epsilon Calibration}
+\subsubsection{Epsilon Calibration}
 
 The tie-break margin $\varepsilon$ was calibrated, not guessed, and
 calibrated before the pre-registered evaluation it would be used in, not
@@ -350,140 +365,16 @@ only 4 of 360 PPO decisions (1.11\%; Figure~\ref{fig:tie-rule-frequency} in
 Chapter~\ref{ch:results}) -- the safety-aware rule is a rare, deliberately
 narrow intervention, not a mechanism that drives most decisions.
 
-\section{V1 Reward Function}
-\label{sec:v1-reward}
+\subsection{Reward Function}
+\label{sec:reward-function}
 
-V1's reward combined a latency penalty, an error penalty, an unconditional
-per-replica resource cost, small action/reversal/boundary penalties, and a
-positive "efficiency" bonus. In the exact form frozen for V1
-(\texttt{docs/\allowbreak \allowbreak rl\_\allowbreak mdp\_\allowbreak spec.md}, \texttt{rl\_\allowbreak contract\_\allowbreak version 2},
-CORR-27):
-\begin{equation}
-r_t = -\min(e_t^2, 4) - 5\rho_t - \frac{n_t-1}{7} - 0.1\,\mathbb{1}_{\text{act}} - 0.5\,\mathbb{1}_{\text{rev}} - 0.2\,\mathbb{1}_{\text{bnd}} + 0.3\,\mathbb{1}_{\text{eff}}
-\label{eq:v1-reward}
-\end{equation}
-where $e_t = \max(0, p_t - 300)/300$ is the fractional excess of p95 latency
-$p_t$ (in milliseconds) above a 300~ms target, $\rho_t$ is the 5xx error
-fraction, $n_t$ is the current replica count (so the resource term grows
-toward 1 as replicas approach the 8-replica ceiling and is paid on
-\emph{every} step regardless of whether the extra replicas are doing any
-good), and the indicator terms penalize taking any non-hold action, any
-direction reversal within a window, and any action clamped at a replica
-bound; the efficiency bonus rewards a step where CPU per replica sits
-between $1.0\times$ and $3.0\times$ the CPU request, latency is below
-target, and there are no errors. The critical property of
-Equation~\ref{eq:v1-reward} for what follows is the unconditional resource
-term $-(n_t-1)/7$: it charges a cost for every replica above one,
-\emph{every single step}, whether or not the system actually needed those
-replicas, and it does so regardless of the pod health that produced that
-replica count.
-
-\section{PPO Algorithm and Hyperparameters}
-
-Both generations used the same PPO implementation (Stable-Baselines3
-\cite{raffin2021sb3}) and the same core hyperparameters, summarized in
-Table~\ref{tab:ppo-hyperparams}, with a two-layer, 128-unit multilayer
-perceptron for both the policy and value networks, no hyperparameter
-search performed, and a fixed training seed (42) throughout. One detail
-specific to this project's live-cluster setting is the rollout length: PPO
-defaults in Stable-Baselines3 to collecting 2048 steps between updates,
-which at a 30-second decision interval would mean roughly 17 hours between
-updates; we instead collect 256 steps (one "session") between updates, so
-that each training session completes in a practical wall-clock time and
-checkpoints at a useful cadence, at the cost of each PPO update seeing a
-smaller batch of fresh experience than the library's own default assumes.
-
-\begin{table}[H]
-\centering
-\caption{PPO hyperparameters used for both V1 and V2 training.}
-\label{tab:ppo-hyperparams}
-\input{tables/T3_ppo_hyperparameters.tex}
-\end{table}
-
-\section{Session, Checkpoint, and Resume Design}
-
-Training proceeds in sessions of 256 decision steps each; every session
-ends with a Stable-Baselines3 checkpoint (\texttt{ppo\_\allowbreak model.zip}), the
-environment's own random-number-generator state (so a resumed session
-reproduces the same stochastic choices it would have made had it not
-stopped), and session metadata recording cumulative timesteps, cumulative
-PPO updates, and which sessions have completed. A campaign can be resumed
-from its last completed session rather than restarted from scratch, which
-matters in practice: of the V2 campaign's 48 planned sessions, two
-(sessions 4 and 38) failed partway through and had to be resumed from the
-last good checkpoint rather than from session zero, a design choice that
-turned a potential multi-day restart into a same-day recovery. We discuss
-both failures, and what caused them, in Chapter~\ref{ch:results}.
-
-\section{Freeze Manifest, Correction Log, and Pre-Registration}
-
-Three documents together are this project's reproducibility methodology,
-and we treat them as load-bearing rather than as paperwork. The
-\textbf{freeze manifest} (\texttt{FREEZE\_\allowbreak MANIFEST.json}, with two later
-amendments) records SHA-256 hashes of every file governing a training
-campaign -- the environment code, the reward implementation, the
-configuration files, the PPO hyperparameters, the live cluster's resource
-limits at freeze time -- at the moment the final V2 campaign began; any
-post-freeze change to a hashed file invalidates that campaign's checkpoints
-for resumption, verified automatically rather than trusted to memory. The
-\textbf{correction log} (\texttt{docs/\allowbreak \allowbreak experimental\_\allowbreak design\_\allowbreak corrections.md})
-is an append-only record of every design decision and mid-course
-correction made across the whole project, numbered CORR-1 through CORR-65,
-each with its problem, decision, scope, scientific impact, and
-non-retroactivity explicitly stated; nothing in this project is corrected
-silently, and a reader can always find out exactly when and why a given
-rule changed. The \textbf{pre-registration}
-(\texttt{docs/\allowbreak \allowbreak evaluation\_\allowbreak v2\_\allowbreak preregistration.md}, CORR-60) fixes the
-evaluation's arms, traffic profiles, metrics, retry rules, and decision
-rule in writing before any V2 evaluation episode ran -- before the final
-training checkpoint (session 47) even existed. We refer back to specific
-CORR entries throughout this chapter and the next, both because they are
-the authoritative source for each design decision and because a reader
-who wants the full detail behind a short summary here can look it up by
-number; Appendix~\ref{ch:appendix} gives a complete table of every CORR
-entry.
-
-\section{V1 to V2 Redesign}
-\label{sec:v1-to-v2}
-
-V1's evaluation (Chapter~\ref{ch:results}) did not produce a usable
-PPO-versus-HPA verdict: of three required valid PPO repeats, only one
-completed without a safety termination. Diagnosing why led to the V2
-redesign summarized in Table~\ref{tab:v1-v2-comparison}; none of these
-changes were made casually, and each is backed by a numbered correction in
-the log.
-
-\begin{table}[H]
-\centering
-\caption{Design differences between V1 and V2, and the reason for each.}
-\label{tab:v1-v2-comparison}
-\small
-\begin{tabular}{p{2.6cm}p{2.9cm}p{2.9cm}p{4.3cm}}
-\toprule
-Aspect & V1 & V2 & Reason for the change \\
-\midrule
-Observation signals & CPU-derived only (1 primary dimension) & 11 features: CPU, memory, request rate, latency, replica state, all 4 with short-horizon trends & A CPU-only view cannot represent memory-bound load or anticipate a trend; V2's benchmark service and traffic profiles deliberately exercise memory as well as CPU. \\
-Replica floor & 1 & 2 (CORR-55) & Both live V1-era attempts at scientific session index 3 of V2 final training failed with the Deployment's entire ready-replica count driven to zero by a single pod's own saturation or restart -- a floor of 1 gives the whole system no redundancy against one pod's transient unhealthiness. \\
-Resource/waste cost & Unconditional, every step, proportional to replica count & Conditional "waste" penalty, fires only when replicas exceed the floor \emph{and} CPU/memory are both low \emph{and} latency/error are already healthy & V1's unconditional cost made adding a replica look bad even when the system genuinely needed it, biasing the policy toward staying small regardless of actual load. \\
-SLA target (p95) & 300\,ms & 1000\,ms (CORR-57) & Memory-mode requests legitimately hold for close to 500\,ms; combined with Prometheus histogram-bucket interpolation, this was being reported near 975\,ms and permanently penalized against a 300\,ms target that the workload could not realistically meet. \\
-Deterministic tie-break & SB3 default arg-max (ties toward lowest action index, i.e.\ scale-down) & Safety-aware rule, scale-down can never win a tie (CORR-58) & An uncertain policy should never have its uncertainty silently resolved toward removing capacity. \\
-Comparison baseline(s) & One tuned HPA (CPU only) & Two HPA arms: CPU+memory (resource baseline) and CPU-only (CPU baseline), both at the V2 floor of 2 (CORR-62) & Isolates whether the memory metric matters and whether the higher replica floor alone explains any difference, rather than conflating both changes in a single baseline. \\
-Training budget & 5,120 timesteps (20 sessions), cut short by live-cluster wall-clock constraints & 12,288 timesteps (48 sessions), amended and recorded before any post-amendment session result existed (CORR-59) & V1's budget was not a deliberate scientific choice; V2's budget change was decided and logged while only session 0 had been reviewed, avoiding an outcome-aware budget increase. \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\section{V2 Reward Function}
-\label{sec:v2-reward}
-
-The V2 reward replaces V1's unconditional resource cost and latency-only
-penalty with seven components, each independently weighted, summarized in
+The reward combines seven independently weighted components, summarized in
 Table~\ref{tab:reward-components} and defined in full in
 \texttt{configs/\allowbreak \allowbreak reward\_\allowbreak v2.yaml} (Listing~\ref{lst:reward-config} in
 Appendix~\ref{ch:appendix}):
 \begin{equation}
 r_t = -\big(w_{\text{rel}}\rho_t + w_{\text{sla}}\,\mathrm{sla}_t + w_{\text{prs}}\,\mathrm{prs}_t + w_{\text{wst}}\,\mathbb{1}_{\text{waste}} + w_{\text{act}}\,\mathbb{1}_{\text{act}} + w_{\text{rev}}\,\mathbb{1}_{\text{rev}} + w_{\text{bnd}}\,\mathbb{1}_{\text{bnd}}\big)
-\label{eq:v2-reward}
+\label{eq:reward}
 \end{equation}
 with $\rho_t$ the clipped 5xx error fraction; $\mathrm{sla}_t =
 \mathrm{clip}(e_t^2, 0, 1)$ the clipped squared excess of p95 latency above
@@ -499,121 +390,170 @@ is above the floor \emph{and} CPU and memory per replica are both below
 their waste thresholds \emph{and} latency and error are already healthy --
 by construction, a policy cannot lower its waste cost by staying small
 while the system is in genuine distress, because the waste term simply does
-not apply in that state. Action, reversal, and boundary penalties are
-unchanged in shape from V1.
+not apply in that state; we chose a conditional waste penalty specifically
+so that adding a replica is never penalized when the system genuinely needs
+it. We set the SLA target at 1000~ms rather than a tighter value (CORR-57)
+because memory-mode requests legitimately hold for close to 500~ms, and our
+latency histogram's bucket boundaries mean a true p95 anywhere between
+500~ms and 1000~ms can be reported back as 975~ms (Section~\ref{sec:eval-primary});
+a tighter target the workload cannot realistically meet would permanently
+penalize the policy for behaviour it does not control.
 
 \begin{table}[H]
 \centering
-\caption{V2 reward components, weights, and threshold parameters.}
+\caption[Reward components]{Reward components, weights, and threshold parameters.}
 \label{tab:reward-components}
 \small
 \input{tables/T2_reward_components.tex}
 \end{table}
 
-\section{Evaluation Protocol}
-\label{sec:eval-protocol}
+\subsection{PPO Algorithm and Hyperparameters}
 
-\subsection{Arms and Profiles}
-
-Table~\ref{tab:eval-arms} lists the three arms compared in both the
-pre-registered evaluation and the exploratory stress test; all three use
-identical replica bounds (2-8) and the identical benchmark application
-image, so that the only thing that differs between arms is the controller
-itself. Table~\ref{tab:eval-profiles} lists the traffic profiles each
-campaign uses.
-
-\begin{table}[H]
-\centering
-\caption{Evaluation arms.}
-\label{tab:eval-arms}
-\resizebox{\linewidth}{!}{\input{tables/T4a_experimental_design_arms.tex}}
-\end{table}
+We used the Stable-Baselines3 implementation of PPO \cite{raffin2021sb3}
+throughout, summarized in Table~\ref{tab:ppo-hyperparams}, with a two-layer,
+128-unit multilayer perceptron for both the policy and value networks, no
+hyperparameter search performed, and a fixed training seed (42). One detail
+specific to this project's live-cluster setting is the rollout length: PPO
+defaults in Stable-Baselines3 to collecting 2048 steps between updates,
+which at a 30-second decision interval would mean roughly 17 hours between
+updates; we instead collect 256 steps (one "session") between updates, so
+that each training session completes in a practical wall-clock time and
+checkpoints at a useful cadence, at the cost of each PPO update seeing a
+smaller batch of fresh experience than the library's own default assumes.
+We set the training budget at 12,288 timesteps across 48 sessions, an
+amendment recorded in the correction log (CORR-59) while only session 0 had
+been reviewed, specifically to avoid an outcome-aware budget increase later.
 
 \begin{table}[H]
 \centering
-\caption{Traffic profiles used by the pre-registered evaluation
-(\texttt{eval\_\allowbreak final}) and the exploratory stress test
-(\texttt{stress\_\allowbreak explore}).}
-\label{tab:eval-profiles}
-\resizebox{\linewidth}{!}{\input{tables/T4b_experimental_design_profiles.tex}}
+\caption[PPO hyperparameters]{PPO hyperparameters used for training.}
+\label{tab:ppo-hyperparams}
+\input{tables/T3_ppo_hyperparameters.tex}
 \end{table}
 
-\subsection{Design and Order}
+\subsection{Session, Checkpoint, and Resume Design}
 
-The pre-registered \texttt{eval\_\allowbreak final} campaign ran 3 repeats of every
-(profile, arm) cell: 3 profiles $\times$ 3 arms $\times$ 3 repeats = 27
-planned runs. The order of the three arms within each repeat was rotated
-using a Latin square, so that no arm was systematically run first or last
-within a repeat -- a precaution against any systematic drift in cluster
-state (for example, residual caching or thermal effects) that could
-otherwise confound arm identity with run order. Before every HPA-arm run we
-verified Metrics Server resolution and cluster health live rather than
-assuming them, and Grafana was scaled to zero replicas for the whole V2
-evaluation campaign so that it could not compete with the benchmark
-application for the Minikube node's limited CPU and memory, and so that it
-could not itself add any confounding load to the cluster during a
-measured run.
+Training proceeds in sessions of 256 decision steps each; every session
+ends with a Stable-Baselines3 checkpoint (\texttt{ppo\_\allowbreak model.zip}), the
+environment's own random-number-generator state (so a resumed session
+reproduces the same stochastic choices it would have made had it not
+stopped), and session metadata recording cumulative timesteps, cumulative
+PPO updates, and which sessions have completed. A campaign can be resumed
+from its last completed session rather than restarted from scratch, which
+matters in practice: of the campaign's 48 planned sessions, two (sessions 4
+and 38) failed partway through and had to be resumed from the last good
+checkpoint rather than from session zero, a design choice that turned a
+potential multi-day restart into a same-day recovery. We discuss both
+failures, and what caused them, in Chapter~\ref{ch:results}.
 
-\subsection{Metrics and Decision Rule}
+\subsection{Freeze Manifest, Correction Log, and Pre-Registration}
 
-The primary metrics, fixed in the pre-registration before any evaluation
-run, are SLA-violation rate at the 1000~ms target and replica-minutes (the
-time-integral of replica count, our cost proxy). Secondary metrics include
-mean and median p95 latency, error rate, maximum per-pod memory, scaling
-action count, reversal count, pod restart count, invalid-sample count, and
-an SLA-violation rate at a 300~ms reference threshold kept only for
-historical comparability with V1. Table~\ref{tab:decision-rule} states the
-decision rule exactly as pre-registered: an arm is only reported as
-"better" than another on a given metric for a given profile if it is
-better in all three of the three repeats, and no single aggregate winner is
-declared when different metrics disagree -- such cases are reported
-explicitly as a trade-off rather than resolved into one ranking.
+Three documents together are this project's reproducibility methodology,
+and we treat them as load-bearing rather than as paperwork. The
+\textbf{freeze manifest} (\texttt{FREEZE\_\allowbreak MANIFEST.json}, with two later
+amendments) records SHA-256 hashes of every file governing the training
+campaign -- the environment code, the reward implementation, the
+configuration files, the PPO hyperparameters, the live cluster's resource
+limits at freeze time -- at the moment the final training campaign began;
+any post-freeze change to a hashed file invalidates that campaign's
+checkpoints for resumption, verified automatically rather than trusted to
+memory. The \textbf{correction log}
+(\texttt{docs/\allowbreak \allowbreak experimental\_\allowbreak design\_\allowbreak corrections.md}) is an
+append-only record of every design decision and mid-course correction made
+across the whole project, numbered CORR-1 through CORR-65, each with its
+problem, decision, scope, scientific impact, and non-retroactivity
+explicitly stated; nothing in this project is corrected silently, and a
+reader can always find out exactly when and why a given rule changed. The
+entries from CORR-55 onward concern the final controller design and its
+evaluation specifically (replica floor, SLA/waste recalibration,
+tie-breaking, budget, pre-registration, and the stress test); earlier
+entries record the infrastructure, benchmark, and HPA-tuning calibration
+that this design is built on. The \textbf{pre-registration}
+(\texttt{docs/\allowbreak \allowbreak evaluation\_\allowbreak v2\_\allowbreak preregistration.md}, CORR-60) fixes the
+evaluation's arms, traffic profiles, metrics, retry rules, and decision
+rule in writing before any evaluation episode ran -- before the final
+training checkpoint (session 47) even existed. We refer back to specific
+CORR entries throughout this chapter and the next, both because they are
+the authoritative source for each design decision and because a reader
+who wants the full detail behind a short summary here can look it up by
+number; Appendix~\ref{ch:appendix} gives a short table of the final
+system's own correction-log entries.
 
-\begin{table}[H]
-\centering
-\caption{Pre-registered decision rule (CORR-60).}
-\label{tab:decision-rule}
-\small
-\input{tables/T4c_experimental_design_decision_rule.tex}
-\end{table}
+\section{Standards}
+\label{sec:standards}
 
-\subsection{Retry Rules}
+This section records the open standards and specifications the system
+relies on directly, each one actually exercised by code in this
+repository rather than listed for general completeness.
 
-A tooling failure -- an unreachable route, a down Prometheus instance, a
-cluster or network fault, none of which reflects anything about either
-controller's scaling behaviour -- results in no scientific outcome being
-recorded for that attempt and exactly one retry; the failed attempt's
-evidence is preserved, never deleted. A safety termination (a sustained
-loss of ready replicas, or a memory threshold breach) is, by contrast,
-counted as a real scientific outcome of that run and is never retried,
-because a safety termination is itself a fact about how the controller
-behaved under that traffic, not a tooling artefact to be papered over.
+\textbf{Kubernetes \texttt{autoscaling/v2} HPA API.} Both HPA baselines are
+declared as \texttt{apiVersion: autoscaling/v2} \texttt{HorizontalPod\allowbreak Autoscaler}
+manifests (Listings~\ref{lst:hpa-cm} and \ref{lst:hpa-cpu}, Appendix~\ref{ch:appendix}), using the
+API's multi-metric \texttt{metrics} list and its \texttt{behavior} block for
+scale-up/scale-down stabilization windows; this is the same API surface any
+production Kubernetes HPA configuration uses.
 
-\section{The Demo UI}
+\textbf{OCI/Docker image format.} The benchmark service is built and
+shipped as an Open Container Initiative image, built with Docker and run by
+Minikube's Docker driver; every controller in this report scales replicas
+of the same image, so the image format itself is part of what makes the
+comparison fair.
 
-\texttt{demo\_\allowbreak ui/\allowbreak \allowbreak } is a Streamlit console used to inspect training curves,
-replay evaluation episodes, and view live cluster state during
-development and demonstration. It runs in a demo/fixture mode by default
-and does not require a live cluster to start, falling back to cached or
-fixture data when a live connection is unavailable, so that it can be used
-for a demonstration without first standing up the full testbed. It reads
-the same \texttt{persistent-data/\allowbreak \allowbreak } artifacts (training session metadata,
-evaluation run ledgers) that the analysis scripts in
-Section~\ref{sec:software-stack} read, rather than maintaining its own
-separate copy of this data, so that what the UI shows and what the
-published figures and tables show cannot drift apart.
+\textbf{Prometheus exposition format and PromQL.} The benchmark service's
+\texttt{/\allowbreak \allowbreak metrics} endpoint exposes counters and histograms in the
+Prometheus text exposition format; our observation builder and offline
+analysis scripts read them back with PromQL, Prometheus's own query
+language, rather than parsing the raw exposition text directly.
 
-\section{Software Stack and Hardware}
+\textbf{HTTP/1.1.} All three of the benchmark service's endpoints
+(\texttt{/\allowbreak \allowbreak work}, \texttt{/\allowbreak \allowbreak health}, \texttt{/\allowbreak \allowbreak metrics}) are plain
+HTTP/1.1 endpoints; the traffic generator, the Kubernetes Service, and
+Prometheus's own scraping all speak HTTP/1.1 to reach them.
+
+\textbf{YAML and JSON (RFC 8259).} Every configuration file in this project
+-- the reward configuration, the RL configuration, both HPA manifests, the
+demo traffic profiles -- is YAML. Every ledger, telemetry record, and
+attempt result (Listing~\ref{lst:evalrunner}) is written as JSON conforming
+to RFC 8259, read back by both our own analysis scripts and the demo
+console without any project-specific parser.
+
+\textbf{ISO 8601 UTC timestamps.} Every recorded event in this project --
+session start/end times, evaluation attempt \texttt{started\_\allowbreak utc}/\texttt{ended\_\allowbreak utc}
+fields -- is stamped in ISO 8601 format in UTC, so that events from
+different scripts and different days can be ordered and compared
+unambiguously.
+
+\textbf{SHA-256 (FIPS 180-4).} The freeze manifest hashes every file
+governing a training campaign with SHA-256, the hash function specified in
+FIPS 180-4, so that a post-freeze change to any hashed file can be detected
+automatically rather than trusted to memory.
+
+\textbf{Gymnasium environment API.} Our Kubernetes environment implements
+the standard Gymnasium \texttt{reset()}/\texttt{step()} contract
+\cite{towers2024gymnasium}, with a \texttt{Discrete(3)} action space and a
+continuous observation space, which is what lets the unmodified
+Stable-Baselines3 PPO implementation train against a live cluster exactly
+as it would against any other Gymnasium environment.
+
+\textbf{IEEE citation style.} This report's references (Chapter~\ref{ch:references})
+are numbered and formatted in IEEE style, the convention most of the
+systems and machine-learning venues we cite also use.
+
+\section{System Details}
+\label{sec:system-details}
+
+\subsection{Software}
 \label{sec:software-stack}
 
 Table~\ref{tab:software-stack} lists the key software dependencies and the
-exact versions pinned in the project's requirements files.
-Table~\ref{tab:hardware} lists the hardware used for every training and
-evaluation run reported in this document.
+exact versions pinned in the project's requirements files
+(\texttt{requirements/\allowbreak \allowbreak base.txt}, \texttt{requirements/\allowbreak \allowbreak rl.txt}, and
+\texttt{demo\_\allowbreak ui/\allowbreak \allowbreak requirements-\allowbreak ui.txt}). Every version below is an exact
+pin, not a loose or default-resolved one.
 
 \begin{table}[H]
 \centering
-\caption{Key software dependencies and pinned versions.}
+\caption[Software dependencies]{Key software dependencies and pinned versions.}
 \label{tab:software-stack}
 \begin{tabular}{ll}
 \toprule
@@ -634,13 +574,29 @@ Matplotlib & 3.10.9 \\
 scikit-learn & 1.6.1 \\
 Streamlit (demo UI) & 1.65.0 \\
 Plotly (demo UI) & 7.1.0 \\
+httpx (demo UI) & 0.28.1 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
+\subsection{Hardware}
+\label{sec:hardware}
+
+Table~\ref{tab:hardware} lists the hardware used for every training and
+evaluation run reported in this document. We justify running everything
+locally, on a single laptop, rather than on any cloud-hosted cluster, for
+three concrete reasons specific to this project: it made every experiment
+free, which mattered given the volume of real decision steps involved
+(tens of thousands across training, evaluation, and the stress test); it
+gave us full visibility into node-level CPU and memory pressure, which a
+managed cluster would partly hide; and it removed any dependency on
+external network conditions for a project whose decision interval (30
+seconds) is short enough that network variance could otherwise have
+confounded the comparison.
+
 \begin{table}[H]
 \centering
-\caption{Hardware used for all training and evaluation runs.}
+\caption[Hardware used]{Hardware used for all training and evaluation runs.}
 \label{tab:hardware}
 \begin{tabular}{ll}
 \toprule
@@ -654,6 +610,107 @@ Cluster memory allocation & 3\,GB \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\section{Evaluation Protocol}
+\label{sec:eval-protocol}
+
+\subsection{Arms and Profiles}
+
+Table~\ref{tab:eval-arms} lists the three arms compared in both the
+pre-registered held-out evaluation and the exploratory stress test; all
+three use identical replica bounds (2-8) and the identical benchmark
+application image, so that the only thing that differs between arms is the
+controller itself. We compare against two HPA baselines, rather than one,
+specifically to isolate whether the memory metric matters (CORR-62): if
+only a single CPU+memory HPA existed, any difference from PPO could not be
+separated from the effect of the extra metric alone. Table~\ref{tab:eval-profiles}
+lists the traffic profiles each campaign uses.
+
+\begin{table}[H]
+\centering
+\caption[Evaluation arms]{Evaluation arms.}
+\label{tab:eval-arms}
+\resizebox{\linewidth}{!}{\input{tables/T4a_experimental_design_arms.tex}}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption[Evaluation and stress profiles]{Traffic profiles used by the pre-registered held-out evaluation
+and the exploratory stress test.}
+\label{tab:eval-profiles}
+\resizebox{\linewidth}{!}{\input{tables/T4b_experimental_design_profiles.tex}}
+\end{table}
+
+\subsection{Design and Order}
+
+The pre-registered held-out evaluation campaign ran 3 repeats of every
+(profile, arm) cell: 3 profiles $\times$ 3 arms $\times$ 3 repeats = 27
+planned runs. The order of the three arms within each repeat was rotated
+using a Latin square, so that no arm was systematically run first or last
+within a repeat -- a precaution against any systematic drift in cluster
+state (for example, residual caching or thermal effects) that could
+otherwise confound arm identity with run order. Before every HPA-arm run we
+verified Metrics Server resolution and cluster health live rather than
+assuming them, and Grafana was scaled to zero replicas for both the
+training campaign and the whole evaluation campaign so that it could not
+compete with the benchmark application for the Minikube node's limited CPU
+and memory, and so that it could not itself add any confounding load to the
+cluster during a measured run.
+
+\subsection{Metrics and Decision Rule}
+
+The primary metrics, fixed in the pre-registration before any evaluation
+run, are SLA-violation rate at the 1000~ms target and replica-minutes (the
+time-integral of replica count, our cost proxy). Secondary metrics include
+mean and median p95 latency, error rate, maximum per-pod memory, scaling
+action count, reversal count, pod restart count, invalid-sample count, and
+an SLA-violation rate at a 300~ms reference threshold kept only for
+historical comparability. Table~\ref{tab:decision-rule} states the
+decision rule exactly as pre-registered: an arm is only reported as
+"better" than another on a given metric for a given profile if it is
+better in all three of the three repeats, and no single aggregate winner is
+declared when different metrics disagree -- such cases are reported
+explicitly as a trade-off rather than resolved into one ranking.
+
+\begin{table}[H]
+\centering
+\caption[Pre-registered decision rule]{Pre-registered decision rule (CORR-60).}
+\label{tab:decision-rule}
+\small
+\input{tables/T4c_experimental_design_decision_rule.tex}
+\end{table}
+
+\subsection{Retry Rules}
+
+A tooling failure -- an unreachable route, a down Prometheus instance, a
+cluster or network fault, none of which reflects anything about either
+controller's scaling behaviour -- results in no scientific outcome being
+recorded for that attempt and exactly one retry; the failed attempt's
+evidence is preserved, never deleted. A safety termination (a sustained
+loss of ready replicas, or a memory threshold breach) is, by contrast,
+counted as a real scientific outcome of that run and is never retried,
+because a safety termination is itself a fact about how the controller
+behaved under that traffic, not a tooling artefact to be papered over.
+
+\section{Demonstration Interface Design}
+\label{sec:demo-ui-design}
+
+\texttt{demo\_\allowbreak ui/\allowbreak \allowbreak } is a Streamlit console, separate from the training and
+evaluation harness, used to show the trained policy and both HPA baselines
+making decisions on deterministic demo traffic, and to replay training and
+evaluation data for inspection. It offers a "Live cluster" mode, which
+drives a real, isolated, non-scientific episode against the same live
+Minikube cluster used for training and evaluation, and a "Sample data
+(offline)" mode, which replays deterministic fixture data without touching
+the cluster at all -- used as a presentation fallback whenever a live model
+checkpoint or calibration file is unavailable, and clearly labelled as
+simulated whenever it is active. Every demo run is firewalled from
+training, evaluation, and stress traffic by a separate profile allowlist
+and seed range, and a live demo run refuses to start outright while
+training or evaluation holds the cluster. We give the interface's full
+design and screenshots in Section~\ref{sec:demo-interface} of
+Chapter~\ref{ch:results}, once its place in the overall results is
+established.
 
 \section{Integration and Workflow}
 
@@ -669,9 +726,9 @@ drained; the cluster is cleaned up and settled back to canonical idle
 state; and the attempt's full result, success or failure, is written to the
 run's own directory and to the campaign's ledger. The same orchestration
 code path, \texttt{scripts/\allowbreak \allowbreak evaluate\_\allowbreak v2\_\allowbreak campaign.py}, runs both the
-pre-registered evaluation and the later exploratory stress test, differing
-only in which traffic profiles and repeat counts are configured, which is
-part of why we can state confidently that the two campaigns are run under
-identical operational discipline even though their scientific status (a
-decision-rule-bearing evaluation versus a descriptive, single-repeat
-exploration) is very different.
+pre-registered held-out evaluation and the later exploratory stress test,
+differing only in which traffic profiles and repeat counts are configured,
+which is part of why we can state confidently that the two campaigns are
+run under identical operational discipline even though their scientific
+status (a decision-rule-bearing evaluation versus a descriptive,
+single-repeat exploration) is very different.

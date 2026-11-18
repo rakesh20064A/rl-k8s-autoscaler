@@ -2,14 +2,14 @@
 \hline
 profile & arm & n\_repeats & exploratory & sla\_violation\_rate\_1000ms & replica\_minutes & mean\_p95\_latency\_ms & median\_p95\_latency\_ms & error\_rate & max\_per\_pod\_memory\_mib & scaling\_actions\_count & reversals\_count & reaction\_time\_s & pod\_restarts\_count & invalid\_samples\_count & sla\_violation\_rate\_300ms\_reference \\
 \hline
-stress\_cpu\_burst & HPA CPU+Memory (resource baseline) & 1 & yes & 0.5263 & 123.0000 & 1820.3034 & 1371.6415 & 0.0000 & 43.0664 & 0.0000 & 0.0000 & n/a & 0.0000 & 2.0000 & 0.6053 \\
-stress\_cpu\_burst & HPA CPU-only (CPU baseline) & 1 & yes & 0.5250 & 130.0000 & 1703.0794 & 2304.0822 & 0.0000 & 43.9414 & 0.0000 & 0.0000 & n/a & 0.0000 & 0.0000 & 0.6250 \\
-stress\_cpu\_burst & PPO (multi-metric, 11 signals) & 1 & yes & 0.5000 & 84.0000 & 1567.6466 & 1263.5172 & 0.0000 & 44.6680 & 3.0000 & 0.0000 & n/a & 0.0000 & 0.0000 & 0.7750 \\
-stress\_memory\_ramp & HPA CPU+Memory (resource baseline) & 1 & yes & 0.0000 & 78.0000 & 975.0000 & 975.0000 & 0.0000 & 119.4609 & 0.0000 & 0.0000 & n/a & 0.0000 & 0.0000 & 1.0000 \\
-stress\_memory\_ramp & HPA CPU-only (CPU baseline) & 1 & yes & 0.0000 & 40.0000 & 975.0000 & 975.0000 & 0.0000 & 152.3359 & 0.0000 & 0.0000 & n/a & 0.0000 & 0.0000 & 1.0000 \\
-stress\_memory\_ramp & PPO (multi-metric, 11 signals) & 1 & yes & 0.0000 & 56.0000 & 950.6250 & 975.0000 & 0.0000 & 120.0742 & 1.0000 & 0.0000 & n/a & 0.0000 & 0.0000 & 0.9750 \\
-stress\_mixed\_burst & HPA CPU+Memory (resource baseline) & 1 & yes & 0.0000 & 76.0000 & 980.3134 & 978.8153 & 0.0000 & 88.1680 & 0.0000 & 0.0000 & n/a & 0.0000 & 1.0000 & 1.0000 \\
-stress\_mixed\_burst & HPA CPU-only (CPU baseline) & 1 & yes & 0.1000 & 62.5000 & 1041.4198 & 982.3931 & 0.0000 & 103.7578 & 0.0000 & 0.0000 & n/a & 0.0000 & 0.0000 & 1.0000 \\
-stress\_mixed\_burst & PPO (multi-metric, 11 signals) & 1 & yes & 0.2000 & 66.5000 & 1091.7229 & 983.7270 & 0.0000 & 87.7266 & 2.0000 & 0.0000 & n/a & 0.0000 & 0.0000 & 0.9750 \\
+CPU bursts & HPA CPU+Memory (resource baseline) & 1 & yes & 0.5263 & 123.0000 & 1820.3034 & 1371.6415 & 0.0000 & 43.0664 & 0.0000 & 0.0000 & n/a & 0.0000 & 2.0000 & 0.6053 \\
+CPU bursts & HPA CPU-only (CPU baseline) & 1 & yes & 0.5250 & 130.0000 & 1703.0794 & 2304.0822 & 0.0000 & 43.9414 & 0.0000 & 0.0000 & n/a & 0.0000 & 0.0000 & 0.6250 \\
+CPU bursts & PPO (multi-metric, 11 signals) & 1 & yes & 0.5000 & 84.0000 & 1567.6466 & 1263.5172 & 0.0000 & 44.6680 & 3.0000 & 0.0000 & n/a & 0.0000 & 0.0000 & 0.7750 \\
+memory ramp & HPA CPU+Memory (resource baseline) & 1 & yes & 0.0000 & 78.0000 & 975.0000 & 975.0000 & 0.0000 & 119.4609 & 0.0000 & 0.0000 & n/a & 0.0000 & 0.0000 & 1.0000 \\
+memory ramp & HPA CPU-only (CPU baseline) & 1 & yes & 0.0000 & 40.0000 & 975.0000 & 975.0000 & 0.0000 & 152.3359 & 0.0000 & 0.0000 & n/a & 0.0000 & 0.0000 & 1.0000 \\
+memory ramp & PPO (multi-metric, 11 signals) & 1 & yes & 0.0000 & 56.0000 & 950.6250 & 975.0000 & 0.0000 & 120.0742 & 1.0000 & 0.0000 & n/a & 0.0000 & 0.0000 & 0.9750 \\
+mixed bursts & HPA CPU+Memory (resource baseline) & 1 & yes & 0.0000 & 76.0000 & 980.3134 & 978.8153 & 0.0000 & 88.1680 & 0.0000 & 0.0000 & n/a & 0.0000 & 1.0000 & 1.0000 \\
+mixed bursts & HPA CPU-only (CPU baseline) & 1 & yes & 0.1000 & 62.5000 & 1041.4198 & 982.3931 & 0.0000 & 103.7578 & 0.0000 & 0.0000 & n/a & 0.0000 & 0.0000 & 1.0000 \\
+mixed bursts & PPO (multi-metric, 11 signals) & 1 & yes & 0.2000 & 66.5000 & 1091.7229 & 983.7270 & 0.0000 & 87.7266 & 2.0000 & 0.0000 & n/a & 0.0000 & 0.0000 & 0.9750 \\
 \hline
 \end{tabular}

@@ -2,8 +2,8 @@
 \hline
 arm & profiles\_run\_on & role \\
 \hline
-PPO (multi-metric, 11 signals) & all 3 eval + all 3 stress & RL policy under test \\
-HPA CPU+Memory (resource baseline) & all 3 eval + all 3 stress & resource-metric baseline (CPU+memory) \\
-HPA CPU-only (CPU baseline) & all 3 eval + all 3 stress & Kubernetes-default baseline (CPU only) \\
+PPO (multi-metric, 11 signals) & all 3 held-out + all 3 stress & RL policy under test \\
+HPA CPU+Memory & all 3 held-out + all 3 stress & resource-metric baseline (CPU and memory, 260\%/120\% targets) \\
+HPA CPU-only (CPU baseline) & all 3 held-out + all 3 stress & single-metric baseline (CPU only, same 260\% target and 2-8 bounds as the others) \\
 \hline
 \end{tabular}
