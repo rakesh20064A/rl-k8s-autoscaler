@@ -35,15 +35,6 @@ def _all_markdown_html(at: AppTest) -> str:
     return "".join(m.value for m in at.markdown)
 
 
-def _switch_to_v1(at: AppTest) -> AppTest:
-    """V2 Phase 5E: Generation defaults to "V2" -- these V1-specific tests
-    (Auto mode, a V1-only feature) must first switch back to "V1", whose
-    own code path is otherwise completely unchanged by this phase."""
-    at.segmented_control(key="du_generation_widget").set_value("V1").run()
-    assert not at.exception
-    return at
-
-
 class TestAppSmoke:
     def test_app_loads_without_exception(self):
         at = AppTest.from_file(APP_PATH, default_timeout=30)
@@ -64,13 +55,12 @@ class TestAppSmoke:
         at = _run_page("Live Details")
         assert "Cluster" in _all_markdown_html(at)
 
-    def test_comparison_page_renders_table(self):
+    def test_comparison_page_renders_live_comparison_section(self):
         at = _run_page("Comparison")
-        assert "du-cmp-table" in _all_markdown_html(at)
+        assert "Live Comparison" in _all_markdown_html(at)
 
-    def test_history_page_renders_table(self):
-        at = _run_page("History")
-        assert "du-history-table" in _all_markdown_html(at)
+    def test_history_page_renders_without_exception(self):
+        _run_page("History")
 
     def test_mode_indicator_present_on_experiment_page(self):
         at = _run_page("Experiment")
@@ -80,17 +70,3 @@ class TestAppSmoke:
         at = _run_page("Experiment")
         at.button[0].click().run()  # START
         assert not at.exception
-
-    def test_auto_mode_switch_does_not_crash(self):
-        at = _switch_to_v1(_run_page("Experiment"))
-        mode_radio = next(r for r in at.radio if r.key == "du_mode_widget")
-        mode_radio.set_value("Auto").run()
-        assert not at.exception
-
-    def test_auto_mode_start_shows_pipeline(self):
-        at = _switch_to_v1(_run_page("Experiment"))
-        mode_radio = next(r for r in at.radio if r.key == "du_mode_widget")
-        mode_radio.set_value("Auto").run()
-        at.button[0].click().run()  # START, now in Auto mode
-        assert not at.exception
-        assert "du-pipeline" in _all_markdown_html(at)

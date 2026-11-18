@@ -21,6 +21,7 @@ import streamlit as st
 
 from demo_ui import experiment_store
 from demo_ui.components.charts import line_chart, step_chart
+from demo_ui.components.controls_v2 import display_arm_label
 from demo_ui.components.layout import render_metric_strip
 from demo_ui.theme import PALETTE
 
@@ -50,7 +51,7 @@ def _fmt(value, suffix: str = "", digits: int = 1) -> str:
 def render_run_banner(rec: Optional[Dict[str, Any]], is_active: bool) -> None:
     if rec is None:
         st.markdown(
-            '<div class="du-panel mono" style="margin-bottom:0.6rem;">No V2 experiment has been run yet.</div>',
+            '<div class="du-panel mono" style="margin-bottom:0.6rem;">No experiment has been run yet.</div>',
             unsafe_allow_html=True,
         )
         return
@@ -59,12 +60,12 @@ def render_run_banner(rec: Optional[Dict[str, Any]], is_active: bool) -> None:
     data_source = rec.get("data_source", "LIVE")
     status_label = (rec.get("stage") or rec.get("status", "unknown")).upper()
     st.markdown(
-        f'<div class="du-panel mono" style="margin-bottom:0.6rem;">{prefix}: V2 {data_source} &middot; '
-        f'{rec["controller"]} &middot; {profile_label} &middot; <b>{status_label}</b> &middot; {rec["run_id"]}</div>',
+        f'<div class="du-panel mono" style="margin-bottom:0.6rem;">{prefix}: {data_source} &middot; '
+        f'{display_arm_label(rec["controller"])} &middot; {profile_label} &middot; <b>{status_label}</b> &middot; {rec["run_id"]}</div>',
         unsafe_allow_html=True,
     )
     if data_source == "DEMO":
-        st.caption("DEMO ONLY -- not evaluation evidence.")
+        st.caption("SIMULATED DATA -- not evaluation evidence.")
 
 
 def render_telemetry(rec: Optional[Dict[str, Any]]) -> None:
@@ -75,7 +76,7 @@ def render_telemetry(rec: Optional[Dict[str, Any]]) -> None:
     empty_detail = None
     if rec is None:
         empty_primary = "No data available"
-        empty_detail = "Run a V2 demo episode to view this metric"
+        empty_detail = "Run a demo episode to view this metric"
     elif not has_samples:
         empty_primary = "Waiting for first measurement…"
     else:
@@ -88,7 +89,7 @@ def render_telemetry(rec: Optional[Dict[str, Any]]) -> None:
     ts_e, err = experiment_store.extract_series(rec, "error_rate")
 
     render_metric_strip([
-        ("Arm", rec["controller"] if rec is not None else "—"),
+        ("Arm", display_arm_label(rec["controller"]) if rec is not None else "—"),
         ("Traffic", rec["profile_name"].replace("_", " ").title() if rec is not None else "—"),
         ("RPS", _fmt(rps[-1] if rps else None)),
         ("Replicas (desired/ready)", str(replicas[-1]) if replicas else "—"),

@@ -28,7 +28,7 @@ def _derive_analysis_dir(campaign_dir: Path) -> Path:
 def render(campaign_dir: Path) -> None:
     if not campaign_dir.is_dir():
         st.markdown(
-            f'<div class="du-panel mono">No V2 evaluation campaign found at {campaign_dir}. '
+            f'<div class="du-panel mono">No evaluation campaign found at {campaign_dir}. '
             f'Run scripts/evaluate_v2_campaign.py --execute once the final model and epsilon '
             f'calibration exist (see the Phase 5C-A report\'s Phase 5D checklist).</div>',
             unsafe_allow_html=True,

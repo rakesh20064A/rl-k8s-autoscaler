@@ -55,7 +55,7 @@ class ConfigV2:
             missing.append(f"model checkpoint not found at {self.model_path}")
         if not self.epsilon_calibration_exists:
             missing.append(f"epsilon calibration file not found at {self.epsilon_calibration_path}")
-        return "V2 LIVE is disabled: " + "; ".join(missing) + ". DEMO mode is still available."
+        return "Live runs are disabled: " + "; ".join(missing) + ". Sample data (offline) is still available."
 
 
 def _resolve(path_str: str) -> Path:

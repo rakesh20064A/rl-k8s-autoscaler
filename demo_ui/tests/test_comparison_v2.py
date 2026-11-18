@@ -135,7 +135,7 @@ class TestEmptyStates:
         at.run()
         assert not at.exception
         html = "".join(m.value for m in at.markdown)
-        assert "No V2 evaluation campaign found" in html
+        assert "No evaluation campaign found" in html
 
     def test_campaign_exists_but_not_yet_analyzed_shows_command_to_run(self, tmp_path):
         campaign_dir = _make_synthetic_campaign(tmp_path)

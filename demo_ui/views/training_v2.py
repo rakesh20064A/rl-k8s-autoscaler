@@ -130,7 +130,7 @@ def _render_action_mix(curve: List[Dict[str, Any]]) -> None:
 
 def render() -> None:
     render_topbar(mode_label="TRAINING", is_live=False)
-    st.markdown('<div class="du-section-label" style="margin-top:0.6rem;">V2 Training Curve</div>', unsafe_allow_html=True)
+    st.markdown('<div class="du-section-label" style="margin-top:0.6rem;">Training Curve</div>', unsafe_allow_html=True)
     st.caption(
         "Read-only, regenerated from the real completed sessions on every load -- "
         "never writes into persistent-data/rl_training_v2/."
@@ -146,7 +146,7 @@ def render() -> None:
 
     if not curve:
         st.markdown(
-            '<div class="du-panel mono">No completed V2 final_min2 sessions yet.</div>',
+            '<div class="du-panel mono">No completed final_min2 sessions yet.</div>',
             unsafe_allow_html=True,
         )
         with st.expander("Demo fixture data (simulated, not real training results)"):

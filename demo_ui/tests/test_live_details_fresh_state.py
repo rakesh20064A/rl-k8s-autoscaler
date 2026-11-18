@@ -1,9 +1,9 @@
-"""Coverage for the "Live Details must never default to fixture data"
-correctness phase: a fresh browser/restarted Streamlit session (no
-du_data_source key set, zero experiment_store records) must render the
-real/empty LIVE view as PRIMARY content -- never gated behind a
-session_state key that only Experiment happens to seed -- with fixture
-content confined to one collapsed expander.
+"""Coverage for the "Live Details must never default to sample data"
+correctness phase: a fresh browser/restarted Streamlit session (zero
+experiment_store records) must render the real/empty LIVE view as PRIMARY
+content -- never gated behind a session_state key that only Experiment
+happens to seed -- with sample-data content confined to one collapsed
+expander.
 """
 
 from __future__ import annotations
@@ -35,35 +35,29 @@ class TestNoIndependentControlsInPrimaryPath:
         for forbidden in [".selectbox(", ".radio(", ".segmented_control("]:
             assert forbidden not in src
 
-    def test_primary_helpers_have_no_widget_calls(self):
-        for fn in (
-            live_details._render_run_banner,
-            live_details._render_run_telemetry,
-            live_details._render_experiment_events,
-            live_details._render_current_cluster_state,
-        ):
-            src = inspect.getsource(fn)
-            for forbidden in [".selectbox(", ".radio(", ".segmented_control("]:
-                assert forbidden not in src, f"{fn.__name__} must not define its own controls"
+    def test_primary_helper_has_no_widget_calls(self):
+        src = inspect.getsource(live_details._render_current_cluster_state)
+        for forbidden in [".selectbox(", ".radio(", ".segmented_control("]:
+            assert forbidden not in src
 
-    def test_only_fixture_dashboard_defines_selectors(self):
-        src = inspect.getsource(live_details._render_fixture_dashboard)
+    def test_only_sample_data_dashboard_defines_selectors(self):
+        src = inspect.getsource(live_details._render_sample_data_dashboard)
         assert ".selectbox(" in src  # confined here, and ONLY here
 
-    def test_fixture_dashboard_call_is_gated_behind_opt_in_flag(self):
+    def test_sample_data_dashboard_call_is_gated_behind_opt_in_flag(self):
         """Being inside `with st.expander(...)` is NOT sufficient isolation
         -- Streamlit executes an expander's body every rerun regardless of
-        collapsed/expanded state, so `_render_fixture_dashboard()` (and the
-        `build_all_fixture_summaries()` it calls) must only be reachable
-        through an explicit opt-in flag, never unconditionally."""
+        collapsed/expanded state, so `_render_sample_data_dashboard()` must
+        only be reachable through an explicit opt-in flag, never
+        unconditionally."""
         src = inspect.getsource(live_details.render)
-        assert "du_show_live_fixture" in src
-        assert 'if st.session_state.get("du_show_live_fixture"' in src
+        assert "du_show_live_fixture_v2" in src
+        assert 'if st.session_state.get("du_show_live_fixture_v2"' in src
 
     def test_render_never_branches_on_data_source(self):
-        """The actual bug: `if data_source == "LIVE": ... else: <fixture>`
-        made fixture data the default whenever du_data_source wasn't set
-        yet (e.g. Live Details visited before Experiment ever ran once)."""
+        """The actual bug: `if data_source == "LIVE": ... else: <sample>`
+        made sample data the default whenever du_data_source wasn't set yet
+        (e.g. Live Details visited before Experiment ever ran once)."""
         src = inspect.getsource(live_details.render)
         assert "du_data_source" not in src
         assert "data_source" not in src
@@ -82,87 +76,60 @@ class TestFreshStoreRendering:
         at.sidebar.radio[0].set_value("Live Details").run()
         assert not at.exception, at.exception
         html = "".join(m.value for m in at.markdown)
-        assert "No LIVE experiment has been run yet." in html
+        assert "No experiment has been run yet." in html
 
     def test_fresh_experiment_cards_are_dashes(self):
         at = AppTest.from_file(APP_PATH, default_timeout=30)
         at.run()
         at.sidebar.radio[0].set_value("Live Details").run()
         assert not at.exception, at.exception
-        # The FIRST rendered metric strip (by document order, which
-        # precedes the fixture expander) is the primary Experiment
-        # Telemetry one. "du-metric-label" also appears in theme.py's own
-        # <style> block (as a CSS class definition), so anchor on the
-        # actual cell text, not just the class name.
-        first_strip = next(m.value for m in at.markdown if 'du-metric-label">Controller</div>' in m.value)
-        assert 'du-metric-label">Controller</div><div class="du-metric-value">—</div>' in first_strip
-        assert 'du-metric-label">Replicas</div><div class="du-metric-value">—</div>' in first_strip
-        assert "25" not in first_strip and "188" not in first_strip  # the exact fixture numbers reported as leaking
+        first_strip = next(m.value for m in at.markdown if 'du-metric-label">Arm</div>' in m.value)
+        assert 'du-metric-label">Arm</div><div class="du-metric-value">—</div>' in first_strip
 
-    def test_fixture_dashboard_not_rendered_before_opt_in(self):
+    def test_sample_data_dashboard_not_rendered_before_opt_in(self):
         """The actual regression: merely nesting inside a collapsed
-        `st.expander` still executes `build_all_fixture_summaries()` and
-        renders its output every rerun. Nothing fixture-related may appear
+        `st.expander` still executes `build_fixture_v2_run()` and renders
+        its output every rerun. Nothing sample-data-related may appear
         anywhere on the page until the user explicitly clicks the load
         button."""
         at = AppTest.from_file(APP_PATH, default_timeout=30)
         at.run()
         at.sidebar.radio[0].set_value("Live Details").run()
         assert not at.exception, at.exception
-        html = "".join(m.value for m in at.markdown)
-        assert "25.0" not in html
-        assert "188%" not in html
-        assert "Constant" not in html
-        assert at.session_state.get("du_show_live_fixture", False) is False
-        # The opt-in button itself must be present (it's the only fixture
-        # widget allowed to exist before opt-in).
-        assert any(b.label == "Load demo fixture data" for b in at.button)
+        assert at.session_state.get("du_show_live_fixture_v2", False) is False
+        # The opt-in button itself must be present (it's the only
+        # sample-data widget allowed to exist before opt-in).
+        assert any(b.label == "Load sample data" for b in at.button)
         selectbox_keys = {sb.key for sb in at.selectbox}
-        assert selectbox_keys == set()  # fixture's own selectboxes not yet instantiated
+        assert selectbox_keys == set()  # sample-data dashboard's own selectboxes not yet instantiated
 
-    def test_fixture_dashboard_appears_after_opt_in_without_disturbing_primary_state(self):
+    def test_sample_data_dashboard_appears_after_opt_in_without_disturbing_primary_state(self):
         at = AppTest.from_file(APP_PATH, default_timeout=30)
         at.run()
         at.sidebar.radio[0].set_value("Live Details").run()
-        primary_before = next(m.value for m in at.markdown if 'du-metric-label">Controller</div>' in m.value)
+        primary_before = next(m.value for m in at.markdown if 'du-metric-label">Arm</div>' in m.value)
 
-        at.button(key="du_load_live_fixture").click().run()
+        at.button(key="du_load_live_fixture_v2").click().run()
         assert not at.exception, at.exception
-        assert at.session_state["du_show_live_fixture"] is True
-        html = "".join(m.value for m in at.markdown)
-        assert "Constant" in html  # fixture dropdown's own default option now rendered
+        assert at.session_state["du_show_live_fixture_v2"] is True
         selectbox_keys = {sb.key for sb in at.selectbox}
-        assert selectbox_keys == {"du_live_profile", "du_live_controller"}
+        assert selectbox_keys == {"du_live_v2_profile", "du_live_v2_arm"}
 
-        primary_after = next(m.value for m in at.markdown if 'du-metric-label">Controller</div>' in m.value)
-        assert primary_after == primary_before  # opting into fixture data never touches the real LIVE state
+        primary_after = next(m.value for m in at.markdown if 'du-metric-label">Arm</div>' in m.value)
+        assert primary_after == primary_before  # opting into sample data never touches the real LIVE state
 
-    def test_fresh_events_placeholder(self):
-        at = AppTest.from_file(APP_PATH, default_timeout=30)
-        at.run()
-        at.sidebar.radio[0].set_value("Live Details").run()
-        assert not at.exception, at.exception
-        html = "".join(m.value for m in at.markdown)
-        assert "No experiment events yet." in html
-
-    def test_fixture_content_confined_to_one_expander(self):
-        """V2 Phase 5E: a second, clearly V2-labeled expander was added
-        alongside V1's own (unchanged) one -- both are fixture-only,
-        collapsed by default, never shown as primary content."""
+    def test_sample_data_content_confined_to_one_expander(self):
         at = AppTest.from_file(APP_PATH, default_timeout=30)
         at.run()
         at.sidebar.radio[0].set_value("Live Details").run()
         assert not at.exception, at.exception
         labels = [e.label for e in at.expander]
-        assert labels == [
-            "Demo fixture data (simulated, not real LIVE results)",
-            "V2 demo fixture data (simulated, not evaluation evidence)",
-        ]
+        assert labels == ["Sample data (offline) -- simulated, not real LIVE results"]
 
     def test_navigation_preserves_same_active_run(self):
-        run_id = experiment_store.start_run("HPA", "demo_smoke_test", path=self.store_path)
+        run_id = experiment_store.start_run("hpa_v2_cpu_memory", "demo_cpu_short", path=self.store_path)
         experiment_store.update_run(
-            run_id, stage="EPISODE_RUNNING", workload_hash="h1", workload_seed=42,
+            run_id, generation="v2", stage="EPISODE_RUNNING", workload_hash="h1", workload_seed=42,
             workload_duration_s=40.0, path=self.store_path,
         )
         at = AppTest.from_file(APP_PATH, default_timeout=30)

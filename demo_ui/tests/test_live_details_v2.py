@@ -85,7 +85,7 @@ class TestRenderWithNoData:
         at.run()
         assert not at.exception
         html = "".join(m.value for m in at.markdown)
-        assert "No V2 experiment has been run yet" in html
+        assert "No experiment has been run yet" in html
 
     def test_record_with_no_samples_yet_renders_without_exception(self):
         def _script():
@@ -114,4 +114,4 @@ class TestFullPageWithV2ActiveRun:
         at.sidebar.radio[0].set_value("Live Details").run()
         assert not at.exception
         html = "".join(m.value for m in at.markdown)
-        assert "V2 LIVE" in html or "V2 DEMO" in html
+        assert run_id in html

@@ -31,12 +31,12 @@ class TestTrainingPageInApp:
         at.sidebar.radio[0].set_value("Training").run()
         assert not at.exception
 
-    def test_training_page_shows_v2_training_curve_heading(self):
+    def test_training_page_shows_training_curve_heading(self):
         at = AppTest.from_file(APP_PATH, default_timeout=30)
         at.run()
         at.sidebar.radio[0].set_value("Training").run()
         html = "".join(m.value for m in at.markdown)
-        assert "V2 Training Curve" in html
+        assert "Training Curve" in html
 
 
 class TestRenderWithRealSessions:
@@ -98,7 +98,7 @@ class TestRenderWithNoData:
         at.run()
         assert not at.exception
         html = "".join(m.value for m in at.markdown)
-        assert "No completed V2 final_min2 sessions yet" in html
+        assert "No completed final_min2 sessions yet" in html
 
     def test_empty_state_offers_demo_fixture_expander(self):
         def _script():

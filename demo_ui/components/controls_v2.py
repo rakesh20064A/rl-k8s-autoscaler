@@ -13,12 +13,22 @@ from typing import Optional, Tuple
 
 import streamlit as st
 
-ARM_LABELS = {"ppo_v2": "PPO-V2", "hpa_v2_cpu_memory": "HPA-V2 (CPU+memory)"}
+ARM_LABELS = {"ppo_v2": "PPO", "hpa_v2_cpu_memory": "HPA (CPU+memory)"}
 PROFILE_LABELS = {
     "demo_cpu_short": "CPU (short)", "demo_memory_short": "Memory (short)", "demo_mixed_short": "Mixed (short)",
 }
 _LABEL_TO_ARM = {v: k for k, v in ARM_LABELS.items()}
 _LABEL_TO_PROFILE = {v: k for k, v in PROFILE_LABELS.items()}
+
+
+def display_arm_label(raw: str) -> str:
+    """Maps an internal arm identifier to a clean, display-ready label --
+    the ONE place that formatting happens, so every page shows the same
+    thing for the same arm. Falls back to a generic cleanup for any arm
+    not in `ARM_LABELS` rather than ever showing the raw internal code."""
+    if raw in ARM_LABELS:
+        return ARM_LABELS[raw]
+    return raw.replace("_v2", "").replace("_", " ").strip().upper()
 
 
 def render_controls_v2(

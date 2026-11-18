@@ -57,7 +57,7 @@ def _save(records: List[Dict[str, Any]], path: Optional[Path] = None) -> None:
 
 def start_run(controller: str, profile_name: str, path: Optional[Path] = None) -> str:
     """Creates a new `status="running"` record and returns its `run_id`.
-    Called exactly once per real click of START (RealExperimentController
+    Called exactly once per real click of START (RealExperimentControllerV2
     guards against a second call while already running), so this is the
     only place a new run_id is minted -- a Streamlit rerun never calls this
     again for the same click."""
