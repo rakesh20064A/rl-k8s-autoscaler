@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import signal
 import subprocess
 import sys
 import time
@@ -44,7 +45,7 @@ from typing import Any, Callable, Dict, List, Optional
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from autoscaler.src.rl_env.controller_exclusivity import CONTROLLER_NONE, V2_HPA_NAME, read_lock  # noqa: E402
+from autoscaler.src.rl_env.controller_exclusivity import CONTROLLER_NONE, V2_HPA_NAME, clear_lock, read_lock  # noqa: E402
 from loadgen.traffic_generator import parse_traffic_profile  # noqa: E402
 from scripts.eval_v2_episodes import (  # noqa: E402
     CpuOnlyArmNotYetSupportedError,
@@ -54,10 +55,24 @@ from scripts.eval_v2_episodes import (  # noqa: E402
     run_hpa_v2_cpu_memory_eval_episode,
     run_ppo_v2_eval_episode,
 )
+from scripts.evaluate_v2_campaign import restore_canonical_idle_state  # noqa: E402
+# V2 Phase 9E / the same CORR-63/CORR-64 fix scripts/evaluate_v2_campaign.py
+# already made for its own live runs: `demo-app-hpa-v2` present is the
+# canonical IDLE state, never a conflict to refuse on, and PPO (a pure
+# Python controller) needs it deleted -- not treated as blocking -- before
+# it can acquire the controller. `restore_canonical_idle_state` is REUSED
+# (imported) directly from evaluate_v2_campaign.py rather than
+# reimplemented, so there is exactly one source of truth for "what the
+# canonical idle cluster state is and how to reach it" for every live V2
+# entry point. The one piece evaluate_v2_campaign.py does not expose as a
+# standalone function -- deleting the idle HPA immediately before a ppo_v2
+# run starts -- is factored out into scripts/v2_live_cluster_state.py (a
+# new, minimal shared module) instead of being copy-pasted here.
 from scripts.generate_demo_profiles import (  # noqa: E402
     ALL_PROFILE_NAMES,
     LEGACY_DEMO_PROFILE_NAMES,
 )
+from scripts.v2_live_cluster_state import remove_hpa_before_ppo_start  # noqa: E402
 
 DEMO_PROFILE_DIR = PROJECT_ROOT / "configs" / "traffic_profiles" / "v2_demo"
 # The 3 original short demo profiles (kept, unmodified, for backward
@@ -78,6 +93,37 @@ class DemoProfileFirewallViolation(RuntimeError):
 class DemoRefusedError(RuntimeError):
     """Raised when a training/evaluation-protection precondition fails --
     never a cluster mutation of any kind up to this point."""
+
+
+class DemoStopRequested(RuntimeError):
+    """Raised from the SIGTERM handler installed in `main()` so an
+    explicit STOP request (`demo_ui.live_execution_adapter.
+    RealExperimentControllerV2.stop()` sends SIGTERM to this whole
+    process's process group) goes through the EXACT SAME `finally`
+    cleanup path as a normal completion or an unexpected exception --
+    never a bare process kill with no cluster cleanup left behind."""
+
+
+def _raise_stop_requested(signum: int, frame: Any) -> None:  # noqa: ARG001
+    raise DemoStopRequested(f"stop requested (signal {signum})")
+
+
+def _restore_idle_state_safely() -> Dict[str, Any]:
+    """Unconditional cleanup -- called from a `finally` block, so it must
+    itself never raise and mask whatever triggered it (success, an
+    unexpected exception, or `DemoStopRequested`). Mirrors
+    `evaluate_v2_campaign._safe_cleanup()`'s own "a cleanup failure must
+    never crash the caller" rule."""
+    result: Dict[str, Any] = {}
+    try:
+        result.update(restore_canonical_idle_state())
+    except Exception as exc:  # noqa: BLE001
+        result["cleanup_error"] = str(exc)
+    try:
+        clear_lock()
+    except Exception as exc:  # noqa: BLE001
+        result.setdefault("cleanup_error", str(exc))
+    return result
 
 
 def resolve_demo_profile_path(profile_name: str) -> Path:
@@ -191,6 +237,19 @@ def run_demo_episode_v2(
     if samples_jsonl is not None and samples_jsonl.exists():
         samples_jsonl.unlink()  # fresh stream for this run, never appends to a stale prior run's data
 
+    if arm == "ppo_v2":
+        # `demo-app-hpa-v2` being present here is the canonical IDLE state
+        # the protection check above just confirmed (no OTHER HPA is
+        # present) -- never a conflict to refuse on. PPO is a pure-Python
+        # controller that requires ZERO HPA objects present to acquire the
+        # controller lock (`acquire_controller(CONTROLLER_PPO, ...)` inside
+        # `run_ppo_v2_eval_episode` fails closed on ANY HPA), so it must be
+        # deleted here, immediately before the ppo_v2 arm starts -- same
+        # pattern `evaluate_v2_campaign.build_live_context()`'s own
+        # `ppo_episode` wrapper already uses for the live campaign
+        # (CORR-63 lineage).
+        remove_hpa_before_ppo_start()
+
     _write_status(status_file, {"status": "running", "stage": "STARTING", "arm": arm, "profile": profile_name})
 
     def _to_status_sample(sample_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -216,28 +275,50 @@ def run_demo_episode_v2(
 
     episode_id = f"demo_v2_{arm}_{profile_name}_{int(time.time())}"
     try:
-        if arm == "ppo_v2":
-            result = run_ppo_v2_eval_episode(
-                model_path, epsilon, profile_name, episode_duration_s, episode_id, on_sample=on_sample,
-            )
-        else:
-            result = run_hpa_v2_cpu_memory_eval_episode(
-                profile_name, episode_duration_s, episode_id, on_sample=on_sample,
-            )
-    except (SafetyTerminationError, ToolingFailureError, CpuOnlyArmNotYetSupportedError) as exc:
-        _write_status(status_file, {"status": "error", "stage": "ERROR", "arm": arm, "profile": profile_name, "error": str(exc)})
-        raise
+        try:
+            if arm == "ppo_v2":
+                result = run_ppo_v2_eval_episode(
+                    model_path, epsilon, profile_name, episode_duration_s, episode_id, on_sample=on_sample,
+                )
+            else:
+                result = run_hpa_v2_cpu_memory_eval_episode(
+                    profile_name, episode_duration_s, episode_id, on_sample=on_sample,
+                )
+        except DemoStopRequested as exc:
+            _write_status(status_file, {"status": "stopped", "stage": "STOPPED", "arm": arm, "profile": profile_name, "error": str(exc)})
+            raise
+        except (SafetyTerminationError, ToolingFailureError, CpuOnlyArmNotYetSupportedError) as exc:
+            _write_status(status_file, {"status": "error", "stage": "ERROR", "arm": arm, "profile": profile_name, "error": str(exc)})
+            raise
 
-    summary = {
-        "episode_id": result["episode_id"], "arm": arm, "profile": profile_name,
-        "n_samples": len(result["samples"]), "demo_only": True,
-        "samples": [_to_status_sample(s) for s in result["samples"]],
-    }
-    _write_status(status_file, {"status": "completed", "stage": "COMPLETED", "arm": arm, "profile": profile_name, "summary": summary})
-    return summary
+        summary = {
+            "episode_id": result["episode_id"], "arm": arm, "profile": profile_name,
+            "n_samples": len(result["samples"]), "demo_only": True,
+            "samples": [_to_status_sample(s) for s in result["samples"]],
+        }
+        _write_status(status_file, {"status": "completed", "stage": "COMPLETED", "arm": arm, "profile": profile_name, "summary": summary})
+        return summary
+    finally:
+        # V2 Phase 9E: UNCONDITIONAL cleanup -- on success, on any
+        # exception, and on an explicit STOP request (DemoStopRequested,
+        # raised from the SIGTERM handler `main()` installs) alike. Always
+        # restores the canonical idle cluster state (deletes any HPA
+        # object present that isn't `demo-app-hpa-v2`, re-applies it at 2
+        # replicas) and releases the run lock, exactly as
+        # `evaluate_v2_campaign.py`'s own live campaign does after every
+        # attempt (`_safe_cleanup`/`restore_canonical_idle_state`).
+        _restore_idle_state_safely()
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    # V2 Phase 9E: `demo_ui.live_execution_adapter.RealExperimentControllerV2.
+    # stop()` sends SIGTERM to this process's whole process group -- without
+    # this handler that kills the process with NO cluster cleanup at all.
+    # Converting it into `DemoStopRequested` routes a STOP exactly like any
+    # other exception, through the same unconditional `finally` cleanup in
+    # `run_demo_episode_v2()`.
+    signal.signal(signal.SIGTERM, _raise_stop_requested)
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--arm", required=True, choices=DEMO_ARMS)
     parser.add_argument("--profile", required=True, choices=DEMO_PROFILE_ALLOWLIST)

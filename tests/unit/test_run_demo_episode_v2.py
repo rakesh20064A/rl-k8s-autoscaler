@@ -8,10 +8,29 @@ dependency).
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 import scripts.run_demo_episode_v2 as runner
 from autoscaler.src.rl_env.controller_exclusivity import CONTROLLER_NONE
+
+
+def _fake_episode_result(arm_id: str, profile_name: str, episode_id: str) -> dict:
+    """Minimal fake in the exact shape `eval_v2_episodes.py`'s real
+    recorders return (and `EpisodeSample.to_dict()` produces) -- enough
+    for `run_demo_episode_v2()`'s own post-processing (`_to_status_sample`
+    reads `"t_s"`; the summary reads `"episode_id"`/`"samples"`)."""
+    return {
+        "episode_id": episode_id, "arm_id": arm_id, "profile": profile_name, "pod_restarts_total": 0,
+        "samples": [{
+            "decision_index": 0, "t_s": 0.0, "timestamp_utc": "fake", "profile": profile_name, "arm_id": arm_id,
+            "normalized_observation": [0.5, 0.5, 0.5], "raw_observation": {}, "sample_valid": True,
+            "p95_latency_ms": 100.0, "error_rate": 0.0, "request_rate_rps": 1.0,
+            "desired_replicas": 2, "ready_replicas": 2, "max_per_pod_memory_mib": 80.0,
+            "pod_restart_counts": {}, "hpa_status": None, "ppo_decision": None,
+        }],
+    }
 
 
 class TestDemoProfileFirewall:
@@ -130,3 +149,144 @@ class TestDemoArmsAndAllowlist:
 
         assert set(ALL_PROFILE_NAMES).issubset(set(runner.DEMO_PROFILE_ALLOWLIST))
         assert len(ALL_PROFILE_NAMES) == 36
+
+
+class TestPpoRunRemovesIdleHpaFirstAndAlwaysRestoresIdleState:
+    """V2 Phase 9E / CORR-63 lineage: `demo-app-hpa-v2` present is the
+    canonical IDLE state, never a conflict to refuse on -- PPO must have
+    it removed before it can acquire the controller, and whatever happens
+    next (success, an unexpected exception, or an explicit STOP), the
+    canonical idle state must always be restored afterward. All fakes --
+    no real cluster/kubectl/subprocess access."""
+
+    def _ok_protection(self):
+        return {"ok": True, "reasons": []}
+
+    def test_ppo_run_deletes_idle_hpa_before_the_episode_starts_then_succeeds(self, tmp_path, monkeypatch):
+        calls = []
+        monkeypatch.setattr(runner, "remove_hpa_before_ppo_start", lambda: calls.append("remove_hpa") or ["demo-app-hpa-v2"])
+
+        def fake_run_ppo(*args, **kwargs):
+            calls.append("run_ppo")
+            return _fake_episode_result("ppo_v2", "demo_cpu_short", "ep1")
+
+        monkeypatch.setattr(runner, "run_ppo_v2_eval_episode", fake_run_ppo)
+        monkeypatch.setattr(runner, "restore_canonical_idle_state", lambda: calls.append("restore") or {"restored": True})
+        monkeypatch.setattr(runner, "clear_lock", lambda: calls.append("clear_lock"))
+
+        summary = runner.run_demo_episode_v2(
+            "ppo_v2", "demo_cpu_short", status_file=tmp_path / "status.json", samples_jsonl=None,
+            protection_check_fn=self._ok_protection,
+        )
+
+        assert calls == ["remove_hpa", "run_ppo", "restore", "clear_lock"]
+        assert summary["episode_id"] == "ep1"
+
+    def test_successful_ppo_run_cleanup_reapplies_hpa_and_releases_lock(self, tmp_path, monkeypatch):
+        cleanup_calls = []
+        monkeypatch.setattr(runner, "remove_hpa_before_ppo_start", lambda: [])
+        monkeypatch.setattr(
+            runner, "run_ppo_v2_eval_episode",
+            lambda *a, **k: _fake_episode_result("ppo_v2", "demo_cpu_short", "ep1"),
+        )
+
+        def fake_restore():
+            cleanup_calls.append("restore")
+            return {"restored": True, "hpa_names": ["demo-app-hpa-v2"], "deleted_hpa_names": [], "replicas": 2}
+
+        monkeypatch.setattr(runner, "restore_canonical_idle_state", fake_restore)
+        monkeypatch.setattr(runner, "clear_lock", lambda: cleanup_calls.append("clear_lock"))
+
+        runner.run_demo_episode_v2(
+            "ppo_v2", "demo_cpu_short", status_file=tmp_path / "status.json", samples_jsonl=None,
+            protection_check_fn=self._ok_protection,
+        )
+
+        assert cleanup_calls == ["restore", "clear_lock"]
+
+    def test_exception_mid_run_still_restores_canonical_idle_state(self, tmp_path, monkeypatch):
+        cleanup_calls = []
+        monkeypatch.setattr(runner, "remove_hpa_before_ppo_start", lambda: [])
+
+        def fake_run_ppo_raises(*args, **kwargs):
+            raise RuntimeError("injected tooling failure mid-episode")
+
+        monkeypatch.setattr(runner, "run_ppo_v2_eval_episode", fake_run_ppo_raises)
+        monkeypatch.setattr(runner, "restore_canonical_idle_state", lambda: cleanup_calls.append("restore") or {"restored": True})
+        monkeypatch.setattr(runner, "clear_lock", lambda: cleanup_calls.append("clear_lock"))
+
+        with pytest.raises(RuntimeError, match="injected tooling failure"):
+            runner.run_demo_episode_v2(
+                "ppo_v2", "demo_cpu_short", status_file=tmp_path / "status.json", samples_jsonl=None,
+                protection_check_fn=self._ok_protection,
+            )
+
+        assert cleanup_calls == ["restore", "clear_lock"]
+
+    def test_stop_requested_mid_run_still_restores_canonical_idle_state(self, tmp_path, monkeypatch):
+        cleanup_calls = []
+        monkeypatch.setattr(runner, "remove_hpa_before_ppo_start", lambda: [])
+
+        def fake_run_ppo_stops(*args, **kwargs):
+            raise runner.DemoStopRequested("stop requested (signal 15)")
+
+        monkeypatch.setattr(runner, "run_ppo_v2_eval_episode", fake_run_ppo_stops)
+        monkeypatch.setattr(runner, "restore_canonical_idle_state", lambda: cleanup_calls.append("restore") or {"restored": True})
+        monkeypatch.setattr(runner, "clear_lock", lambda: cleanup_calls.append("clear_lock"))
+
+        status_file = tmp_path / "status.json"
+        with pytest.raises(runner.DemoStopRequested):
+            runner.run_demo_episode_v2(
+                "ppo_v2", "demo_cpu_short", status_file=status_file, samples_jsonl=None,
+                protection_check_fn=self._ok_protection,
+            )
+
+        assert cleanup_calls == ["restore", "clear_lock"]
+        status = json.loads(status_file.read_text())
+        assert status["status"] == "stopped"
+
+    def test_hpa_arm_run_never_calls_the_ppo_prestart_helper_but_still_cleans_up(self, tmp_path, monkeypatch):
+        calls = []
+        monkeypatch.setattr(runner, "remove_hpa_before_ppo_start", lambda: calls.append("remove_hpa") or [])
+        monkeypatch.setattr(
+            runner, "run_hpa_v2_cpu_memory_eval_episode",
+            lambda *a, **k: _fake_episode_result("hpa_v2_cpu_memory", "demo_cpu_short", "ep2"),
+        )
+        monkeypatch.setattr(runner, "restore_canonical_idle_state", lambda: calls.append("restore") or {"restored": True})
+        monkeypatch.setattr(runner, "clear_lock", lambda: calls.append("clear_lock"))
+
+        summary = runner.run_demo_episode_v2(
+            "hpa_v2_cpu_memory", "demo_cpu_short", status_file=tmp_path / "status.json", samples_jsonl=None,
+            protection_check_fn=self._ok_protection,
+        )
+
+        assert "remove_hpa" not in calls
+        assert calls == ["restore", "clear_lock"]
+        assert summary["episode_id"] == "ep2"
+
+    def test_unexpected_hpa_present_still_refuses_without_any_mutation(self, tmp_path, monkeypatch):
+        """Regression: an HPA other than demo-app-hpa-v2 must still cause
+        the run to refuse to start -- this guard must not be weakened by
+        the idle-HPA-removal fix."""
+        calls = []
+        monkeypatch.setattr(runner, "remove_hpa_before_ppo_start", lambda: calls.append("remove_hpa") or [])
+        monkeypatch.setattr(runner, "restore_canonical_idle_state", lambda: calls.append("restore") or {"restored": True})
+        monkeypatch.setattr(runner, "clear_lock", lambda: calls.append("clear_lock"))
+
+        def failing_protection():
+            return runner.check_training_protection(
+                read_lock_fn=lambda: CONTROLLER_NONE, pgrep_fn=lambda pattern: [],
+                list_hpa_names_fn=lambda: ["demo-app-hpa-v2", "some-other-hpa"],
+            )
+
+        status_file = tmp_path / "status.json"
+        with pytest.raises(runner.DemoRefusedError):
+            runner.run_demo_episode_v2(
+                "ppo_v2", "demo_cpu_short", status_file=status_file, samples_jsonl=None,
+                protection_check_fn=failing_protection,
+            )
+
+        assert calls == []  # no mutation and no cleanup attempted -- refused before anything started
+        status = json.loads(status_file.read_text())
+        assert status["status"] == "refused"
+        assert "unexpected HPA" in status["error"]
