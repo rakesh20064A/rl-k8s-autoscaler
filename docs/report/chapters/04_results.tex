@@ -7,124 +7,19 @@ Every result in this chapter was produced on the testbed described in
 Chapter~\ref{ch:methodology}: a single-node Minikube cluster (2 vCPU,
 3\,GB RAM) on a MacBook Air M1 with 8\,GB RAM, running the benchmark
 service of Section~\ref{sec:mdp} behind the deterministic traffic
-generator of Section~\ref{sec:mdp}. We report V1's results first, then the
-V2 training campaign, then the V2 pre-registered evaluation, then the
-exploratory stress test, and close with a comparative analysis against the
-related work of Chapter~\ref{ch:introduction} and a plain statement of
-this project's limitations.
+generator of Section~\ref{sec:working-methodology}. We report the training
+campaign first, then the pre-registered held-out evaluation, then the
+exploratory stress test, then the demonstration interface, and close with
+a comparative analysis against the related work of Chapter~\ref{ch:introduction}
+and a plain statement of this project's limitations.
 
-\section{V1 Results}
-
-\subsection{V1 Evaluation}
-
-V1's held-out evaluation ran three PPO episodes alternated with three HPA
-episodes (order PPO1, HPA1, PPO2, HPA2, PPO3, HPA3) against a single
-held-out traffic profile (seed 777, 1,500 seconds, 50 decision steps,
-peaking at 65 requests per second). Table~\ref{tab:v1-eval-results}
-reproduces the per-run results from the project's own V1 evaluation
-ledger and analysis (\texttt{results/\allowbreak \allowbreak evaluation/\allowbreak \allowbreak }).
-
-\begin{table}[H]
-\centering
-\caption{V1 held-out evaluation: per-run results. PPO1 and PPO2 ended in a safety termination (\texttt{consecutive\_\allowbreak invalid\_\allowbreak steps\_\allowbreak limit\_\allowbreak reached}) before completing all 50 decisions; PPO3 was the only PPO run to complete the full episode.}
-\label{tab:v1-eval-results}
-\small
-\resizebox{\linewidth}{!}{%
-\begin{tabular}{lrrrrr}
-\toprule
-Run & Steps completed & SLA-viol.\ rate (300\,ms) & Mean p95 (ms) & Mean replicas & Scaling actions \\
-\midrule
-PPO1 (terminated) & 23/50 & 0.83 & 1925 & 0.75 & 0 \\
-HPA1 & 50/50 & 0.72 & 1592 & 5.06 & 10 \\
-PPO2 (terminated) & 20/50 & 0.70 & 2024 & 0.67 & 0 \\
-HPA2 & 50/50 & 0.54 & 987 & 5.35 & 14 \\
-PPO3 (valid) & 50/50 & 0.92 & 2298 & 1.20 & 3 \\
-HPA3 & 50/50 & 0.52 & 689 & 5.29 & 15 \\
-\bottomrule
-\end{tabular}%
-}
-\end{table}
-
-No run of either controller produced any 5xx errors. PPO's one valid
-repeat (PPO3) used far fewer replicas on average than any HPA run (1.20
-versus 5.06-5.35), which is the behaviour V1's unconditional resource cost
-(Equation~\ref{eq:v1-reward}) was designed to encourage, but its latency
-and SLA-violation rate were clearly worse than every HPA run: mean p95
-latency of 2,298\,ms against an HPA range of 689-1,592\,ms, and an
-SLA-violation rate of 0.92 against an HPA range of 0.52-0.72. Because the
-pre-registered rule for this evaluation required three valid repeats per
-controller and PPO produced only one, no winner could be declared between
-PPO and HPA under V1 -- the evaluation correctly refused to produce a
-verdict from two-thirds-missing data, rather than reporting PPO3's single
-result as if it represented the policy's typical behaviour.
-
-\begin{sloppypar}
-\textit{V1-era figures.} The V1 figures referenced by this project's own
-figure index predate the V2 figure-generation pipeline and are not stored
-under \texttt{docs/\allowbreak \allowbreak archive/\allowbreak \allowbreak figures\_\allowbreak v1/\allowbreak \allowbreak }, which exists in the repository
-but is empty. The actual V1 evaluation figures were located instead under
-\texttt{results/\allowbreak \allowbreak figures/\allowbreak \allowbreak } (added in the project's first commit, before any
-V2 work existed): \texttt{final\_\allowbreak mean\_\allowbreak p95\_\allowbreak latency.png},
-\texttt{final\_\allowbreak mean\_\allowbreak replicas.png}, \texttt{final\_\allowbreak sla\_\allowbreak violation\_\allowbreak rate.png},
-\texttt{final\_\allowbreak action\_\allowbreak churn.png}, \texttt{final\_\allowbreak reaction\_\allowbreak time.png},
-\texttt{final\_\allowbreak resource\_\allowbreak proxy.png}, \texttt{evaluation\_\allowbreak outcomes.png},
-\texttt{p95\_\allowbreak latency\_\allowbreak over\_\allowbreak time\_\allowbreak full\_\allowbreak runs.png}, and
-\texttt{replicas\_\allowbreak over\_\allowbreak time\_\allowbreak full\_\allowbreak runs.png}. Figure~\ref{fig:v1-replicas}
-and Figure~\ref{fig:v1-p95} reproduce the two time-series figures from this
-set.
-\end{sloppypar}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.42\textwidth]{../../results/figures/replicas_over_time_full_runs.png}
-\caption{V1: replica count over time across the three full (non-terminated) runs of the held-out evaluation episode. Source: \texttt{results/\allowbreak \allowbreak figures/\allowbreak \allowbreak replicas\_\allowbreak over\_\allowbreak time\_\allowbreak full\_\allowbreak runs.png}.}
-\label{fig:v1-replicas}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.42\textwidth]{../../results/figures/p95_latency_over_time_full_runs.png}
-\caption{V1: p95 latency over time across the three full (non-terminated) runs of the held-out evaluation episode. Source: \texttt{results/\allowbreak \allowbreak figures/\allowbreak \allowbreak p95\_\allowbreak latency\_\allowbreak over\_\allowbreak time\_\allowbreak full\_\allowbreak runs.png}.}
-\label{fig:v1-p95}
-\end{figure}
-
-\subsection{V1 Failure Analysis}
-\label{sec:v1-failure}
-
-Two of PPO's three evaluation runs (PPO1, PPO2) ended in a safety
-termination triggered by \texttt{consecutive\_\allowbreak invalid\_\allowbreak steps\_\allowbreak limit\_\allowbreak reached}
-roughly 10-11.5 minutes into their respective episodes, well after real
-traffic had already been flowing continuously -- ruling out a one-off
-cold-start telemetry gap as the explanation. We identified two design
-decisions, both in V1 and both corrected in V2, that together explain this
-pattern. First, V1's resource term in Equation~\ref{eq:v1-reward},
-$-(n_t-1)/7$, charges a cost for every replica above one on every single
-step, regardless of whether those replicas are doing anything useful; this
-creates a persistent incentive to stay at the smallest possible replica
-count even when load genuinely calls for more capacity. Second, V1's
-replica floor of one meant that, once the policy had been driven toward a
-single replica, that one pod's own saturation or a transient restart could
-take the Deployment's entire ready-replica count to zero with no structural
-redundancy to fall back on -- and a sustained loss of ready replicas is
-exactly the condition that feeds \texttt{consecutive\_\allowbreak invalid\_\allowbreak steps}
-toward its termination limit, since no telemetry can be attributed to a
-pod that does not exist. A separate, SB3-default artefact compounds this:
-deterministic inference's arg-max tie-break resolves an uncertain policy
-toward the lowest action index, which in our action encoding is
-\textsc{scale\_down\_one} -- so an uncertain V1 policy was silently biased
-toward removing capacity even when it was not confidently the best choice,
-never because removing capacity was actually assessed as correct. These
-three findings -- an unconditional resource cost, a replica floor with no
-redundancy, and a tie-break rule that silently favours scaling down -- are
-precisely the three design points changed first in the V2 redesign of
-Section~\ref{sec:v1-to-v2}.
-
-\section{V2 Training Campaign}
+\section{Training Campaign}
+\label{sec:training-campaign}
 
 \subsection{Learning Curves}
 
 Figure~\ref{fig:training-reward} through Figure~\ref{fig:training-action-mix}
-show the V2 training campaign's learning indicators across all 48 analyzed
+show the training campaign's learning indicators across all 48 analyzed
 sessions (12,288 cumulative timesteps). Dashed vertical markers in each
 figure indicate sessions 4 and 38, the two sessions that failed and were
 retried (Section~\ref{sec:zero-ready-stops}).
@@ -132,56 +27,56 @@ retried (Section~\ref{sec:zero-ready-stops}).
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/training_mean_step_reward.pdf}
-\caption{Mean per-step reward per training session, 48 sessions; dashed lines mark sessions 4 and 38 (failed, retried).}
+\caption[Mean step reward per session]{Mean per-step reward per training session, 48 sessions; dashed lines mark sessions 4 and 38 (failed, retried).}
 \label{fig:training-reward}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/training_entropy.pdf}
-\caption{Policy entropy loss per training session, 48 sessions; dashed lines mark sessions 4 and 38.}
+\caption[Policy entropy loss]{Policy entropy loss per training session, 48 sessions; dashed lines mark sessions 4 and 38.}
 \label{fig:training-entropy}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/training_explained_variance.pdf}
-\caption{Explained variance of the value function per training session, 48 sessions; dashed lines mark sessions 4 and 38.}
+\caption[Explained variance]{Explained variance of the value function per training session, 48 sessions; dashed lines mark sessions 4 and 38.}
 \label{fig:training-ev}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/training_value_loss.pdf}
-\caption{Value loss per training session, 48 sessions; dashed lines mark sessions 4 and 38.}
+\caption[Value loss]{Value loss per training session, 48 sessions; dashed lines mark sessions 4 and 38.}
 \label{fig:training-vloss}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/training_approx_kl.pdf}
-\caption{Approximate KL divergence per PPO update, 48 sessions; dashed lines mark sessions 4 and 38.}
+\caption[Approximate KL divergence]{Approximate KL divergence per PPO update, 48 sessions; dashed lines mark sessions 4 and 38.}
 \label{fig:training-kl}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/training_mean_replicas.pdf}
-\caption{Mean replica count per training session, 48 sessions; dashed lines mark sessions 4 and 38.}
+\caption[Mean replica count per session]{Mean replica count per training session, 48 sessions; dashed lines mark sessions 4 and 38.}
 \label{fig:training-replicas}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/training_reward_components.pdf}
-\caption{Relative share of each reward component (by absolute mean value) per training session, 48 sessions; dashed lines mark sessions 4 and 38.}
+\caption[Reward component share]{Relative share of each reward component (by absolute mean value) per training session, 48 sessions; dashed lines mark sessions 4 and 38.}
 \label{fig:training-components}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/training_action_mix.pdf}
-\caption{Fraction of SCALE\_DOWN/HOLD/SCALE\_UP actions per training session, 48 sessions; dashed lines mark sessions 4 and 38.}
+\caption[Action mix per session]{Fraction of SCALE\_DOWN/HOLD/SCALE\_UP actions per training session, 48 sessions; dashed lines mark sessions 4 and 38.}
 \label{fig:training-action-mix}
 \end{figure}
 
@@ -194,7 +89,8 @@ value function -- the fraction of the variance in observed returns that
 the value function's predictions account for, with 1.0 meaning perfect
 prediction and 0 meaning no better than predicting the mean -- rises from
 0.0125 at the very first PPO update to a mean of 0.703 over the final five
-updates (sessions 43-47), peaking at 0.799, computed directly from
+updates (sessions 43-47), peaking at 0.799 at the very last update,
+computed directly from
 \texttt{persistent-data/\allowbreak \allowbreak rl\_\allowbreak training\_\allowbreak v2/\allowbreak \allowbreak final\_\allowbreak min2/\allowbreak \allowbreak ppo\_\allowbreak update\_\allowbreak metrics.jsonl}.
 This rise is not perfectly monotonic: the same underlying data shows a
 minimum explained variance of $-1.2461$ at some point after the first
@@ -207,7 +103,7 @@ that training failed.
 
 \begin{table}[H]
 \centering
-\caption{V2 training summary: key endpoints across 48 analyzed sessions.}
+\caption[Training summary]{Training summary: key endpoints across 48 analyzed sessions.}
 \label{tab:training-summary}
 \input{tables/training_summary.tex}
 \end{table}
@@ -236,45 +132,54 @@ session 38. Both failures share the identical recorded reason,
 \texttt{SESSION\_\allowbreak FAILED.json}: session 4 failed after completing 126 of
 its planned 256 steps, and session 38 after completing 163 of 256. In both
 cases, every ready replica of the Deployment dropped to zero during the
-session -- the same structural failure mode diagnosed for V1 in
-Section~\ref{sec:v1-failure}, except that by this point in the V2 campaign
-the replica floor had already been raised to 2 (CORR-55), so this is not a
-recurrence of the single-replica vulnerability itself; it reflects that a
-floor of 2 reduces, but does not eliminate, the chance that correlated pod
-unhealthiness (for example, both replicas restarting close together under
-load) can still, on rare occasions, take ready-replica count to zero. Both
-sessions were resumed from their last good checkpoint using the
-session/checkpoint/resume design of Chapter~\ref{ch:methodology}, each
-completing successfully as session \texttt{\_\allowbreak \_\allowbreak attempt2}, which is why the
-campaign's 48 analyzed sessions are complete, successful retries and not a
-silently dropped or averaged-over set of failures; both are marked
-explicitly with dashed lines in every learning-curve figure in this
-section.
+session, which is exactly the condition that feeds
+\texttt{consecutive\_\allowbreak invalid\_\allowbreak steps} toward its termination limit, since
+no telemetry can be attributed to a pod that does not exist. The
+deployment's replica floor is 2 throughout this campaign (CORR-55), so
+neither stop is a single pod with no backup; both reflect that a floor of 2
+reduces, but does not eliminate, the chance that correlated pod
+unhealthiness -- for example, both replicas restarting close together under
+load -- can still, on rare occasions, take ready-replica count to zero.
+This is precisely the scenario the replica floor is set to guard against as
+far as it practically can: a floor of 1 would make this outcome routine
+rather than rare, since any single pod's own transient unhealthiness would
+be enough on its own. Both sessions were resumed from their last good
+checkpoint using the session/checkpoint/resume design of
+Chapter~\ref{ch:methodology}, each completing successfully as session
+\texttt{\_\allowbreak \_\allowbreak attempt2}, which is why the campaign's 48 analyzed sessions are
+complete, successful retries and not a silently dropped or averaged-over
+set of failures; both are marked explicitly with dashed lines in every
+learning-curve figure in this section.
 
 A closely related event, worth reporting plainly rather than omitting, is
-documented in the project's own Phase 5E report: partway through an
+documented in the project's own internal phase report: partway through an
 unrelated, offline user-interface development task, a routine, read-only
-process check found that the live training campaign's process (PID 26490)
-had disappeared. Reading the campaign's own metadata file showed the
-campaign had stopped itself at session 4 on the \texttt{zero\_\allowbreak ready\_\allowbreak replicas}
+process check found that the live training campaign's process had
+disappeared. Reading the campaign's own metadata file showed the campaign
+had stopped itself at session 4 on the \texttt{zero\_\allowbreak ready\_\allowbreak replicas}
 condition described above, with sessions 0-3 already safely checkpointed;
-no command from that phase, or any other phase, had touched the cluster,
-the lock file, or the training process at any point, and the project's own
-established discipline was followed: no restart or retry was attempted
-until the stoppage had been reviewed. \textbf{[CHECK]}: our search of this
-project's documentation did not turn up a separately confirmed incident in
-which the V2 training process itself was killed by an external signal
-(as distinct from the self-terminating \texttt{zero\_\allowbreak ready\_\allowbreak replicas}
-stops at sessions 4 and 38 described above); if such an externally-killed
-re-run occurred, we were not able to locate its record in the materials
-available to us and flag this explicitly rather than asserting a cause we
-could not verify.
+no other activity on the host had touched the cluster, the lock file, or
+the training process at any point, and the project's own established
+discipline was followed: no restart or retry was attempted until the
+stoppage had been reviewed. \textbf{[CHECK]}: our search of this project's
+documentation did not turn up a separately confirmed incident in which the
+training process itself was killed by an external signal (as distinct from
+the self-terminating \texttt{zero\_\allowbreak ready\_\allowbreak replicas} stops at sessions 4
+and 38 described above); if such an externally-killed re-run occurred, we
+were not able to locate its record in the materials available to us and
+flag this explicitly rather than asserting a cause we could not verify.
+Grafana was scaled to zero replicas for both this training campaign and the
+evaluation campaign described below, confirmed directly in this project's
+own cluster-preparation and training-launch reports, so that it could not
+compete with the benchmark application for the Minikube node's limited CPU
+and memory during either campaign.
 
-\section{Pre-Registered Evaluation}
+\section{Held-Out Evaluation}
+\label{sec:held-out-evaluation}
 
 \subsection{Overview}
 
-The pre-registered \texttt{eval\_\allowbreak final} campaign (CORR-60) ran all 27
+The pre-registered held-out evaluation campaign (CORR-60) ran all 27
 planned attempts (3 profiles $\times$ 3 arms $\times$ 3 repeats) to a
 VALID outcome. No run ended in a safety termination; no pod restarted
 during any of the 27 runs (\texttt{pod\_\allowbreak restarts\_\allowbreak total == 0} throughout).
@@ -284,16 +189,33 @@ and were retried once each under the tooling-failure rule of
 Section~\ref{sec:eval-protocol}, with zero effect on the measured result
 once retried; this is reported here rather than silently absorbed into the
 27 VALID figures, consistent with this project's discipline of preserving
-every attempt's evidence, successful or not.
+every attempt's evidence, successful or not. Separately, and earlier in
+this same campaign's own history, a first live execution attempt crashed
+before completion because of two software defects in the orchestration
+code (an unset HTTP client reference in the traffic orchestrator, and a
+wrong keyword argument in the cluster-state restore function); one of
+those attempts left no recorded result at all. Both defects were fixed and
+the campaign restarted cleanly under the corrected code, which is the run
+of 27 reported throughout this section; the crashed attempt's own evidence
+is preserved in the project's archive directory rather than deleted.
+\textbf{[CHECK]}: we did not find evidence that either of these crashed
+attempts was terminated by an external signal (as opposed to crashing on
+its own code defect); a host restart specifically between evaluation runs
+is likewise not confirmed anywhere in this project's evaluation-campaign
+records -- the only host-restart record we could locate anywhere in the
+repository is from an earlier, unrelated pre-training diagnostic phase, not
+from this evaluation campaign. We disclose both possibilities explicitly as
+unconfirmed rather than asserting either occurred.
 
 \subsection{Primary Metrics}
+\label{sec:eval-primary}
 
 Table~\ref{tab:eval-primary} reports the primary metrics, mean $\pm$
 standard deviation over the three repeats of each (profile, arm) cell.
 
 \begin{table}[H]
 \centering
-\caption{\texttt{eval\_\allowbreak final} primary metrics: SLA-violation rate at the 1000\,ms target and replica-minutes, mean $\pm$ sd over 3 repeats.}
+\caption[Held-out evaluation primary metrics]{Held-out evaluation primary metrics: SLA-violation rate at the 1000\,ms target and replica-minutes, mean $\pm$ sd over 3 repeats.}
 \label{tab:eval-primary}
 \small
 \resizebox{\linewidth}{!}{\input{tables/eval_final_primary_metrics.tex}}
@@ -304,21 +226,21 @@ arm is "better" on a metric for a profile only if it wins in all three of
 three repeats), the SLA-violation rate at the 1000\,ms target does not
 produce a decidable winner for any arm pair on any profile -- every arm
 sits at or extremely close to its floor of 0.0 on every profile, with the
-one exception of PPO on \texttt{eval\_\allowbreak cpu\_\allowbreak step} (mean 0.0083, i.e.\ a
-single decision out of 360 total PPO decisions breached the SLA across the
-whole campaign), which is itself too close to zero, and too inconsistent
-across repeats ($\pm 0.0144$), to support a "better" claim either way.
-Replica-minutes (our cost proxy) does discriminate, but not in favour of a
-single arm: the HPA CPU-only (CPU baseline) arm is cheapest on
-\texttt{eval\_\allowbreak memory\_\allowbreak ramp} (40.0 versus PPO's 56.17 and the HPA
-CPU+Memory arm's 75.17) and on \texttt{eval\_\allowbreak mixed\_\allowbreak burst} (40.0 versus
-58.33 and 74.67), and effectively ties with HPA CPU+Memory on
-\texttt{eval\_\allowbreak cpu\_\allowbreak step} (59.33 versus 60.5, both cheaper than PPO's
-72.67). PPO is therefore the most expensive arm on \texttt{eval\_\allowbreak cpu\_\allowbreak step}
-but the cheapest of the three arms on the other two profiles besides the
-CPU-only baseline -- a profile-dependent cost ranking, not a uniform one,
-exactly the kind of outcome our decision rule is built to report as a
-trade-off rather than resolve into a single ranking.
+one exception of PPO (multi-metric) on the CPU step profile (mean 0.0083,
+i.e.\ a single decision out of 360 total PPO decisions breached the SLA
+across the whole campaign), which is itself too close to zero, and too
+inconsistent across repeats ($\pm 0.0144$), to support a "better" claim
+either way. Replica-minutes (our cost proxy) does discriminate, but not in
+favour of a single arm: the HPA CPU-only (CPU baseline) arm is cheapest on
+the memory ramp profile (40.0 versus PPO's 56.17 and the HPA CPU+Memory
+arm's 75.17) and on the mixed bursts profile (40.0 versus 58.33 and
+74.67), and effectively ties with HPA CPU+Memory on the CPU step profile
+(59.33 versus 60.5, both cheaper than PPO's 72.67). PPO is therefore the
+most expensive arm on the CPU step profile but the cheapest of the three
+arms on the other two profiles besides the CPU-only baseline -- a
+profile-dependent cost ranking, not a uniform one, exactly the kind of
+outcome our decision rule is built to report as a trade-off rather than
+resolve into a single ranking.
 
 \subsection{Secondary Metrics}
 
@@ -330,22 +252,22 @@ Table~\ref{tab:eval-secondary-appendix}.
 
 \begin{table}[H]
 \centering
-\caption{\texttt{eval\_\allowbreak final} secondary metrics (selected columns): mean p95 latency and maximum per-pod memory, mean $\pm$ sd over 3 repeats.}
+\caption[Held-out evaluation secondary metrics]{Held-out evaluation secondary metrics (selected columns): mean p95 latency and maximum per-pod memory, mean $\pm$ sd over 3 repeats.}
 \label{tab:eval-secondary-main}
 \small
 \begin{tabular}{llrr}
 \toprule
 Profile & Arm & Mean p95 (ms) & Max per-pod memory (MiB) \\
 \midrule
-eval\_cpu\_step & HPA CPU+Memory & $270.9 \pm 36.3$ & $48.5 \pm 9.6$ \\
-eval\_cpu\_step & HPA CPU-only & $249.7 \pm 4.1$ & $56.8 \pm 3.9$ \\
-eval\_cpu\_step & PPO & $274.1 \pm 92.6$ & $51.6 \pm 10.3$ \\
-eval\_memory\_ramp & HPA CPU+Memory & $975.0 \pm 0.0$ & $123.8 \pm 10.8$ \\
-eval\_memory\_ramp & HPA CPU-only & $975.0 \pm 0.0$ & $140.9 \pm 9.0$ \\
-eval\_memory\_ramp & PPO & $950.6 \pm 0.0$ & $108.6 \pm 9.5$ \\
-eval\_mixed\_burst & HPA CPU+Memory & $975.0 \pm 0.0$ & $97.6 \pm 18.4$ \\
-eval\_mixed\_burst & HPA CPU-only & $975.1 \pm 0.1$ & $119.0 \pm 0.2$ \\
-eval\_mixed\_burst & PPO & $950.6 \pm 0.0$ & $108.2 \pm 9.0$ \\
+CPU step & HPA CPU+Memory & $270.9 \pm 36.3$ & $48.5 \pm 9.6$ \\
+CPU step & HPA CPU-only & $249.7 \pm 4.1$ & $56.8 \pm 3.9$ \\
+CPU step & PPO (multi-metric) & $274.1 \pm 92.6$ & $51.6 \pm 10.3$ \\
+Memory ramp & HPA CPU+Memory & $975.0 \pm 0.0$ & $123.8 \pm 10.8$ \\
+Memory ramp & HPA CPU-only & $975.0 \pm 0.0$ & $140.9 \pm 9.0$ \\
+Memory ramp & PPO (multi-metric) & $950.6 \pm 0.0$ & $108.6 \pm 9.5$ \\
+Mixed bursts & HPA CPU+Memory & $975.0 \pm 0.0$ & $97.6 \pm 18.4$ \\
+Mixed bursts & HPA CPU-only & $975.1 \pm 0.1$ & $119.0 \pm 0.2$ \\
+Mixed bursts & PPO (multi-metric) & $950.6 \pm 0.0$ & $108.2 \pm 9.0$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -355,48 +277,47 @@ for every arm, is a Prometheus histogram-bucket interpolation artefact,
 not a precisely measured latency: our latency histogram's bucket
 boundaries mean that a true p95 anywhere between 500\,ms and 1,000\,ms can
 be reported back as 975\,ms. We flag this plainly rather than treating it
-as a precise measurement, and it is the direct motivation for raising the
-V2 SLA target from 300\,ms to 1,000\,ms (CORR-57) described in
-Section~\ref{sec:v1-to-v2}.
+as a precise measurement; it is the direct motivation for setting the SLA
+target at 1000\,ms rather than a tighter value (CORR-57,
+Section~\ref{sec:reward-function}).
 
 \subsection{Workload and Latency Figures}
 
 Figure~\ref{fig:workloads} shows the request-rate shape of the three
-\texttt{eval\_\allowbreak final} profiles. Figures~\ref{fig:eval-box-cpu}-\ref{fig:eval-box-mixed}
+held-out evaluation profiles. Figures~\ref{fig:eval-box-cpu}-\ref{fig:eval-box-mixed}
 show box plots of per-decision p95 latency, pooled across the three
 repeats of each profile; \textbf{these box plots use a symmetric-log
 (symlog) vertical axis} (linear threshold 200\,ms, switching to
 logarithmic scaling beyond it) because a linear axis compresses every box
-into an unreadably thin line at this project's latency scale, and this is
-stated explicitly in each figure's caption as required.
+into an unreadably thin line at this project's latency scale.
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.32\textwidth]{../figures/workloads_eval_cpu_step.pdf}
 \includegraphics[width=0.32\textwidth]{../figures/workloads_eval_memory_ramp.pdf}
 \includegraphics[width=0.32\textwidth]{../figures/workloads_eval_mixed_burst.pdf}
-\caption{Request rate (RPS) versus time for the three pre-registered \texttt{eval\_\allowbreak final} profiles: \texttt{eval\_\allowbreak cpu\_\allowbreak step} (peak 18 RPS, CPU mode), \texttt{eval\_\allowbreak memory\_\allowbreak ramp} (peak 18 RPS, memory mode), \texttt{eval\_\allowbreak mixed\_\allowbreak burst} (peak 20 RPS, mixed mode).}
+\caption[Held-out evaluation workloads]{Request rate (RPS) versus time for the three pre-registered held-out evaluation profiles: (a) CPU step (peak 18 RPS, CPU mode), (b) memory ramp (peak 18 RPS, memory mode), (c) mixed bursts (peak 20 RPS, mixed mode).}
 \label{fig:workloads}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/evaluation_p95_boxplot_eval_cpu_step.pdf}
-\caption{Box plot (symlog vertical axis, linear threshold 200\,ms) of per-decision p95 latency, pooled across 3 repeats, \texttt{eval\_\allowbreak cpu\_\allowbreak step}. Dashed line: 1000\,ms SLA target.}
+\caption[P95 latency box plot, CPU step]{Box plot (log-scaled y-axis: symlog, linear threshold 200\,ms) of per-decision p95 latency, pooled across 3 repeats, CPU step profile. Dashed line: 1000\,ms SLA target.}
 \label{fig:eval-box-cpu}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/evaluation_p95_boxplot_eval_memory_ramp.pdf}
-\caption{Box plot (symlog vertical axis, linear threshold 200\,ms) of per-decision p95 latency, pooled across 3 repeats, \texttt{eval\_\allowbreak memory\_\allowbreak ramp}. Dashed line: 1000\,ms SLA target. The 975\,ms cluster is the histogram-bucket artefact described in the text.}
+\caption[P95 latency box plot, memory ramp]{Box plot (log-scaled y-axis: symlog, linear threshold 200\,ms) of per-decision p95 latency, pooled across 3 repeats, memory ramp profile. Dashed line: 1000\,ms SLA target; the 975\,ms cluster is the histogram-bucket artefact described in the text.}
 \label{fig:eval-box-memory}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/evaluation_p95_boxplot_eval_mixed_burst.pdf}
-\caption{Box plot (symlog vertical axis, linear threshold 200\,ms) of per-decision p95 latency, pooled across 3 repeats, \texttt{eval\_\allowbreak mixed\_\allowbreak burst}. Dashed line: 1000\,ms SLA target. The 975\,ms cluster is the histogram-bucket artefact described in the text.}
+\caption[P95 latency box plot, mixed bursts]{Box plot (log-scaled y-axis: symlog, linear threshold 200\,ms) of per-decision p95 latency, pooled across 3 repeats, mixed bursts profile. Dashed line: 1000\,ms SLA target; the 975\,ms cluster is the histogram-bucket artefact described in the text.}
 \label{fig:eval-box-mixed}
 \end{figure}
 
@@ -409,41 +330,41 @@ each profile.
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/evaluation_replica_minutes.pdf}
-\caption{Replica-minutes (cost proxy), mean $\pm$ sd over 3 repeats, per profile and arm, \texttt{eval\_\allowbreak final}.}
+\caption[Held-out evaluation replica-minutes]{Replica-minutes (cost proxy), mean $\pm$ sd over 3 repeats, per profile and arm, held-out evaluation.}
 \label{fig:eval-replica-minutes}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/evaluation_replicas_over_time_eval_cpu_step.pdf}
-\caption{Replica count over time, \texttt{eval\_\allowbreak cpu\_\allowbreak step}, all 3 arms (median-cost repeat per arm), with request rate as a light background.}
+\caption[Replicas over time, CPU step]{Replica count over time, CPU step profile, all 3 arms (median-cost repeat per arm), with request rate as a light background.}
 \label{fig:eval-replicas-cpu}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/evaluation_p95_over_time_eval_cpu_step.pdf}
-\caption{p95 latency over time, \texttt{eval\_\allowbreak cpu\_\allowbreak step}, all 3 arms (median-cost repeat per arm), with the 1000\,ms SLA line.}
+\caption[p95 over time, CPU step]{p95 latency over time, CPU step profile, all 3 arms (median-cost repeat per arm), with the 1000\,ms SLA line.}
 \label{fig:eval-p95-cpu}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/evaluation_memory_over_time.pdf}
-\caption{Maximum per-pod memory (MiB) over time on \texttt{eval\_\allowbreak memory\_\allowbreak ramp}, all 3 arms (median-cost repeat per arm).}
+\caption[Memory over time, memory ramp]{Maximum per-pod memory (MiB) over time on the memory ramp profile, all 3 arms (median-cost repeat per arm).}
 \label{fig:eval-memory-time}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/evaluation_p95_over_time_eval_mixed_burst.pdf}
-\caption{p95 latency over time, \texttt{eval\_\allowbreak mixed\_\allowbreak burst}, all 3 arms (median-cost repeat per arm), with the 1000\,ms SLA line.}
+\caption[p95 over time, mixed bursts]{p95 latency over time, mixed bursts profile, all 3 arms (median-cost repeat per arm), with the 1000\,ms SLA line.}
 \label{fig:eval-p95-mixed}
 \end{figure}
 
 \subsection{PPO Policy Behaviour and Tie-Break Usage}
 
-Across all 360 PPO decisions made during \texttt{eval\_\allowbreak final} (27 PPO
+Across all 360 PPO decisions made during the held-out evaluation (27 PPO
 episodes $\times$ 40 decisions each, for the 9 PPO runs), HOLD was chosen
 347 times, SCALE\_UP\_ONE 13 times (3.6\%), and SCALE\_DOWN\_ONE never.
 Figure~\ref{fig:ppo-policy-map} shows the dominant action per
@@ -456,7 +377,7 @@ eleven-feature, multi-signal observation space.
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/discussion_ppo_policy_map.pdf}
-\caption{Dominant action (SCALE\_DOWN/HOLD/SCALE\_UP) per (CPU-per-replica, memory-per-replica) bin, \texttt{eval\_\allowbreak final} PPO decisions. HOLD dominates almost every bin; only 13 of 360 decisions (3.6\%) are SCALE\_UP.}
+\caption[PPO dominant-action map]{Dominant action (SCALE\_DOWN/HOLD/SCALE\_UP) per (CPU-per-replica, memory-per-replica) bin, held-out evaluation PPO decisions. HOLD dominates almost every bin; only 13 of 360 decisions (3.6\%) are SCALE\_UP.}
 \label{fig:ppo-policy-map}
 \end{figure}
 
@@ -471,7 +392,7 @@ only matters at the margin.
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/discussion_tie_rule_frequency.pdf}
-\caption{Frequency of each CORR-58 tie-break rule firing across \texttt{eval\_\allowbreak final} PPO decisions (R1 = no tie; R3-R6 = an actual tie resolved). An actual tie-break fired in 4 of 360 decisions (1.11\%).}
+\caption[Tie-break rule frequency]{Frequency of each CORR-58 tie-break rule firing across held-out evaluation PPO decisions (R1 = no tie; R3-R6 = an actual tie resolved). An actual tie-break fired in 4 of 360 decisions (1.11\%).}
 \label{fig:tie-rule-frequency}
 \end{figure}
 
@@ -485,7 +406,7 @@ replica-minutes metric does discriminate, but not in a single arm's
 favour across all three profiles: the HPA CPU-only (CPU baseline) arm is
 cheapest on two of three profiles and ties on the third; PPO's cost
 ranking is profile-dependent, cheaper than the HPA CPU+Memory arm on two
-profiles but more expensive than both HPA arms on \texttt{eval\_\allowbreak cpu\_\allowbreak step}.
+profiles but more expensive than both HPA arms on the CPU step profile.
 No safety termination occurred in any of the 27 valid runs. Per the
 pre-registration's own rule against declaring a single aggregate winner
 when metrics disagree, we report this explicitly as a profile-dependent
@@ -494,32 +415,32 @@ overall}, and the latency objective, at these evaluation-level loads,
 simply does not separate the three arms.
 
 \section{Exploratory Stress Test}
+\label{sec:stress-test}
 
 \subsection{Overview}
 
-The exploratory \texttt{stress\_\allowbreak explore} campaign (CORR-65) was added
-after \texttt{eval\_\allowbreak final}'s results already existed, specifically because
-those results showed the primary SLA metric sitting at or near its floor
-for every arm, unable to discriminate between controllers at
-\texttt{eval\_\allowbreak final}'s light load levels. Because this addition is
-explicitly outcome-aware (it was motivated by having already seen
-\texttt{eval\_\allowbreak final}'s results), it is run with only one repeat per
-(profile, arm) cell (9 runs total, referencing the same three profiles'
-training-level-peak counterparts: \texttt{stress\_\allowbreak cpu\_\allowbreak burst},
-\texttt{stress\_\allowbreak memory\_\allowbreak ramp}, \texttt{stress\_\allowbreak mixed\_\allowbreak burst}, peaking at
-45-70 RPS, never beyond loads already exercised live during training) and
-is reported throughout as \textbf{descriptive only}: the pre-registered
-"better in all 3 repeats" decision rule cannot be and is not applied to a
-single-repeat dataset, and every figure and table from this campaign is
-labelled exploratory so it can never be mistaken for, or merged with, the
-pre-registered \texttt{eval\_\allowbreak final} results above.
+The exploratory stress test (CORR-65) was added after the held-out
+evaluation's results already existed, specifically because those results
+showed the primary SLA metric sitting at or near its floor for every arm,
+unable to discriminate between controllers at the held-out evaluation's
+light load levels. Because this addition is explicitly outcome-aware (it
+was motivated by having already seen the held-out evaluation's results),
+it is run with only one repeat per (profile, arm) cell (9 runs total,
+referencing the same three profiles' training-level-peak counterparts: CPU
+bursts, memory ramp, mixed bursts, peaking at 45-70 RPS, never beyond
+loads already exercised live during training) and is reported throughout
+as \textbf{descriptive only}: the pre-registered "better in all 3 repeats"
+decision rule cannot be and is not applied to a single-repeat dataset, and
+every figure and table from this campaign is labelled exploratory so it can
+never be mistaken for, or merged with, the pre-registered held-out
+evaluation above.
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.32\textwidth]{../figures/workloads_stress_cpu_burst.pdf}
 \includegraphics[width=0.32\textwidth]{../figures/workloads_stress_memory_ramp.pdf}
 \includegraphics[width=0.32\textwidth]{../figures/workloads_stress_mixed_burst.pdf}
-\caption{Request rate (RPS) versus time for the three exploratory \texttt{stress\_\allowbreak explore} profiles (CORR-65): \texttt{stress\_\allowbreak cpu\_\allowbreak burst} (peak 70 RPS), \texttt{stress\_\allowbreak memory\_\allowbreak ramp} (peak 45 RPS), \texttt{stress\_\allowbreak mixed\_\allowbreak burst} (peak 70 RPS).}
+\caption[Stress-test workloads]{Request rate (RPS) versus time for the three exploratory stress-test profiles (CORR-65): (a) CPU bursts (peak 70 RPS), (b) memory ramp (peak 45 RPS), (c) mixed bursts (peak 70 RPS).}
 \label{fig:workloads-stress}
 \end{figure}
 
@@ -532,81 +453,262 @@ Table~\ref{tab:stress-descriptive-appendix}.
 
 \begin{table}[H]
 \centering
-\caption{\texttt{stress\_\allowbreak explore} descriptive metrics (selected columns), 1 repeat per cell -- exploratory, CORR-65.}
+\caption[Stress-test descriptive metrics]{Stress-test descriptive metrics (selected columns), 1 repeat per cell -- exploratory, CORR-65.}
 \label{tab:stress-descriptive-main}
 \small
 \begin{tabular}{llrrr}
 \toprule
 Profile & Arm & SLA-viol.\ (1000\,ms) & Replica-minutes & Mean p95 (ms) \\
 \midrule
-stress\_cpu\_burst & HPA CPU+Memory & 0.5263 & 123.00 & 1820.3 \\
-stress\_cpu\_burst & HPA CPU-only & 0.5250 & 130.00 & 1703.1 \\
-stress\_cpu\_burst & PPO & 0.5000 & 84.00 & 1567.6 \\
-stress\_memory\_ramp & HPA CPU+Memory & 0.0000 & 78.00 & 975.0 \\
-stress\_memory\_ramp & HPA CPU-only & 0.0000 & 40.00 & 975.0 \\
-stress\_memory\_ramp & PPO & 0.0000 & 56.00 & 950.6 \\
-stress\_mixed\_burst & HPA CPU+Memory & 0.0000 & 76.00 & 980.3 \\
-stress\_mixed\_burst & HPA CPU-only & 0.1000 & 62.50 & 1041.4 \\
-stress\_mixed\_burst & PPO & 0.2000 & 66.50 & 1091.7 \\
+CPU bursts & HPA CPU+Memory & 0.5263 & 123.00 & 1820.3 \\
+CPU bursts & HPA CPU-only & 0.5250 & 130.00 & 1703.1 \\
+CPU bursts & PPO (multi-metric) & 0.5000 & 84.00 & 1567.6 \\
+Memory ramp & HPA CPU+Memory & 0.0000 & 78.00 & 975.0 \\
+Memory ramp & HPA CPU-only & 0.0000 & 40.00 & 975.0 \\
+Memory ramp & PPO (multi-metric) & 0.0000 & 56.00 & 950.6 \\
+Mixed bursts & HPA CPU+Memory & 0.0000 & 76.00 & 980.3 \\
+Mixed bursts & HPA CPU-only & 0.1000 & 62.50 & 1041.4 \\
+Mixed bursts & PPO (multi-metric) & 0.2000 & 66.50 & 1091.7 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Under \texttt{stress\_\allowbreak cpu\_\allowbreak burst}, all three arms miss the SLA objective
+Under the CPU bursts profile, all three arms miss the SLA objective
 roughly half the time (0.50-0.53), with PPO lowest on both cost (84.0
 replica-minutes versus 123.0-130.0 for the two HPA arms) and mean p95
 latency (1567.6\,ms versus 1703.1-1820.3\,ms); Figure~\ref{fig:stress-replicas-cpu}
 shows why: both HPA arms repeatedly hit the 8-replica ceiling under this
 profile, while PPO rises step by step to 5 replicas and holds there,
 spending less on replicas while still achieving slightly lower latency.
-Under \texttt{stress\_\allowbreak memory\_\allowbreak ramp}, no arm breaches the SLA at all, and
-PPO's cost (56.0) sits between the HPA CPU-only arm's 40.0 and the HPA
-CPU+Memory arm's 78.0. Under \texttt{stress\_\allowbreak mixed\_\allowbreak burst}, the ordering
+Under the memory ramp profile, no arm breaches the SLA at all, and PPO's
+cost (56.0) sits between the HPA CPU-only arm's 40.0 and the HPA
+CPU+Memory arm's 78.0. Under the mixed bursts profile, the ordering
 reverses: PPO has the \emph{highest} SLA-violation rate of the three arms
 (0.20, versus 0.00 for HPA CPU+Memory and 0.10 for HPA CPU-only) at a
-mid-range cost (66.5) -- the opposite ordering from
-\texttt{stress\_\allowbreak cpu\_\allowbreak burst}. \textbf{No single arm is uniformly better
-across all three stress profiles.}
+mid-range cost (66.5) -- the opposite ordering from the CPU bursts profile.
+\textbf{No single arm is uniformly better across all three stress
+profiles.}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/stress_replicas_over_time_stress_cpu_burst.pdf}
-\caption{Replica count over time, \texttt{stress\_\allowbreak cpu\_\allowbreak burst} (exploratory, CORR-65, 1 repeat per arm), with request rate as a light background. Both HPA arms repeatedly hit the 8-replica ceiling; PPO caps at 5 replicas.}
+\caption[Replicas over time, CPU bursts stress]{Replica count over time, CPU bursts stress profile (exploratory, CORR-65, 1 repeat per arm), with request rate as a light background. Both HPA arms repeatedly hit the 8-replica ceiling; PPO caps at 5 replicas.}
 \label{fig:stress-replicas-cpu}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/stress_p95_boxplot_stress_cpu_burst.pdf}
-\caption{Box plot (symlog vertical axis, linear threshold 200\,ms) of per-decision p95 latency, \texttt{stress\_\allowbreak cpu\_\allowbreak burst} (exploratory, CORR-65, 1 repeat per arm). Dashed line: 1000\,ms SLA target.}
+\caption[P95 box plot, CPU bursts stress]{Box plot (log-scaled y-axis: symlog, linear threshold 200\,ms) of per-decision p95 latency, CPU bursts stress profile (exploratory, CORR-65, 1 repeat per arm). Dashed line: 1000\,ms SLA target.}
 \label{fig:stress-box-cpu}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/stress_p95_boxplot_stress_mixed_burst.pdf}
-\caption{Box plot (symlog vertical axis, linear threshold 200\,ms) of per-decision p95 latency, \texttt{stress\_\allowbreak mixed\_\allowbreak burst} (exploratory, CORR-65, 1 repeat per arm). Dashed line: 1000\,ms SLA target. PPO shows a wider spread above the SLA line than either HPA arm here, consistent with its higher SLA-violation rate on this profile.}
+\caption[P95 box plot, mixed bursts stress]{Box plot (log-scaled y-axis: symlog, linear threshold 200\,ms) of per-decision p95 latency, mixed bursts stress profile (exploratory, CORR-65, 1 repeat per arm). Dashed line: 1000\,ms SLA target. PPO shows a wider spread above the SLA line than either HPA arm here, consistent with its higher SLA-violation rate on this profile.}
 \label{fig:stress-box-mixed}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/stress_replica_minutes.pdf}
-\caption{Replica-minutes (cost proxy), 1 repeat per cell (no error bars), per profile and arm, \texttt{stress\_\allowbreak explore} (exploratory, CORR-65).}
+\caption[Stress-test replica-minutes]{Replica-minutes (cost proxy), 1 repeat per cell (no error bars), per profile and arm, stress test (exploratory, CORR-65).}
 \label{fig:stress-replica-minutes}
 \end{figure}
 
 Figure~\ref{fig:cost-vs-latency} places every run from both campaigns on a
 single cost-versus-latency plot: the exploratory stress-test points sit
-well above and to the right of the \texttt{eval\_\allowbreak final} cluster, showing
-that both cost and latency rise together once load moves from
-\texttt{eval\_\allowbreak final}'s light levels to training-level peaks.
+well above and to the right of the held-out-evaluation cluster, showing
+that both cost and latency rise together once load moves from the held-out
+evaluation's light levels to training-level peaks.
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.42\textwidth]{../figures/discussion_cost_vs_latency.pdf}
-\caption{Replica-minutes (x-axis) versus mean p95 latency (y-axis), one point per run; \texttt{eval\_\allowbreak final} points filled, \texttt{stress\_\allowbreak explore} points hollow.}
+\caption[Cost vs. latency, all runs]{Replica-minutes (x-axis) versus mean p95 latency (y-axis), one point per run; held-out-evaluation points filled, stress-test points hollow.}
 \label{fig:cost-vs-latency}
+\end{figure}
+
+\section{Demonstration Interface}
+\label{sec:demo-interface}
+
+In addition to the training and evaluation campaigns above, we built a
+Streamlit console (\texttt{demo\_\allowbreak ui/\allowbreak \allowbreak }) that lets a reader watch the PPO
+policy and both HPA baselines make decisions on deterministic demo
+traffic, separate from every training and evaluation run reported above.
+We describe it here, inside the results chapter, because its screenshots
+and the behaviour they show are themselves a kind of result: evidence of
+how the system presents its own decisions, not evidence about which
+controller performs better. We state plainly, once, and mean it throughout
+this section: \textbf{demo runs illustrate behaviour; they are not
+evaluation evidence.} The console's own interface states this directly as
+a caption on its Comparison page.
+
+\subsection{Pages and Navigation}
+
+The console has five pages, selected from a sidebar radio: Experiment,
+Live Details, Comparison, Training, and History. Only one system is
+presented; there is no version selector of any kind.
+
+\subsection{Experiment Page}
+
+Figure~\ref{fig:demo-experiment} shows the Experiment page. It is a single
+control panel with four dropdowns: \textbf{Arm} (PPO or HPA, where HPA uses
+the same CPU and memory targets, 260\% and 120\%, and 2-8 replica bounds as
+elsewhere in this report); \textbf{Traffic pattern} (Constant, Step, Ramp,
+Bursts, Periodic (wave), or Ramp + bursts); \textbf{Resource type} (CPU,
+Memory, or Mixed); and \textbf{Load level} (Normal or High). These four
+choices select one of 36 deterministic, pre-generated demo profiles
+(6 patterns $\times$ 3 resource types $\times$ 2 load levels), each lasting
+8 minutes (16 decisions at the 30-second interval), stored under
+\texttt{configs/\allowbreak \allowbreak traffic\_\allowbreak profiles/\allowbreak \allowbreak v2\_\allowbreak demo/\allowbreak \allowbreak } and firewalled from
+the training, held-out-evaluation, and stress-test profile sets by a
+separate allowlist and a separate seed range, so a demo run can never be
+confused with, or accidentally reuse, a profile from any of this report's
+scientific campaigns. Normal load peaks at about 18 requests per second for
+every resource type; High load peaks at about 65 requests per second for
+CPU and Mixed, and about 40 requests per second for Memory -- within the
+same envelope already exercised by the stress test (Section~\ref{sec:stress-test}),
+never beyond it. A live request-rate preview chart, computed directly from
+the selected profile's own generated schedule rather than a hand-drawn
+approximation, is shown above a one-line description of what the
+combination tests (for example, "Bursts CPU load: drives compute pressure a
+CPU-aware autoscaler sees directly").
+
+A segmented control alongside the dropdowns selects the data source:
+\textbf{"Live cluster"} (the default), which drives a real, isolated,
+non-scientific episode against the same Minikube cluster used for training
+and evaluation, or \textbf{"Sample data (offline)"}, which replays
+deterministic fixture data without touching the cluster at all. Sample data
+exists as a presentation fallback for whenever a live run cannot be
+started -- most commonly because the final model checkpoint or its epsilon
+calibration file is not present on the machine showing the demo -- and is
+clearly labelled as simulated wherever it appears. A live run refuses to
+start outright, with a specific explanatory message rather than a silent
+failure, if the controller-exclusivity lock is held, if a training or
+evaluation process is already running, or if an HPA object other than the
+one this console itself manages is present on the cluster; this guards the
+scientific campaigns above from ever being disturbed by a demonstration.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\textwidth]{../ref/ui/ui_1.png}
+\caption[Demo console: Experiment page]{The Experiment page: the sidebar page selector, the Arm/Traffic
+pattern/Resource type/Load level dropdowns, and the live request-rate
+preview chart for a CPU bursts profile at normal load.}
+\label{fig:demo-experiment}
+\end{figure}
+
+\subsection{Live Details Page}
+
+The Live Details page is a read-only monitor of whatever the Experiment
+page is currently running, or of the most recently completed run. It shows
+a metric strip (arm, traffic profile, request rate, desired/ready
+replicas, p95 latency, memory per pod) above four charts: replicas over
+time, p95 latency against a dashed 1-second SLA line, memory per pod over
+time, and request rate together with error rate. Figure~\ref{fig:demo-live-ppo}
+shows this page for a PPO run: replica count rises one step at a time (2 to
+3, then 3 to 4), consistent with the Discrete(3) action space of
+Section~\ref{sec:safety-layer}, which never lets the policy jump by more
+than one replica in a single decision. Figure~\ref{fig:demo-live-hpa}
+shows the same page for an HPA run on a different profile: replica count
+jumps by two pods at once (2 to 4), consistent with the HPA's own
+scale-up policy of two pods per 15-second period
+(Listing~\ref{lst:hpa-cm}), a visibly different scaling rhythm from the
+PPO agent even before looking at any metric.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{../ref/ui/ui_2.png}
+\caption[Demo console: Live Details, PPO run]{Live Details for a PPO run: replica count rising one step at a time, and p95 latency plotted against the 1\,s SLA target line.}
+\label{fig:demo-live-ppo}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{../ref/ui/ui_4.png}
+\caption[Demo console: Live Details, HPA run]{Live Details for an HPA run: replica count jumping by two pods at once, matching the HPA's own scale-up policy, and a brief early p95 latency spike that settles as replicas catch up.}
+\label{fig:demo-live-hpa}
+\end{figure}
+
+For a PPO run, the same page also shows a decision-explanation panel
+(Figure~\ref{fig:demo-decision-panel}) giving, for the selected decision:
+the three action probabilities, the chosen action, the plain arg-max action
+(before any tie-break), the tie set, whether the system was judged
+stressed and why, the override reason if any, and a plain-language caption
+naming which of rules R1-R6 (Section~\ref{sec:tie-break}) applied -- for
+example, "R1: one action was clearly most likely -- no tie, it was chosen
+directly." A collapsible decision-history list gives the same fields for
+every earlier decision in the run. For an HPA run, this panel is replaced
+by an HPA status panel showing the HPA's own current and target CPU and
+memory percentages instead, since an HPA has no action probabilities or
+ties to explain.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{../ref/ui/ui_3.png}
+\caption[Demo console: PPO decision panel]{The PPO decision-explanation panel: action probabilities for
+each of the three actions, the chosen action, the tie set, and the R1
+("no tie") explanation; below it, the live cluster state the decision was
+made from.}
+\label{fig:demo-decision-panel}
+\end{figure}
+
+A run that stops updating -- because its process died, its heartbeat went
+stale, or it ran well past its expected duration -- is marked
+\textbf{"INTERRUPTED (stale)"} rather than left to lock the page's controls
+indefinitely; the console then automatically restores the cluster to its
+canonical idle state and reports having done so. A run whose telemetry
+shows it never actually received any traffic is marked with a separate
+status, \texttt{invalid\_\allowbreak no\_\allowbreak traffic}, and is excluded from the Comparison
+page's pairing logic (below) while still being visible in the run history.
+
+\subsection{Comparison Page}
+
+The Comparison page (Figure~\ref{fig:demo-comparison}) pairs the most
+recent completed PPO run with the most recent completed HPA run that
+shares the exact same workload identity -- the same demo profile, traffic
+hash, seed, and duration -- so that a pairing is never drawn across two
+different profiles, and a run marked interrupted, stopped, refused, or
+invalid-no-traffic is never offered as "the" result for its controller.
+For the paired runs, it computes and displays, directly from each run's
+own recorded samples: the number of decisions, mean and maximum replicas,
+replica-minutes, scaling-action count, mean/median/maximum p95 latency, the
+share of decisions with p95 at or above 1 second, mean and peak request
+rate, error rate, maximum per-pod memory, and pod restarts, alongside
+replica and p95-latency curves for both runs overlaid on the same axes. A
+caption directly beneath the table states, in the console's own words,
+"Demo runs illustrate behaviour; they are not evaluation evidence" -- the
+same statement this section opened with, because it is true of this page
+specifically and not only of the console in general.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{../ref/ui/ui_5.png}
+\caption[Demo console: Comparison page]{The Comparison page, pairing a live PPO run with a live HPA run
+on the same demo profile: replica count and p95 latency over time for both,
+with a legend distinguishing the two controllers.}
+\label{fig:demo-comparison}
+\end{figure}
+
+\subsection{Training and History Pages}
+
+The Training page (Figure~\ref{fig:demo-training}) reads the real, completed
+sessions of the training campaign directly from their own files every time
+the page loads -- it never writes into that data and never substitutes a
+cached or simulated curve -- and shows the session-completion count
+alongside the entropy-loss and approximate-KL curves discussed in
+Section~\ref{sec:training-campaign}. The History page lists every demo run
+that has ever been started on the current machine, with its status, so
+that an interrupted or invalid run remains visible and auditable rather
+than disappearing once it stops being "current."
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{../ref/ui/ui_6.png}
+\caption[Demo console: Training page]{The Training page: "Sessions completed: 48/48," read live from the training campaign's own files, with entropy-loss and approximate-KL curves.}
+\label{fig:demo-training}
 \end{figure}
 
 \section{Comparative Analysis Against Related Work}
@@ -621,52 +723,50 @@ and/or evaluate primarily in a simulator or against a recorded trace, and,
 as far as we could establish from their published descriptions, do not
 report a baseline comparison whose protocol and decision rule were fixed
 in writing before any evaluation result existed. Our project differs on
-both counts: every decision step, in both V1 and V2, training and
-evaluation, was executed against a real Minikube cluster, and our V2
-evaluation protocol, metrics, and decision rule were pre-registered
-(CORR-60) before the final training checkpoint existed. This difference
-has a direct, visible cost: our sample sizes (three repeats per
-pre-registered cell, one per exploratory cell) are far smaller than a
-simulator-based study could collect in the same wall-clock time, and our
-results are correspondingly more cautious -- we report a profile-dependent
-trade-off rather than a clean win, where some of the surveyed simulator-
-or trace-based work reports a clear improvement over its baseline. We
-think this trade-off, smaller but harder-won samples against a real
-system versus larger but simulated samples, is a genuine trade-off rather
-than a flaw unique to our approach, and it is consistent with the point
-Henderson et al.\ \cite{henderson2018matters} and Dulac-Arnold et al.\
-\cite{dulacarnold2019challenges} make about how much harder reliable RL
-evaluation becomes once a real system, rather than a simulator, is in the
-loop.
+both counts: every decision step, training and evaluation, was executed
+against a real Minikube cluster, and our evaluation protocol, metrics, and
+decision rule were pre-registered (CORR-60) before the final training
+checkpoint existed. This difference has a direct, visible cost: our sample
+sizes (three repeats per pre-registered cell, one per exploratory cell)
+are far smaller than a simulator-based study could collect in the same
+wall-clock time, and our results are correspondingly more cautious -- we
+report a profile-dependent trade-off rather than a clean win, where some of
+the surveyed simulator- or trace-based work reports a clear improvement
+over its baseline. We think this trade-off, smaller but harder-won samples
+against a real system versus larger but simulated samples, is a genuine
+trade-off rather than a flaw unique to our approach, and it is consistent
+with the point Henderson et al.\ \cite{henderson2018matters} and
+Dulac-Arnold et al.\ \cite{dulacarnold2019challenges} make about how much
+harder reliable RL evaluation becomes once a real system, rather than a
+simulator, is in the loop.
 
 \section{Discussion}
 \label{sec:discussion}
 
-Three threads tie the V1 and V2 results together. First, V1's failure and
-V2's redesign are a single, connected story, not two separate projects:
-every major V2 design change in Table~\ref{tab:v1-v2-comparison} traces
-directly to a specific, nameable problem observed in V1's evaluation or
-training, and the honesty of reporting V1's failure in full
-(Section~\ref{sec:v1-failure}) is what makes the V2 redesign's rationale
-legible rather than asserted. Second, V2's training curves
-(Section~\ref{sec:zero-ready-stops} and Figures~\ref{fig:training-reward}-\ref{fig:training-action-mix})
-show a policy that was still improving, not one that had clearly
-plateaued, by session 47: entropy loss and explained variance both
-continue to move in the expected direction through the last few sessions
-rather than flattening out well before the campaign's end, which is part
-of why we list a longer training budget as future work
-(Section~\ref{ch:conclusion}) rather than treating 12,288 timesteps as
-necessarily sufficient. Third, and most directly tied to our stated
-problem statement, the pre-registered evaluation's "ceiling effect" -- the
-primary SLA metric sitting at or near zero for every arm at
-\texttt{eval\_\allowbreak final}'s load levels -- is not a flaw we discovered after
-the fact and tried to explain away; it is the direct, literal reason the
-exploratory stress test exists at all, and the stress test's own finding
-(no single arm uniformly better across stress profiles either) means that
-moving to a harder evaluation load did not resolve the ambiguity in PPO's
-favour, or in either HPA arm's favour -- it only showed that each
-controller's relative strength depends on which resource dimension is
-under pressure.
+Three threads tie this chapter's results together. First, every design
+decision in Chapter~\ref{ch:methodology} traces to a specific, nameable
+problem this system's own development surfaced -- the replica floor, the
+conditional waste penalty, the SLA target, the safety-aware tie-break, two
+HPA baselines instead of one -- and the correction log is what lets a
+reader check that trace rather than take our word for it. Second, the
+training curves (Section~\ref{sec:training-campaign} and
+Figures~\ref{fig:training-reward}-\ref{fig:training-action-mix}) show a
+policy that was still improving, not one that had clearly plateaued, by
+session 47: entropy loss and explained variance both continue to move in
+the expected direction through the last few sessions rather than
+flattening out well before the campaign's end, which is part of why we
+list a longer training budget as future work (Chapter~\ref{ch:conclusion})
+rather than treating 12,288 timesteps as necessarily sufficient. Third, and
+most directly tied to our stated problem statement, the pre-registered
+evaluation's "ceiling effect" -- the primary SLA metric sitting at or near
+zero for every arm at the held-out evaluation's load levels -- is not a
+flaw we discovered after the fact and tried to explain away; it is the
+direct, literal reason the exploratory stress test exists at all, and the
+stress test's own finding (no single arm uniformly better across stress
+profiles either) means that moving to a harder evaluation load did not
+resolve the ambiguity in PPO's favour, or in either HPA arm's favour -- it
+only showed that each controller's relative strength depends on which
+resource dimension is under pressure.
 
 \section{Limitations}
 \label{sec:limitations}
@@ -676,43 +776,44 @@ caveats.
 
 \begin{itemize}[nosep]
   \item \textbf{Light evaluation loads / ceiling effect.} The three
-    pre-registered \texttt{eval\_\allowbreak final} profiles peak at 18-20 RPS, well
+    pre-registered held-out evaluation profiles peak at 18-20 RPS, well
     below the 45-70 RPS peaks exercised live during training. At this
     light load, the primary SLA metric sits at or near its floor (about
     0) for every arm, so it cannot discriminate between controllers under
-    \texttt{eval\_\allowbreak final} specifically; the exploratory stress test was
+    the held-out evaluation specifically; the exploratory stress test was
     added, after the fact, to probe heavier loads, but remains a
     descriptive, one-repeat addition and does not substitute for a
     pre-registered, three-repeat evaluation at higher load.
-  \item \textbf{Single-repeat stress test.} Every \texttt{stress\_\allowbreak explore}
-    number is a single observation, not a mean over repeats, and cannot
-    support the pre-registered better-in-all-three-repeats decision rule;
-    we report it descriptively for exactly this reason.
+  \item \textbf{Single-repeat stress test.} Every stress-test number is a
+    single observation, not a mean over repeats, and cannot support the
+    pre-registered better-in-all-three-repeats decision rule; we report it
+    descriptively for exactly this reason.
   \item \textbf{Histogram-bucket artefact.} A recurring p95 latency value
-    of exactly 975\,ms, seen across several \texttt{eval\_\allowbreak memory\_\allowbreak ramp}/
-    \texttt{eval\_\allowbreak mixed\_\allowbreak burst}/stress cells for every arm, is a
-    Prometheus histogram-bucket interpolation artefact, not a precisely
-    measured value -- the true p95 lies somewhere in the 500-1000\,ms
-    bucket range, and we do not report it as more precise than that.
+    of exactly 975\,ms, seen across several memory-ramp/mixed-bursts/stress
+    cells for every arm, is a Prometheus histogram-bucket interpolation
+    artefact, not a precisely measured value -- the true p95 lies somewhere
+    in the 500-1000\,ms bucket range, and we do not report it as more
+    precise than that.
   \item \textbf{Single-node local cluster.} All training, evaluation, and
     stress-test runs executed on a single-node Minikube cluster (Docker
     driver) on one laptop, not a multi-node, production-scale cluster;
     absolute resource headroom, scheduling behaviour, and node-level
     contention may differ on a larger cluster.
   \item \textbf{Two failed-and-retried training sessions.} Sessions 4 and
-    38 of the 48-session V2 training campaign failed on
+    38 of the 48-session training campaign failed on
     \texttt{zero\_\allowbreak ready\_\allowbreak replicas} and were retried under this project's
     resume discipline (Section~\ref{sec:zero-ready-stops}); the 48
     analyzed sessions are the successful retries, not a silently dropped
     or averaged-over failure, and both are marked explicitly in every
     training-curve figure.
-  \item \textbf{Grafana disabled during V2 evaluation.} Grafana was scaled
-    to zero replicas for the entire V2 evaluation campaign
-    (Section~\ref{sec:eval-protocol}) so that it could not compete with
-    the benchmark application for the Minikube node's limited CPU and
+  \item \textbf{Grafana disabled during both campaigns.} Grafana was
+    scaled to zero replicas for both the training campaign and the
+    evaluation campaign (confirmed directly in this project's own
+    cluster-preparation and launch reports) so that it could not compete
+    with the benchmark application for the Minikube node's limited CPU and
     memory, or add confounding load during a measured run. This means no
     live Grafana dashboard was available to monitor runs visually during
-    evaluation; all telemetry used for analysis came directly from
+    either campaign; all telemetry used for analysis came directly from
     Prometheus, not from Grafana.
   \item \textbf{Small sample sizes.} Three repeats per pre-registered cell
     and one repeat per exploratory cell are both small by the standards
@@ -721,28 +822,25 @@ caveats.
     point estimates wherever more than one repeat exists, but we do not
     claim statistical power beyond what three (or one) repeats can
     support.
-  \item \textbf{Operational incidents during V2.} Two training sessions
-    failed and were retried (above); four \texttt{eval\_\allowbreak final} attempts
-    failed closed on a leftover HPA object and were retried once each
-    (CORR-63, CORR-64) with no effect on the measured result. A host
-    restart occurring specifically during the V2 evaluation campaign, and
-    a training re-run ended by an external kill signal rather than by the
-    \texttt{zero\_\allowbreak ready\_\allowbreak replicas} condition, are two events we were asked
-    to disclose; our own search of the project's documentation located a
-    closely related event (the training process at session 4 being found
-    unexpectedly absent, Section~\ref{sec:zero-ready-stops}, attributable
-    to the recorded \texttt{zero\_\allowbreak ready\_\allowbreak replicas} stop rather than
-    confirmed as an external kill) and a host restart documented during an
-    earlier, unrelated pre-training diagnostic phase, not during the
-    final evaluation campaign itself. We were not able to independently
-    verify an externally-killed training re-run or an evaluation-time host
-    restart as separate, confirmed incidents in the materials available to
-    us, and we flag this explicitly as \textbf{[CHECK]} rather than assert
-    either occurred without a located record.
+  \item \textbf{Operational incidents.} Two training sessions failed and
+    were retried (above); four held-out-evaluation attempts failed closed
+    on a leftover HPA object and were retried once each (CORR-63, CORR-64)
+    with no effect on the measured result; one earlier evaluation-campaign
+    attempt crashed on a software defect before the campaign restarted
+    cleanly under fixed code, leaving no recorded result for that one
+    attempt (Section~\ref{sec:held-out-evaluation}). An externally-killed
+    training or evaluation re-run, and a host restart occurring
+    specifically during the evaluation campaign, are two further
+    possibilities we were asked to check for; we were not able to
+    independently confirm either as a separate, documented incident in the
+    materials available to us (the only host-restart record we located
+    anywhere in the repository is from an earlier, unrelated pre-training
+    diagnostic phase), and we flag both explicitly as \textbf{[CHECK]}
+    rather than assert either occurred without a located record.
   \item \textbf{\texttt{reaction\_\allowbreak time\_\allowbreak s} unavailable.} This secondary
     metric is reported as \texttt{n/\allowbreak \allowbreak a} throughout our evaluation tables;
     our analysis script found no usable signal for it in the normalized
-    series schema used for \texttt{eval\_\allowbreak final} and
-    \texttt{stress\_\allowbreak explore}, and we report it as missing rather than
-    fabricating or imputing a value.
+    series schema used for the held-out evaluation and the stress test,
+    and we report it as missing rather than fabricating or imputing a
+    value.
 \end{itemize}
